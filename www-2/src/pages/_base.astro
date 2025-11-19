@@ -1,0 +1,309 @@
+---
+import '../assets/css/input.css';
+
+interface Props {
+    title?: string;
+    description?: string;
+    tableOfContents?: boolean;
+}
+
+const {
+    title = "htmx",
+    description = "htmx gives you access to AJAX, CSS Transitions, WebSockets and Server Sent Events directly in HTML, using attributes, so you can build modern user interfaces with the simplicity and power of hypertext\n\nhtmx is small (~10k min.gz'd), dependency-free, extendable, IE11 compatible & has reduced code base sizes by 67% when compared with react",
+    tableOfContents = false
+} = Astro.props;
+
+// Get current path to determine active navigation
+const currentPath = Astro.url.pathname;
+
+// Helper function to check if a link is active
+const isActive = (href: string | undefined) => {
+    if (!href) return false;
+    // Match the base path (e.g., /guides/ matches /guides/anything)
+    return currentPath.startsWith(href);
+};
+
+const navigationLinks = [
+    { name: "docs", href: "/guides/docs", title: "Read the complete documentation and tutorials" },
+    { name: "reference", href: "/reference/", title: "Browse the full API reference" },
+    { name: "patterns", href: "/patterns/", title: "Explore common UI patterns and examples" },
+    {
+        name: "community",
+        title: "Join the htmx community",
+        dropdown: [
+            { name: "GitHub", href: "https://github.com/bigskysoftware/htmx", icon: "pixel:github", title: "View source code and contribute on GitHub" },
+            { name: "Discord", href: "/discord", icon: "pixel:discord", title: "Join 1.4K developers on Discord" },
+            { name: "@htmx_org", href: "https://x.com/htmx_org", icon: "dinkie-icons:twitter-alt-small", title: "Follow @htmx_org on X (Twitter)" },
+            { name: "Book", href: "https://hypermedia.systems", icon: "dinkie-icons:closed-book-filled", title: "Read the Hypermedia Systems book" },
+            { name: "RSS", href: "/atom.xml", icon: "pixel:rss", title: "Subscribe to the RSS feed" },
+        ]
+    },
+    { name: "about", href: "/about/", title: "About htmx and the team" }
+];
+
+const footerSections = [
+    {
+        title: "Haiku",
+        content: `javascript fatigue:<br>longing for a hypertext<br>already in hand`
+    },
+    {
+        title: "Links",
+        links: [
+            navigationLinks[0], // guides
+            navigationLinks[1], // reference
+            navigationLinks[2], // patterns
+            navigationLinks[4]  // about
+        ]
+    },
+    {
+        title: "Community",
+        links: navigationLinks[3].dropdown
+    }
+]
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+    <!-- Meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content={description.trim()}>
+    <meta name="generator" content="Astro">
+
+    <!-- SEO -->
+    <title>{title}</title>
+    {Astro.url && <link rel="canonical" href={Astro.url.href}>}
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Favicon -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <!-- RSS Feed -->
+    <link rel="alternate" type="application/atom+xml" title="Sitewide Atom feed" href="/atom.xml">
+
+    <!-- htmx & extensions -->
+    <script is:inline src="/js/htmx.min.js"></script>
+    <script src="../../../dist/ext/hx-preload.js"></script>
+    <meta name="htmx:config" content='{"extensions":"preload"}'>
+
+    <!-- _hyperscript -->
+    <script is:inline src="/js/_hyperscript.min.js"></script>
+    <script is:inline type="text/hyperscript">
+        // Ensure content loaded by htmx is processed by _hyperscript
+        on htmx:after:process from document call _hyperscript.processNode(document.body)
+    </script>
+
+    <!-- <iconify-icon> web component -->
+    <script is:inline src="https://cdn.jsdelivr.net/npm/iconify-icon@3.0.0/dist/iconify-icon.min.js"></script>
+</head>
+
+<body hx-boost:inherited="true" class="group/body font-hyperlegible text-neutral-900 dark:text-neutral-100 bg-white dark:bg-neutral-900 transition overflow-x-hidden">
+
+<!-- Header -->
+<header class="sticky top-0 z-20 bg-neutral-25 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+    <div class="flex items-center justify-between max-w-[1680px] mx-auto px-4 py-3 sm:px-6 lg:px-6 xl:px-8 sm:py-4 gap-12">
+        <!-- Logo -->
+        <a href="/" title="Go to homepage" class="group/logo text-[28px] whitespace-nowrap font-mono tracking-tight font-extrabold inline-flex items-center text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 shrink-0 transition">
+            &lt;<b class="text-blue-600 dark:text-blue-400 group-hover/logo:text-blue-700 dark:group-hover/logo:text-blue-300 transition">/</b>&gt;
+            <span class="font-chicago text-xl sm:text-2xl ms-2 inline-block relative">
+                <span class="group-hover/logo:opacity-0 transition-opacity duration-150">htm<b class="text-blue-600 dark:text-blue-400">x</b></span>
+                <span class="absolute inset-0 opacity-0 group-hover/logo:opacity-100 transition-opacity duration-150">hom<b class="text-blue-600 dark:text-blue-400">e</b></span>
+            </span>
+        </a>
+        <!-- Desktop Navigation -->
+        <nav class="hidden lg:flex items-center gap-4 xl:gap-6 flex-1" hx-preload:inherited="mouseenter">
+            <ul class="flex gap-6 items-center justify-center text-base lg:text-base xl:text-lg font-chicago tracking-tight">
+                {navigationLinks.map((link) => {
+                    const active = isActive(link.href);
+                    const linkClass = active
+                        ? "px-3 py-1 text-blue-600 dark:text-blue-400 hover:underline transition"
+                        : "px-3 py-1 text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition";
+
+                    return (
+                        <li class={link.dropdown ? "relative group/dropdown" : ""}>
+                            {link.dropdown ? (
+                                <span title={link.title} class="px-3 py-1 text-neutral-600 dark:text-neutral-400 cursor-default inline-flex items-center gap-1">
+                                    {link.name}
+                                    <svg class="size-4 translate-y-0.5 translate-x-0.5 opacity-60" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                                </span>
+                            ) : (
+                                <a href={link.href} title={link.title} class={linkClass}>{link.name}</a>
+                            )}
+                            {link.dropdown && (
+                                <ul class="opacity-0 invisible group-hover/dropdown:opacity-100 group-hover/dropdown:visible absolute top-full right-0 min-w-[200px] transition-all duration-200 ease-out origin-top-right z-30 mt-2">
+                                    <div class="bg-white dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 font-chicago rounded-[3px] shadow-[4px_4px_0_0_rgba(0,0,0,0.25)] dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.1)] p-1.5">
+                                        {link.dropdown.map((item) => (
+                                            <a href={item.href} title={item.title}
+                                               class="flex items-center gap-3 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-blue-600 hover:text-white rounded-[2px] transition"
+                                               target={item.href.startsWith('http') ? "_blank" : undefined}
+                                               rel={item.href.startsWith('http') ? "noopener noreferrer" : undefined}>
+                                                {item.icon && <iconify-icon icon={item.icon} class="size-4.5 shrink-0 translate-y-px" height="none"></iconify-icon>}
+                                                <span>{item.name}</span>
+                                            </a>
+                                        ))}
+                                    </div>
+                                </ul>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
+        </nav>
+
+        <!-- Status Bar (shows title of hovered item) -->
+        <div id="status-bar" class="hidden lg:block flex-1 text-center font-chicago text-xs xl:text-sm text-neutral-700 dark:text-neutral-300 translate-y-0.5 truncate min-w-0"
+             _="on mouseenter from <[title]/> put event.target's @title into me
+                    on mouseleave from <[title]/> put '' into me">
+        </div>
+
+        <!-- Right side actions -->
+        <div class="flex items-center">
+            <!-- Search -->
+            <form hx-boost="false" action="https://google.com/search" class="hidden lg:flex group">
+                <label class="relative cursor-text bg-white dark:bg-neutral-850 border-2 border-neutral-300/50 dark:border-neutral-700/50 leading-none pl-4 pe-3 py-1.5 min-w-[200px] rounded-[3px]">
+                    <input type="hidden" name="q" value="+[inurl:https://htmx.org]">
+                    <input type="text" name="q" placeholder="     Search" class="peer bg-transparent outline-none text-neutral-950 dark:text-neutral-100 placeholder-neutral-600 dark:placeholder-neutral-400 w-full"
+                           _="on keydown[key=='Meta'] from document or keydown[key=='CTRL'] from document
+                              on keydown[key=='k'] from document event.preventDefault() call me.focus()">
+                    <iconify-icon icon="pixel:search" class="peer-placeholder-shown:opacity-50 opacity-0 absolute left-3.5 top-1/2 -translate-y-1/2 text-xs block pointer-events-none"></iconify-icon>
+                    <kbd class="absolute right-4 top-1/2 -translate-y-1/2 opacity-50 font-chicago text-xs pointer-events-none group-has-focus:opacity-0 transition"
+                         _="init if navigator.platform.toLowerCase() contains 'mac' put '⌘ K' into me">Ctrl K</kbd>
+                </label>
+            </form>
+            <!-- Divider (desktop only) -->
+            <div class="hidden lg:block h-6 w-px bg-neutral-200 dark:bg-neutral-800 ml-7.5 mr-5.5"></div>
+            <!-- Utility Buttons -->
+            <div class="flex items-center gap-3">
+                <!-- Discord & GitHub (desktop only) -->
+                <a href="/discord" title="Join the Discord community" class="hidden lg:flex px-3 py-2 group transition">
+                    <iconify-icon icon="pixel:discord" class="size-5.5 scale-[1.1] text-neutral-600 dark:text-neutral-400 group-hover:text-neutral-800 dark:group-hover:text-neutral-100 transition" height="none"></iconify-icon>
+                </a>
+                <a href="https://github.com/bigskysoftware/htmx" target="_blank" rel="noopener noreferrer" title="View source code on GitHub" class="hidden lg:flex px-3 py-2 group transition">
+                    <iconify-icon icon="pixel:github" class="size-5.5 text-neutral-600 dark:text-neutral-400 group-hover:text-neutral-800 dark:group-hover:text-neutral-100 transition" height="none"></iconify-icon>
+                </a>
+                <!-- Hamburger (mobile only) -->
+                <label class="lg:hidden flex items-center justify-center size-10 cursor-pointer" for="mobile-menu-toggle">
+                    <iconify-icon icon="mdi:menu" class="[html:has(#mobile-menu-toggle:checked)_&]:hidden size-6 text-neutral-600 dark:text-neutral-400" height="none"></iconify-icon>
+                    <iconify-icon icon="mdi:close" class="hidden [html:has(#mobile-menu-toggle:checked)_&]:block size-6 text-neutral-600 dark:text-neutral-400" height="none"></iconify-icon>
+                </label>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Hamburger Menu (mobile only) -->
+<nav id="mobile-menu" class="z-10 peer/mobile-menu opacity-0 has-checked:opacity-100 pointer-events-none has-checked:pointer-events-auto lg:hidden fixed inset-x-0 top-[98px] sm:top-[106px] text-lg bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 shadow-lg transition-opacity duration-100">
+    <input type="checkbox" class="hidden" id="mobile-menu-toggle">
+
+    <!-- Navigation Links -->
+    <ul class="flex flex-col p-4 gap-2 font-chicago select-none">
+        {navigationLinks.map((link) => {
+            const active = isActive(link.href);
+            const mobileLinkClass = active
+                ? "block px-4 py-3 text-blue-600 dark:text-blue-400 font-bold hover:bg-blue-600 hover:text-white rounded-[2px] transition"
+                : "block px-4 py-3 text-neutral-600 dark:text-neutral-400 hover:bg-blue-600 hover:text-white rounded-[2px] transition";
+
+            return (
+                <li>
+                    {link.dropdown ? (
+                        <>
+                            <span class="flex items-center gap-1 px-4 py-3 text-neutral-600 dark:text-neutral-400 font-bold pointer-events-none">
+                                {link.name}
+                                <svg class="size-3 opacity-60" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                            </span>
+                            <ul class="ml-4 mt-2 mb-2 space-y-1">
+                                {link.dropdown.map((item) => (
+                                    <li>
+                                        <a href={item.href} class="flex items-center gap-2 px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:bg-blue-600 hover:text-white rounded-[2px] transition"
+                                           target={item.href.startsWith('http') ? "_blank" : undefined}
+                                           rel={item.href.startsWith('http') ? "noopener noreferrer" : undefined}>
+                                            {item.icon && <iconify-icon icon={item.icon} class="size-4 shrink-0"></iconify-icon>}
+                                            <span>{item.name}</span>
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
+                    ) : (
+                        <a href={link.href} class={mobileLinkClass}>{link.name}</a>
+                    )}
+                </li>
+            );
+        })}
+        <!-- Search -->
+        <form action="https://google.com/search" role="search" class="text-sm flex group py-2 mt-1">
+            <label class="relative cursor-text flex-1 bg-white dark:bg-neutral-850 border-2 border-neutral-300/50 dark:border-neutral-700/50 leading-none pl-4 pe-3 py-1.5 min-w-[200px] w-full rounded-[3px]">
+                <input type="hidden" name="q" value="+[inurl:https://htmx.org]">
+                <input type="text" name="q" placeholder="     Search" class="peer bg-transparent outline-none text-neutral-950 dark:text-neutral-100 w-full">
+                <iconify-icon icon="pixel:search" class="peer-placeholder-shown:opacity-50 opacity-0 absolute left-4 top-1/2 -translate-y-1/2 block pointer-events-none"></iconify-icon>
+            </label>
+        </form>
+    </ul>
+</nav>
+
+<!-- Construction Banner -->
+<a href="/htmx-4/" class="sticky top-[66px] sm:top-[74px] z-10 flex justify-center text-center px-4 py-1 text-xs sm:text-sm text-neutral-800 dark:text-neutral-900 bg-yellow-300 border-y-4 [border-image:repeating-linear-gradient(45deg,#000,#000_10px,#ffcc00_10px,#ffcc00_20px)_4] hover:bg-yellow-300 dark:hover:bg-yellow-400 transition group"
+   title="htmx 4.0 changes and migration guide">
+    <span>🚧 htmx 4.0 is under construction. <span class="font-bold no-underline group-hover:underline">Read changes →</span></span>
+</a>
+
+<!-- Main Content -->
+<div class={tableOfContents ? "lg:flex lg:justify-center lg:gap-12 max-w-[1680px] mx-auto px-4 sm:px-8 mt-16 mb-8 sm:mt-20 sm:mb-16 min-w-0" : "max-w-[1680px] mx-auto px-4 sm:px-8 mt-16 mb-8 sm:mt-20 sm:mb-16 min-w-0"}>
+
+    {tableOfContents && (
+            <slot name="toc" />
+    )}
+
+    <main class={tableOfContents ? "lg:flex-1 prose dark:prose-invert sm:prose-lg prose-h1:text-4xl prose-a:[:is(h1,h2,h3,h4,h5,h6)_&]:text-neutral-800 dark:prose-a:[:is(h1,h2,h3,h4,h5,h6)_&]:text-neutral-200 prose-a:no-underline prose-a:hover:underline prose-code:before:content-none prose-code:after:content-none [&_:is(h1,h2,h3,h4,h5,h6)]:scroll-mt-28 lg:[&_:is(h1,h2,h3,h4,h5,h6)]:scroll-mt-36" : "mx-auto prose dark:prose-invert sm:prose-lg prose-h1:text-4xl prose-a:no-underline prose-a:hover:underline prose-code:before:content-none prose-code:after:content-none [&_:is(h1,h2,h3,h4,h5,h6)]:scroll-mt-28 lg:[&_:is(h1,h2,h3,h4,h5,h6)]:scroll-mt-36"}>
+        <slot />
+    </main>
+
+</div>
+
+<!-- Footer -->
+<footer class="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-25 dark:bg-neutral-900 mt-16 sm:mt-24">
+    <div class="max-w-[1536px] mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+        <!-- Main footer grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 lg:gap-12 mb-12">
+            {footerSections.map((section) => (
+                <div>
+                    <h2 class="text-sm font-bold font-chicago tracking-wider uppercase text-neutral-900 dark:text-neutral-100 mb-4">
+                        {section.title}
+                    </h2>
+                    {section.content ? (
+                        <p class="text-sm italic text-neutral-600 dark:text-neutral-400 leading-relaxed" set:html={section.content}></p>
+                    ) : (
+                        <ul class="space-y-2 font-chicago text-sm">
+                            {section.links?.map((item) => (
+                                <li>
+                                    <a href={item.href} class="text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition inline-flex items-center gap-2"
+                                       target={item.href?.startsWith('http') ? "_blank" : undefined}
+                                       rel={item.href?.startsWith('http') ? "noopener noreferrer" : undefined}>
+                                        {item.icon && <iconify-icon icon={item.icon} class="text-base"></iconify-icon>}
+                                        {item.name}
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            ))}
+        </div>
+
+        <!-- Bottom section -->
+        <div class="mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-500">
+            <span class="font-chicago flex items-center gap-1.5">
+                &copy; {new Date().getFullYear()}
+                <a href="https://bigsky.software" target="_blank" rel="noopener noreferrer" title="Big Sky Software" class="group inline-flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition">
+                    <img src="/img/bss-bars.png" alt="Big Sky Software" class="size-3 mx-1 group-hover:brightness-125" loading="lazy" />
+                    Big Sky Software
+                </a>
+            </span>
+            <p>made with &hearts; / <span class="font-chicago text-[0.675rem]">hypertext</span> (same thing)</p>
+        </div>
+    </div>
+</footer>
+</body>
+</html>

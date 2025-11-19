@@ -1,0 +1,127 @@
+{
+  "platinum": [
+    {
+      "name": "commspace",
+      "url": "https://www.commspace.co.za",
+      "github": "commspace",
+      "logo": "commspace.svg"
+    }
+  ],
+  "silver": [
+    {
+      "name": "JetBrains",
+      "url": "https://www.jetbrains.com",
+      "github": "JetBrainsOfficial",
+      "logo": "jetbrains.svg"
+    },
+    {
+      "name": "GitHub",
+      "url": "https://github.blog/2023-04-12-github-accelerator-our-first-cohort-and-whats-next",
+      "logo": "github.svg"
+    },
+    {
+      "name": "Craft CMS",
+      "url": "https://craftcms.com",
+      "github": "craftcms",
+      "logo": "craft-cms.svg"
+    },
+    {
+      "name": "ButterCMS",
+      "url": "https://buttercms.com/?utm_campaign=sponsorship&utm_medium=banner&utm_source=htmxhome",
+      "github": "ButterCMS",
+      "logo": "butter-cms.svg"
+    },
+    {
+      "name": "Black Host",
+      "url": "https://black.host",
+      "github": "Black-HOST",
+      "logo": "blackhost.svg"
+    },
+    {
+      "name": "V7N",
+      "url": "https://www.v7n.com/",
+      "logo": "v7n.png"
+    },
+    {
+      "name": "Hiro The Doggo",
+      "url": "https://tacohiro.systems/",
+      "github": "sekunho",
+      "logo": "sekun-doggo.jpg"
+    },
+    {
+      "name": "Das Filter",
+      "url": "https://dasfilter.shop/pages/affiliates",
+      "logo": "das-filter.svg"
+    },
+    {
+      "name": "PullApprove",
+      "url": "https://www.pullapprove.com/?utm_campaign=sponsorship&utm_medium=banner&utm_source=htmx",
+      "logo": "pullapprove.svg"
+    },
+    {
+      "name": "UI Bakery",
+      "url": "https://uibakery.io",
+      "github": "uibakery",
+      "logo": "ui-bakery.svg"
+    },
+    {
+      "name": "Tracebit",
+      "url": "https://tracebit.com/?utm_source=htmx",
+      "github": "tracebit-com",
+      "logo": "tracebit.png"
+    },
+    {
+      "name": "RxDB",
+      "url": "https://rxdb.info/?utm_source=sponsor&utm_medium=githubsponsor&utm_campaign=githubsponsor-htmx",
+      "github": "pubkey",
+      "logo": "rxdb.svg"
+    },
+    {
+      "name": "Ohne-Makler",
+      "url": "https://www.ohne-makler.net/",
+      "logo": "ohne-makler.svg"
+    },
+    {
+      "name": "Cased",
+      "url": "https://cased.com///",
+      "github": "cased",
+      "logo": "cased.svg"
+    },
+    {
+      "name": "LLC.org",
+      "url": "https://www.llc.org/",
+      "github": "llcorg",
+      "logo": "llc-org.svg"
+    },
+    {
+      "name": "VPS Server",
+      "url": "https://www.vpsserver.com/",
+      "github": "VPSServerCom",
+      "logo": "vps-server.svg"
+    },
+    {
+      "name": "a-blog cms",
+      "url": "https://www.a-blogcms.jp/",
+      "github": "appleple",
+      "logo": "ablogcms.svg"
+    },
+    {
+      "name": "Broadband Map",
+      "url": "https://broadbandmap.com/",
+      "github": "CoverageCritic",
+      "logo": "broadband-map.png"
+    },
+    {
+      "name": "Follower24",
+      "url": "https://www.follower24.de/",
+      "github": "Follower24",
+      "logo": "follower.svg"
+    },
+    {
+      "name": "Exchange Rate API",
+      "url": "https://www.exchangerate-api.com",
+      "github": "ExchangeRate-API",
+      "logo": "exchange-rate-api.png"
+    }
+  ]
+}

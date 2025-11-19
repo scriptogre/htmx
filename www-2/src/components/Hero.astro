@@ -1,0 +1,249 @@
+<section id="hero-section" class="not-prose pt-8 pb-12 sm:pt-16 sm:pb-24 w-screen relative left-1/2 -ml-[50vw] overflow-hidden">
+
+    <!-- Original Synthwave Background (decorative) -->
+    <div class="absolute inset-0 pointer-events-none mask-y-from-50% mask-y-to-100% -z-10" aria-hidden="true">
+        <div class="absolute inset-0 bg-gradient-to-t from-blue-950/8 via-transparent to-transparent opacity-0 dark:opacity-100"></div>
+        <div class="absolute inset-0 bg-gradient-to-b from-blue-950/5 via-transparent to-blue-950/15 opacity-0 dark:opacity-100"></div>
+
+        <div class="absolute top-1/2 inset-x-0 h-[70vh] -translate-y-1/2" style="perspective: 800px; transform-style: preserve-3d;">
+            <div class="absolute inset-0 flex flex-col justify-around"
+                 style="transform: rotateX(60deg); mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 70%, transparent 100%);">
+                {[30, 28, 26, 24, 22, 20, 18, 15, 12, 10].map(opacity => (
+                        <div class="w-full border-t border-neutral-200 dark:border-blue-500" style={`border-color: color-mix(in srgb, var(--color-blue-400) ${opacity}%, transparent)`}></div>
+                ))}
+
+                <div class="absolute inset-0 flex justify-around">
+                    {[10, 10, 12, 15, 18, 18, 15, 12, 10, 10].map(opacity => (
+                            <div class="h-full border-l border-neutral-200 dark:border-blue-500" style={`border-color: color-mix(in srgb, var(--color-blue-400) ${opacity}%, transparent)`}></div>
+                    ))}
+                </div>
+            </div>
+        </div>
+
+        <div class="absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent blur-sm opacity-0 dark:opacity-100"></div>
+    </div>
+
+    <div class="relative max-w-7xl mx-auto px-6">
+        <!-- HeroSection Tagline -->
+        <header class="text-center max-w-2xl mx-auto">
+            <h1 class="text-4xl sm:text-5xl font-extrabold font-chicago text-black dark:text-white scan-lines">
+                Learn it in <span class="text-blue-600 dark:text-blue-400 whitespace-nowrap">&lt; 5 min</span>
+            </h1>
+            <p class="mt-6 text-xl sm:text-2xl text-neutral-600 dark:text-neutral-400">
+                Try it below.
+            </p>
+        </header>
+
+        <!-- Dual Windows Demo -->
+        <div class="relative flex items-center justify-between gap-20 max-w-5xl mx-auto mt-24 mb-8">
+            <!-- Server Window (Source) -->
+            <div class="group relative w-88 aspect-4/3 animate-[server-active_4s_ease-in-out_infinite]">
+                <div class="border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-900 w-full h-full">
+                    <!-- Window Header -->
+                    <div class="flex items-center gap-4 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-900 border-b border-neutral-300 dark:border-neutral-800">
+                        <div class="flex gap-1.5">
+                            <div class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700/75"></div>
+                            <div class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700/75"></div>
+                            <div class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700/75"></div>
+                        </div>
+                        <span class="text-[0.675rem] font-medium text-neutral-500 dark:text-neutral-500/80 tracking-widest translate-y-px">
+                            SERVER
+                        </span>
+                    </div>
+                    <!-- Content -->
+                    <div class="h-[calc(100%-32px)] flex items-center justify-center p-4">
+                        <!-- Visual (default) -->
+                        <div class="flex flex-col items-center justify-center gap-3">
+                            <iconify-icon icon="pixelarticons:server" class="text-4xl text-blue-600 dark:text-blue-400"></iconify-icon>
+                            <div class="font-chicago text-sm text-neutral-700 dark:text-neutral-300">Server</div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Flow Visualization -->
+            <div class="-z-10 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-0.5 pointer-events-none overflow-visible">
+                <!-- Static wire -->
+                <div class="absolute inset-0 bg-blue-400/50"></div>
+                <!-- Data particle -->
+                <div id="data-particle" class="particle absolute size-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+            </div>
+
+            <!-- Client Window (Receiver) -->
+            <div id="client-window" class="group relative w-88 aspect-4/3">
+                <div class="border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-900 w-full h-full">
+                    <!-- Window Header -->
+                    <div class="flex items-center gap-4 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-900 border-b border-neutral-300 dark:border-neutral-800">
+                        <div class="flex gap-1.5">
+                            <div class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700/75"></div>
+                            <div class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700/75"></div>
+                            <div class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700/75"></div>
+                        </div>
+                        <span class="text-[0.675rem] font-medium text-neutral-500 dark:text-neutral-500/80 tracking-widest translate-y-px">
+                            CLIENT
+                        </span>
+                    </div>
+                    <!-- Content -->
+                    <div class="relative h-[calc(100%-32px)] flex items-center justify-center p-4">
+                        <!-- Visual (default) -->
+                        <div class="flex flex-col items-center justify-center gap-3">
+                            <iconify-icon icon="pixelarticons:device-laptop" class="text-4xl text-blue-600 dark:text-blue-400"></iconify-icon>
+                            <div class="font-chicago text-sm text-neutral-700 dark:text-neutral-300">Browser</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Stats (subtle) -->
+        <div class="flex flex-wrap items-center justify-center gap-6 mt-24 font-chicago text-sm text-neutral-600 dark:text-neutral-400">
+            <div class="flex items-center gap-2">
+                <span class="text-blue-600 dark:text-blue-400 -translate-y-[0.5px]"><10kb</span>
+                <span>size</span>
+            </div>
+            <span class="text-neutral-400">•</span>
+            <div class="flex items-center gap-2">
+                <span class="text-blue-600 dark:text-blue-400 -translate-y-[0.5px]">0</span>
+                <span>dependencies</span>
+            </div>
+            <span class="text-neutral-400">•</span>
+            <div class="flex items-center gap-2">
+                <span class="text-blue-600 dark:text-blue-400 -translate-y-[0.5px]">0ms</span>
+                <span>build time</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+    /* Server: Constant active state with 3D depth */
+    @keyframes server-active {
+        0%, 100% {
+            box-shadow:
+                /* Front glow */
+                    0 0 20px color-mix(in srgb, var(--color-blue-400) 5%, transparent),
+                    0 0 40px color-mix(in srgb, var(--color-blue-400) 2.5%, transparent),
+                        /* 3D depth layers */
+                    0 8px 25px color-mix(in srgb, var(--color-blue-400) 3.75%, transparent),
+                    0 15px 50px color-mix(in srgb, var(--color-blue-400) 2%, transparent);
+        }
+        50% {
+            box-shadow:
+                    0 0 30px color-mix(in srgb, var(--color-blue-400) 35%, transparent),
+                    0 0 60px color-mix(in srgb, var(--color-blue-400) 15%, transparent),
+                    0 10px 35px color-mix(in srgb, var(--color-blue-400) 25%, transparent),
+                    0 20px 70px color-mix(in srgb, var(--color-blue-400) 12%, transparent);
+        }
+    }
+
+    /* Directional data pulse (server → client) */
+    @keyframes data-flow {
+        0% {
+            background: linear-gradient(90deg,
+            color-mix(in srgb, var(--color-blue-400) 80%, transparent) 0%,
+            var(--color-blue-400) 5%,
+            transparent 10%,
+            transparent 100%
+            );
+        }
+        100% {
+            background: linear-gradient(90deg,
+            transparent 0%,
+            transparent 90%,
+            color-mix(in srgb, var(--color-blue-400) 80%, transparent) 95%,
+            var(--color-blue-400) 100%
+            );
+        }
+    }
+
+    /* Particle flow along wire - slower travel */
+    @keyframes particle-flow {
+        0% {
+            left: 0%;
+            opacity: 0;
+        }
+        5% {
+            opacity: 0.9;
+        }
+        95% {
+            opacity: 0.9;
+        }
+        100% {
+            left: 100%;
+            opacity: 0;
+        }
+    }
+
+    .particle {
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .particle-1 {
+        animation: particle-flow 6s cubic-bezier(0.4, 0.0, 0.2, 1) infinite;
+        animation-delay: 0s;
+    }
+
+    .particle-2 {
+        animation: particle-flow 6s cubic-bezier(0.4, 0.0, 0.2, 1) infinite;
+        animation-delay: 2s;
+    }
+
+    .particle-3 {
+        animation: particle-flow 6s cubic-bezier(0.4, 0.0, 0.2, 1) infinite;
+        animation-delay: 4s;
+    }
+
+    /* Particle journey animation */
+    @keyframes particle-journey {
+        0% { left: 0%; opacity: 0; }
+        5% { opacity: 1; }
+        95% { opacity: 1; }
+        100% { left: 100%; opacity: 0; }
+    }
+
+    /* Client flash when receiving data */
+    @keyframes client-flash {
+        0% {
+            box-shadow: 0 0 5px color-mix(in srgb, var(--color-blue-400) 5%, transparent), 0 5px 15px color-mix(in srgb, var(--color-blue-400) 3%, transparent);
+        }
+        5% {
+            box-shadow: 0 0 40px color-mix(in srgb, var(--color-blue-400) 50%, transparent), 0 0 80px color-mix(in srgb, var(--color-blue-400) 30%, transparent),
+            0 10px 50px color-mix(in srgb, var(--color-blue-400) 35%, transparent), 0 20px 100px color-mix(in srgb, var(--color-blue-400) 20%, transparent);
+        }
+        100% {
+            box-shadow: 0 0 5px color-mix(in srgb, var(--color-blue-400) 5%, transparent), 0 5px 15px color-mix(in srgb, var(--color-blue-400) 3%, transparent);
+        }
+    }
+</style>
+
+<script>
+    // Function to trigger the perfect data flow sequence
+    function triggerDataFlow() {
+        const particle = document.getElementById('data-particle');
+        const client = document.getElementById('client-window');
+
+        if (!particle || !client) return;
+
+        // Reset animations
+        particle.style.animation = 'none';
+        client.style.animation = 'none';
+
+        // Force reflow
+        particle.offsetHeight;
+        client.offsetHeight;
+
+        // Trigger sequence: 2s particle journey, client flashes at 1.9s
+        particle.style.animation = 'particle-journey 2s cubic-bezier(0.4, 0.0, 0.2, 1) forwards';
+        client.style.animation = 'client-flash 0.6s ease-out 1.9s forwards';
+    }
+
+    // Auto-play once on load
+    window.addEventListener('load', () => {
+        setTimeout(() => triggerDataFlow(), 500);
+    });
+
+    // Make function globally available
+    (window as any).triggerDataFlow = triggerDataFlow;
+</script>

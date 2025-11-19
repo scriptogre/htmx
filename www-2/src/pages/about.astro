@@ -1,0 +1,182 @@
+---
+import BaseLayout from './_base.astro';
+
+// Team members - Carson last to center him in the final row
+const team = [
+    {
+        name: "Alex Petros",
+        image: "/img/team/alex.png",
+        github: "https://github.com/alexpetros",
+        username: "alexpetros",
+        content: `Lorem ipsum dolor sit amet, consectetur adipiscing elit.`
+    },
+    {
+        name: "Deniz Akşimşek",
+        image: "/img/team/deniz.png",
+        github: "https://github.com/bkardell",
+        username: "bkardell",
+        content: `Lorem ipsum dolor sit amet, consectetur adipiscing elit.`
+    },
+    {
+        name: "Michael West",
+        image: "/img/team/latent.png",
+        github: "https://github.com/bigskysoftware",
+        username: "bigskysoftware",
+        content: `Lorem ipsum dolor sit amet, consectetur adipiscing elit.`
+    },
+    {
+        name: "Christian Tanul",
+        image: "/img/team/scriptogre.png",
+        github: "https://github.com/scriptogre",
+        username: "scriptogre",
+        content: `A perfectionist still editing this sentence.`
+    },
+    {
+        name: "Vincent Thébaud",
+        image: "/img/team/telroshan.png",
+        github: "https://github.com/bigskysoftware",
+        username: "bigskysoftware",
+        content: `A game developer who hasn't released any game yet.`
+    },
+    {
+        name: "Stephen Mitchell",
+        image: "/img/team/scum.png",
+        github: "https://github.com/bigskysoftware",
+        username: "bigskysoftware",
+        content: `Lorem ipsum dolor sit amet, consectetur adipiscing elit.`
+    },
+    {
+        name: "Carson Gross",
+        image: "/img/team/grug.png",
+        github: "https://github.com/bigskysoftware",
+        username: "bigskysoftware",
+        content: `An <a href="https://www.cs.montana.edu/users/grug/" target="_blank" rel="noopener noreferrer" class="font-semibold text-blue-600 dark:text-blue-400 hover:underline underline-offset-4 transition">academic</a> with no real-world coding experience.`
+    }
+];
+
+// Community resources
+const resources = [
+    {
+        name: "Discord",
+        description: "Join 1.4K+ developers discussing htmx",
+        icon: "pixel:discord",
+        href: "/discord"
+    },
+    {
+        name: "GitHub Issues",
+        description: "Report bugs and request features",
+        icon: "pixel:github",
+        href: "https://github.com/bigskysoftware/htmx/issues"
+    },
+    {
+        name: "Stack Overflow",
+        description: "Get help from the community",
+        icon: "simple-icons:stackoverflow",
+        href: "https://stackoverflow.com/questions/tagged/htmx"
+    },
+    {
+        name: "Discussions",
+        description: "Share ideas and feedback",
+        icon: "mdi:forum",
+        href: "https://github.com/bigskysoftware/htmx/discussions"
+    }
+];
+---
+
+<BaseLayout title="About" description="Learn about htmx and meet the team behind it">
+    <!-- HeroSection Section -->
+    <div id="hero-section" class="not-prose pt-8 pb-12 sm:pt-16 sm:pb-24 w-screen relative left-1/2 -ml-[50vw] overflow-hidden">
+        <div id="hero" class="relative text-center transition starting:opacity-0 duration-500">
+            <!-- Logo -->
+            <div id="hero-logo" class="relative inline-block">
+                <h3 class="text-8xl font-bold font-sans whitespace-nowrap text-neutral-900 dark:text-neutral-100 dark:text-shadow-3d-blue-600 scan-lines">
+                    &lt;<b class="text-blue-600 dark:brightness-125 font-mono">/</b>&gt; <span class="ms-4 max-sm:hidden">htm<b class="text-blue-600 dark:brightness-125">x</b></span>
+                </h3>
+                <sub id="hero-subtitle" class="text-[1.075rem] max-sm:hidden absolute left-3/4 -bottom-4 italic dark:text-shadow-3d-blue-600 whitespace-nowrap transition starting:translate-y-4 starting:opacity-0 delay-250 duration-500">
+                    high power tools for HTML
+                </sub>
+            </div>
+        </div>
+        <!-- Fixed Synthwave Background -->
+        <div class="absolute inset-0 pointer-events-none mask-y-from-50% mask-y-to-100% -z-10" aria-hidden="true">
+            <!-- Atmospheric glow layers (dark mode only) -->
+            <div class="absolute inset-0 bg-gradient-to-t from-blue-950/8 via-transparent to-transparent opacity-0 dark:opacity-100"></div>
+            <div class="absolute inset-0 bg-gradient-to-b from-blue-950/5 via-transparent to-blue-950/15 opacity-0 dark:opacity-100"></div>
+            <!-- Perspective grid container -->
+            <div class="absolute top-1/2 inset-x-0 h-[70vh] -translate-y-1/2" style="perspective: 800px; transform-style: preserve-3d;">
+                <!-- Grid lines container with perspective transform -->
+                <div class="absolute inset-0 flex flex-col justify-around" style="transform: rotateX(60deg); mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 70%, transparent 100%);">
+                    <!-- Horizontal grid lines (lighter at bottom/vanishing point) -->
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/30"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/28"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/26"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/24"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/22"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/20"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/18"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/15"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/12"></div>
+                    <div class="w-full border-t border-neutral-200 dark:border-blue-500/10"></div>
+                    <!-- Vertical grid lines -->
+                    <div class="absolute inset-0 flex justify-around">
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/10"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/10"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/12"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/15"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/18"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/18"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/15"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/12"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/10"></div>
+                        <div class="h-full border-l border-neutral-200 dark:border-blue-500/10"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Horizon glow (dark mode only) -->
+            <div class="absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent blur-sm dark:opacity-100 opacity-0"></div>
+        </div>
+    </div>
+
+    <div class="prose dark:prose-invert sm:prose-lg mx-auto">
+        <!-- Team Section -->
+        <section class="not-prose my-16">
+            <h2 class="text-3xl font-chicago text-neutral-900 dark:text-neutral-100 mb-8">The Team</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 [&>*:last-child]:md:col-start-1 [&>*:last-child]:lg:col-start-2">
+                {team.map((member) => (
+                    <div class="group border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/30 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 rounded-[3px] p-6 transition-colors flex flex-col items-center text-center">
+                        <div class="w-32 h-32 rounded-full overflow-hidden mb-4 bg-neutral-200 dark:bg-neutral-800">
+                            <img src={member.image} alt={member.name} class="w-full h-full object-cover" />
+                        </div>
+                        <h3 class="text-xl font-chicago text-neutral-900 dark:text-neutral-100 mb-3">{member.name}</h3>
+                        <p class="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-4" set:html={member.content}></p>
+                        <a href={member.github} target="_blank" rel="noopener noreferrer" title={`Go to github.com/${member.username}`} class="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 font-chicago hover:underline underline-offset-6 transition no-underline">
+                            <iconify-icon icon="pixel:github" class="size-4" height="none"></iconify-icon>
+                            <span>{member.username}</span>
+                        </a>
+                    </div>
+                ))}
+            </div>
+        </section>
+
+        <!-- Community Resources Section -->
+        <section class="not-prose my-16">
+            <h2 class="text-3xl font-chicago text-neutral-900 dark:text-neutral-100 mb-8">Get Help & Connect</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {resources.map((resource) => (
+                    <a href={resource.href}
+                       target={resource.href.startsWith('http') ? "_blank" : undefined}
+                       rel={resource.href.startsWith('http') ? "noopener noreferrer" : undefined}
+                       class="group border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/30 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 rounded-[3px] p-6 transition-colors flex items-center gap-4 no-underline">
+                        <div class="shrink-0 flex items-center justify-center">
+                            <iconify-icon icon={resource.icon} class="size-8 text-neutral-600 dark:text-neutral-400" height="none"></iconify-icon>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-chicago text-neutral-900 dark:text-neutral-100 mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">{resource.name}</h3>
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400">{resource.description}</p>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        </section>
+    </div>
+</BaseLayout>

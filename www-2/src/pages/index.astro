@@ -1,0 +1,32 @@
+---
+import BaseLayout from './_base.astro';
+import Sponsors from "../components/Sponsors.astro";
+import EasterEggs from "../components/EasterEggs.astro";
+import Hero from "../components/Hero.astro";
+import CdnGenerator from "../components/CDNGenerator.astro";
+---
+
+<BaseLayout
+   title="htmx - high power tools for HTML"
+   description="htmx gives you access to AJAX, CSS Transitions, WebSockets and Server Sent Events directly in HTML, using attributes, so you can build modern user interfaces with the simplicity and power of hypertext"
+>
+
+    <EasterEggs />
+
+    <Hero />
+
+    <CdnGenerator />
+
+    <!-- TODO: Add content/index.md here -->
+
+    <Sponsors />
+
+    <footer class="text-center py-16">
+        <p class="text-neutral-600 dark:text-neutral-400 font-chicago text-sm mb-4">
+            htmx is the successor to <a href="http://intercoolerjs.org" class="text-blue-600 dark:text-blue-400 hover:underline">intercooler.js</a>
+        </p>
+        <p class="text-neutral-500 dark:text-neutral-500 text-sm">
+            ʕ •ᴥ•ʔ made in montana
+        </p>
+    </footer>
+</BaseLayout>

@@ -1,0 +1,236 @@
+---
+const extensions = [
+    { name: 'core', size: 9.8, checked: true },
+    { name: 'live', size: 2.3, checked: false },
+    { name: 'morph', size: 3.1, checked: false },
+    { name: 'web-sockets', size: 1.5, checked: false }
+];
+---
+
+<section id="cdn-generator-section" class="not-prose py-12 sm:py-16">
+    <div class="max-w-7xl mx-auto px-6">
+        <div id="cdn-generator" class="flex flex-col mt-auto mx-auto max-w-[755px] w-full dark:brightness-125">
+            <div class="border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950/50">
+
+                <div class="flex items-center gap-4 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-900 border-b border-neutral-300 dark:border-neutral-800">
+                    <div class="flex gap-1.5">
+                        {[...Array(3)].map(() => (
+                            <div class="size-2 rounded-full bg-neutral-300 dark:bg-neutral-700/75"></div>
+                        ))}
+                    </div>
+                    <span class="text-[0.675rem] font-medium text-neutral-500 dark:text-neutral-500/80 tracking-widest translate-y-px">
+                        CDN Generator
+                    </span>
+                </div>
+
+                <div class="relative group flex items-center gap-3 sm:gap-4 p-3 sm:p-4">
+                    <pre class="text-xs text-neutral-900 dark:text-white flex-1 overflow-x-auto"><code id="cdn-code" class="whitespace-pre-wrap break-all leading-[1.25rem]"><span class="text-[#0000FF] dark:text-[#569CD6]">&lt;script</span> <span class="text-[#001080] dark:text-[#9CDCFE]">src</span>=<span class="text-[#A31515] dark:text-[#CE9178]">"https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx<span id="minify-link">.min</span>.js"</span><span class="text-[#0000FF] dark:text-[#569CD6]">&gt;&lt;/script&gt;</span><span id="extension-scripts"></span></code></pre>
+                    <div class="relative size-4.5 flex-shrink-0">
+                        <button
+                            id="copy-button"
+                            class="inline-flex items-center justify-center size-5 text-neutral-600 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 transition cursor-pointer"
+                            _="on click
+                            set scripts to []
+                            if #minify-link matches .hidden
+                                append '<script src=&quot;https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx.js&quot;></script>' to scripts
+                            else
+                                append '<script src=&quot;https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/htmx.min.js&quot;></script>' to scripts
+                            end
+                            repeat for cb in <input[data-extension]:checked/>
+                                if cb.dataset.extension is not 'core'
+                                    if #minify-link matches .hidden
+                                        append '<script src=&quot;https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/ext/' + cb.dataset.extension + '.js&quot;></script>' to scripts
+                                    else
+                                        append '<script src=&quot;https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/ext/' + cb.dataset.extension + '.min.js&quot;></script>' to scripts
+                                    end
+                                end
+                            end
+                            set text to ''
+                            repeat for s in scripts index i
+                                if i is 0
+                                    set text to s
+                                else
+                                    set text to text + '\n' + s
+                                end
+                            end
+                            writeText(text) on navigator.clipboard
+                            set @icon of <iconify-icon/> in me to 'radix-icons:check'
+                            remove .opacity-0 from #copy-notice
+                            wait 2s
+                            set @icon of <iconify-icon/> in me to 'radix-icons:copy'
+                            add .opacity-0 to #copy-notice
+                        "
+                        >
+                            <iconify-icon icon="radix-icons:copy" class="size-4.5" height="none"></iconify-icon>
+                        </button>
+                        <span id="copy-notice" class="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 shadow-xs whitespace-nowrap opacity-0 transition-opacity pointer-events-none">
+                            Copied!
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row mt-2 gap-4 items-stretch sm:items-center justify-between text-xs">
+
+                <div class="relative" _="on click elsewhere add .hidden to #dropdown">
+                    <button
+                        class="flex items-center justify-between gap-2 px-2 py-0.75 border bg-white dark:bg-neutral-950/50 border-neutral-300 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-400 dark:hover:border-neutral-500 transition cursor-pointer min-w-[120px] w-full sm:w-auto select-none"
+                        _="on click toggle .hidden on #dropdown"
+                    >
+                        <span id="selected-text"><span class="opacity-75">add extensions</span></span>
+                        <iconify-icon icon="radix-icons:chevron-down" class="size-3" height="none"></iconify-icon>
+                    </button>
+
+                    <div
+                        id="dropdown"
+                        class="hidden absolute bottom-full left-0 mb-1 w-full sm:w-[200px] border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xs z-10"
+                    >
+                        {extensions.map(ext => (
+                            <label
+                                class="flex items-center justify-between gap-2 px-2 py-1.5 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-200 cursor-pointer select-none transition"
+                                _="on change
+                                    call updateSelection()
+                                    call updateCodeDisplay()
+                                    call updateFileSize()
+                                "
+                            >
+                                <div class="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        class="retro-checkbox"
+                                        data-extension={ext.name}
+                                        data-size={ext.size}
+                                        checked={ext.checked}
+                                    />
+                                    <span>{ext.name}</span>
+                                </div>
+                                <span class="text-neutral-500 extension-size" data-for={ext.name}>
+                                    {ext.size} KB
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                <label class="flex items-center gap-2 text-neutral-600 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 cursor-pointer select-none transition">
+                    <input
+                        type="checkbox"
+                        id="minify-checkbox"
+                        class="retro-checkbox"
+                        _="on change
+                            toggle .hidden on #minify-link
+                            toggle .hidden on .minify-ext
+                            call updateExtensionSizes()
+                            call updateFileSize()
+                        "
+                        checked
+                    />
+                    <span>minify</span>
+                </label>
+
+                <span id="file-size" class="flex-1 text-neutral-500 text-right select-none whitespace-nowrap">
+                    ~{extensions.find(ext => ext.checked)?.size || 0} KB
+                </span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script type="text/hyperscript">
+    def updateCodeDisplay()
+        set extensions to []
+        repeat for cb in <input[data-extension]:checked/>
+            if cb.dataset.extension is not 'core'
+                append cb.dataset.extension to extensions
+            end
+        end
+
+        set html to ''
+
+        repeat for ext in extensions
+            set html to html + '<span class="text-[#0000FF] dark:text-[#569CD6]">\n&lt;script</span> <span class="text-[#001080] dark:text-[#9CDCFE]">src</span>=<span class="text-[#A31515] dark:text-[#CE9178]">"https://cdn.jsdelivr.net/npm/htmx.org@4.0.0/dist/ext/' + ext + '<span class="minify-ext">.min</span>.js"</span><span class="text-[#0000FF] dark:text-[#569CD6]">&gt;&lt;/script&gt;</span>'
+        end
+        put html into #extension-scripts
+    end
+
+    def updateSelection()
+        set selected to []
+        repeat for cb in <input[data-extension]:checked/>
+            append cb.dataset.extension to selected
+        end
+
+        if selected.length is 0
+            put '' into #selected-text
+        else if selected.length <= 3
+            set text to ''
+            repeat for item in selected index i
+                if i is 0
+                    set text to item
+                else
+                    set text to text + ', ' + item
+                end
+            end
+            put text into #selected-text
+        else
+            set remaining to selected.length - 2
+            put selected[0] + ', ' + selected[1] + ', +' + remaining + ' more' into #selected-text
+        end
+    end
+
+    def updateExtensionSizes()
+        repeat for cb in <input[data-extension]/>
+            set size to cb.dataset.size as a Number
+            if #minify-checkbox.checked is false
+                set size to size * 4
+            end
+            set rounded to Math.round(size * 10) / 10
+            set sizeSpan to the first <.extension-size[data-for="${cb.dataset.extension}"]/>
+            put rounded + ' KB' into sizeSpan
+        end
+    end
+
+    def updateFileSize()
+        set total to 0
+        repeat for cb in <input[data-extension]:checked/>
+            increment total by cb.dataset.size as a Number
+        end
+        if #minify-checkbox.checked is false
+            set total to total * 4
+        end
+        set rounded to Math.round(total * 10) / 10
+        put '~' + rounded + ' KB' into #file-size
+    end
+</script>
+
+<style>
+    .retro-checkbox {
+        appearance: none;
+        width: 13px;
+        height: 13px;
+        background: white;
+        border: 1px solid var(--color-neutral-600);
+        border-radius: 2px;
+        box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+        position: relative;
+    }
+
+    .dark .retro-checkbox {
+        background: var(--color-neutral-700);
+        border-color: var(--color-neutral-500);
+        box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .retro-checkbox:checked::before {
+        content: "✓";
+        position: absolute;
+        top: -3px;
+        left: 1px;
+        font-size: 14px;
+        font-weight: bold;
+        color: var(--color-neutral-950);
+    }
+
+    .dark .retro-checkbox:checked::before {
+        color: var(--color-neutral-50);
+    }
+</style>

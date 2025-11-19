@@ -1,0 +1,165 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@font-face {
+    font-family: 'ChicagoFLF';
+    src: url('/fonts/ChicagoFLF.ttf') format('truetype');
+}
+
+@theme {
+    --font-sans: 'Atkinson Hyperlegible', sans-serif;  /* Default, for body text (hyperlegible font) */
+    --font-hyperlegible: 'Atkinson Hyperlegible', sans-serif;  /* Explicit hyperlegible alias */
+    --font-chicago: 'ChicagoFLF', sans-serif;          /* Opt-in, for headings & buttons (classic OS9 font) */
+
+    --color-neutral-25: #FDFDFD;
+    --color-neutral-850: #1F1F1F;  /* Custom color for search bar and dropdown */
+    --color-neutral-875: #171717;  /* More subtle color for list view backgrounds */
+
+    /* Use blue colors that match the htmx logo */
+    --color-blue-50: #f1f6fd;
+    --color-blue-100: #dfecfa;
+    --color-blue-200: #c6def7;
+    --color-blue-300: #9ec9f2;
+    --color-blue-400: #70abea;
+    --color-blue-500: #4f8ce2;
+    --color-blue-600: #3d72d7;
+    --color-blue-700: #315cc4;
+    --color-blue-800: #2d4ca0;
+    --color-blue-900: #29427f;
+    --color-blue-950: #1d2a4e;
+}
+
+@layer base {
+    h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-chicago);
+        letter-spacing: var(--tracking-tight);
+    }
+
+    a, a * {
+        text-decoration-thickness: 0.125em;
+        text-underline-offset: 0.25em;
+    }
+
+    /* To avoid layout shifts */
+    iconify-icon {
+        display: inline-block;
+        width: 1em;
+        height: 1em;
+    }
+}
+
+@layer components {
+
+    /* Migration Note Callout */
+    .migration-note {
+        @apply bg-[#e7f3ff] border border-blue-400 border-l-4 p-0 my-8 rounded;
+    }
+
+    .migration-note summary {
+        @apply px-6 py-4 cursor-pointer font-bold text-blue-800 select-none;
+    }
+
+    .migration-note summary:hover {
+        @apply bg-[#d6e9ff];
+    }
+
+    .migration-note[open] summary {
+        @apply border-b border-blue-400
+    }
+
+    .migration-note > *:not(summary) {
+        @apply px-8 leading-relaxed text-[#1a1a1a];
+    }
+
+    .migration-note > *:first-of-type:not(summary) {
+        padding-top: 1.25em;
+    }
+
+    .migration-note > *:last-child {
+        padding-bottom: 1.5em;
+    }
+
+    .migration-note p {
+        margin: 0.75em 0;
+    }
+
+    .migration-note ul, .migration-note ol {
+        @apply my-2 pl-6;
+    }
+
+    .migration-note li {
+        margin: 0.25em 0;
+    }
+
+    .migration-note strong {
+        @apply text-blue-800
+    }
+
+    .migration-note code {
+        @apply bg-[#d6e9ff] px-2 py-1 rounded text-sm;
+    }
+
+    .migration-note pre {
+        @apply bg-[#d6e9ff] border border-blue-400 p-3 my-3 rounded;
+    }
+
+    .migration-note pre code {
+        @apply bg-transparent p-0;
+    }
+
+    /* Info Table - Responsive tables */
+    .info-table {
+        @apply overflow-x-auto;
+        max-width: 100%;
+    }
+
+    .info-table table {
+        @apply w-full;
+    }
+
+    /* First column (attributes) should not wrap */
+    .info-table td:first-child,
+    .info-table th:first-child {
+        white-space: nowrap;
+        width: 1%;
+    }
+
+    /* Second column takes remaining space and wraps */
+    .info-table td:last-child,
+    .info-table th:last-child {
+        width: 99%;
+    }
+}
+
+@utility scan-lines {
+    mask-size: 100% max(1.5px, 0.02em);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 15%);
+
+    @variant dark {
+        mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+    }
+}
+
+@utility prose {
+    --tw-prose-body: var(--color-neutral-900);
+    --tw-prose-headings: var(--color-neutral-950);
+    --tw-prose-bold: var(--color-neutral-950);
+    --tw-prose-links: var(--color-blue-600);
+
+    --tw-prose-invert-body: var(--color-neutral-100);
+    --tw-prose-invert-headings: var(--color-neutral-50);
+    --tw-prose-invert-links: var(--color-blue-400);
+}
+
+@utility text-shadow-3d-* {
+    text-shadow:
+            0 0.0125em 0 color-mix(in srgb, --value(--color-*) 40%, transparent),
+            0 0.025em 0 color-mix(in srgb, --value(--color-*) 35%, transparent),
+            0 0.0375em 0 color-mix(in srgb, --value(--color-*) 30%, transparent),
+            0 0.05em 0 color-mix(in srgb, --value(--color-*) 25%, transparent),
+            0 0.0625em 0 color-mix(in srgb, --value(--color-*) 20%, transparent),
+            0 0.075em 0 color-mix(in srgb, --value(--color-*) 15%, transparent),
+            0 0.0875em 0 color-mix(in srgb, --value(--color-*) 12%, transparent),
+            0 0.1em 0 color-mix(in srgb, --value(--color-*) 10%, transparent),
+            0 0.125em 0 color-mix(in srgb, black 10%, transparent);
+}
