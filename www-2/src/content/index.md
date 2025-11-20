@@ -34,7 +34,7 @@ By removing these constraints, htmx completes HTML as a [hypertext](https://en.w
 </button>
 ```
 
-The [`hx-post`](@/attributes/hx-post) and [`hx-swap`](@/attributes/hx-swap) attributes on this button tell htmx:
+The [`hx-post`](@/reference/attributes/hx-post) and [`hx-swap`](@/reference/attributes/hx-swap) attributes on this button tell htmx:
 
 > When a user clicks on this button, issue an AJAX request to /clicked, and replace the entire button with the HTML response
 

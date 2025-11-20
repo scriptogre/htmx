@@ -16,8 +16,8 @@ At the core of htmx are two attributes that allow you to issue fetch()-based AJA
 
 | Attribute                              | Description                                                                                             |
 |----------------------------------------|---------------------------------------------------------------------------------------------------------|
-| [hx-action](/attributes/hx-action) | Specifies a URL to issue the request to                                                                 |
-| [hx-method](/attributes/hx-method) | Specifies the [HTTP Method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods) to use |
+| [hx-action](/reference/attributes/hx-action) | Specifies a URL to issue the request to                                                                 |
+| [hx-method](/reference/attributes/hx-method) | Specifies the [HTTP Method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods) to use |
 
 These attributes can be used like so:
 
@@ -37,11 +37,11 @@ you to specify both in the same single attribute.
 
 | Attribute                              | Description                                |
 |----------------------------------------|--------------------------------------------|
-| [hx-get](/attributes/hx-get)       | Issues a `GET` request to the given URL    |
-| [hx-post](/attributes/hx-post)     | Issues a `POST` request to the given URL   |
-| [hx-put](/attributes/hx-put)       | Issues a `PUT` request to the given URL    |
-| [hx-patch](/attributes/hx-patch)   | Issues a `PATCH` request to the given URL  |
-| [hx-delete](/attributes/hx-delete) | Issues a `DELETE` request to the given URL |
+| [hx-get](/reference/attributes/hx-get)       | Issues a `GET` request to the given URL    |
+| [hx-post](/reference/attributes/hx-post)     | Issues a `POST` request to the given URL   |
+| [hx-put](/reference/attributes/hx-put)       | Issues a `PUT` request to the given URL    |
+| [hx-patch](/reference/attributes/hx-patch)   | Issues a `PATCH` request to the given URL  |
+| [hx-delete](/reference/attributes/hx-delete) | Issues a `DELETE` request to the given URL |
 
 These attributes are typically used in place of `hx-method` & `hx-action`.
 
@@ -142,7 +142,7 @@ By default, requests are triggered by the "natural" event of an element:
 * `form` is triggered on the `submit` event
 * everything else is triggered by the `click` event
 
-If you want different behavior you can use the [hx-trigger](/attributes/hx-trigger)
+If you want different behavior you can use the [hx-trigger](/reference/attributes/hx-trigger)
 attribute to specify which event will cause the request.
 
 Here is a `div` that posts to `/mouse_entered` when a mouse enters it:
@@ -175,7 +175,7 @@ so the request will trigger at the end of the time period.
 * `from:<CSS Selector>` - listen for the event on a different element.  This can be used for things like keyboard
   shortcuts. Note that this CSS selector is not re-evaluated if the page changes.
 
-Multiple triggers can be specified in the [hx-trigger](/attributes/hx-trigger) attribute, separated by commas.
+Multiple triggers can be specified in the [hx-trigger](/reference/attributes/hx-trigger) attribute, separated by commas.
 
 You can use these features to implement many common UX patterns, such as [Active Search](/patterns/active-search):
 
@@ -212,7 +212,7 @@ The `this` symbol will be set to the current element.
 
 #### Special Events
 
-htmx provides a few special events for use in [hx-trigger](/attributes/hx-trigger):
+htmx provides a few special events for use in [hx-trigger](/reference/attributes/hx-trigger):
 
 * `load` - fires once when the element is first loaded
 * `revealed` - fires once when an element first scrolls into the viewport
@@ -228,7 +228,7 @@ Polling is a simple technique where a web page periodically issues a request to 
 occurred.  It is not very highly respected in many web development circles, but it is simple, can be relatively
 resource-light because it does not maintain a constant network connection, and it tolerates network failures well
 
-In htmx you can implement polling via the `every` syntax in the [`hx-trigger`](/attributes/hx-trigger) attribute:
+In htmx you can implement polling via the `every` syntax in the [`hx-trigger`](/reference/attributes/hx-trigger) attribute:
 
 ```html
 <div hx-get="/news" hx-trigger="every 2s"></div>
@@ -293,7 +293,7 @@ mechanism you can create your own CSS transition like so:
 }
 ```
 
-If you want the `htmx-request` class added to a different element, you can use the [hx-indicator](/attributes/hx-indicator)
+If you want the `htmx-request` class added to a different element, you can use the [hx-indicator](/reference/attributes/hx-indicator)
 attribute with a CSS selector to do so:
 
 ```html
@@ -310,4 +310,4 @@ Here we call out the indicator explicitly by id.
 Note that we could have placed the class on the parent `div` as well and had the same effect.
 
 You can also add the [`disabled` attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/disabled) to
-elements for the duration of a request by using the [hx-disable](/attributes/hx-disable) attribute.
+elements for the duration of a request by using the [hx-disable](/reference/attributes/hx-disable) attribute.

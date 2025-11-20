@@ -5,7 +5,7 @@ title: "Responses and Swapping"
 ### Targets
 
 If you want the response to be loaded into a different element other than the one that made the request, you can
-use the [`hx-target`](/attributes/hx-target) attribute, which takes a CSS selector.
+use the [`hx-target`](/reference/attributes/hx-target) attribute, which takes a CSS selector.
 
 Looking back at our Live Search example:
 
@@ -48,7 +48,7 @@ an `innerHTML` swap.
 
 This is similar to how the `target` attribute on links and forms works, placing the retrieved document within an iframe.
 
-You can modify this by using the [hx-swap](/attributes/hx-swap) attribute with any of the following values:
+You can modify this by using the [hx-swap](/reference/attributes/hx-swap) attribute with any of the following values:
 
 | Name                        | Description                                                                                                                               |
 |-----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
@@ -109,7 +109,7 @@ By default, htmx uses the viewTransition() API when swapping in content.
 
 #### Swap Options
 
-The [hx-swap](/attributes/hx-swap) attribute also supports options for tuning the swapping behavior of htmx.  For
+The [hx-swap](/reference/attributes/hx-swap) attribute also supports options for tuning the swapping behavior of htmx.  For
 example, by default htmx will swap in the title of a title tag found anywhere in the new content.  You can turn this
 behavior off by setting the `ignoreTitle` modifier to true:
 
@@ -133,7 +133,7 @@ The modifiers available on `hx-swap` are:
 
 All swap modifiers appear after the swap style is specified, and are colon-separated.
 
-See the [hx-swap](/attributes/hx-swap) documentation for more details on these options.
+See the [hx-swap](/reference/attributes/hx-swap) documentation for more details on these options.
 
 ### Out of Band Swaps {#oob_swaps}
 
@@ -158,7 +158,7 @@ for direct id replacement, and use `<hx-partial>` for your other needs.
 </details>
 
 If you want to swap content from a response directly into the DOM by using the `id` attribute you can use the
-[hx-swap-oob](/attributes/hx-swap-oob) attribute in the *response* html:
+[hx-swap-oob](/reference/attributes/hx-swap-oob) attribute in the *response* html:
 
 ```html
 <div id="message" hx-swap-oob="true">Swap me directly!</div>
@@ -172,7 +172,7 @@ You can use this technique to "piggy-back" updates on other requests.
 
 #### Selecting Content To Swap
 
-If you want to select a subset of the response HTML to swap into the target, you can use the [hx-select](/attributes/hx-select)
+If you want to select a subset of the response HTML to swap into the target, you can use the [hx-select](/reference/attributes/hx-select)
 attribute, which takes a CSS selector and selects the matching elements from the response.
 
 You can also pick out pieces of content for an out-of-band swap by using the [hx-select-oob](#)
@@ -181,7 +181,7 @@ attribute, which takes a list of element IDs to pick out and swap.
 #### Preserving Content During A Swap
 
 If there is content that you wish to be preserved across swaps (e.g. a video player that you wish to remain playing
-even if a swap occurs) you can use the [hx-preserve](/attributes/hx-preserve)
+even if a swap occurs) you can use the [hx-preserve](/reference/attributes/hx-preserve)
 attribute on the elements you wish to be preserved.
 
 ### CSS Transitions {#css_transitions}

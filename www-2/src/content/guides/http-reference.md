@@ -5,7 +5,7 @@ title: "HTTP Reference"
 ## Requests &amp; Responses {#requests}
 
 Htmx expects responses to the AJAX requests it makes to be HTML, typically HTML fragments (although a full HTML
-document, matched with a [hx-select](/attributes/hx-select) tag can be useful too).
+document, matched with a [hx-select](/reference/attributes/hx-select) tag can be useful too).
 
 Htmx will then swap the returned HTML into the document at the target specified and with the swap strategy specified.
 
@@ -62,7 +62,7 @@ htmx includes headers in the requests it makes:
 
 | Header                       | Description                                                                                          |
 |------------------------------|------------------------------------------------------------------------------------------------------|
-| `HX-Boosted`                 | indicates that the request is via an element using [hx-boost](/attributes/hx-boost)              |
+| `HX-Boosted`                 | indicates that the request is via an element using [hx-boost](/reference/attributes/hx-boost)              |
 | `HX-History-Restore-Request` | "true" if the request is for history restoration after a miss in the local history cache             |
 | `HX-Request`                 | always "true" except on history restore requests if `htmx.config.historyRestoreAsHxRequest' disabled |
 
@@ -77,9 +77,9 @@ htmx supports htmx-specific response headers:
 | [`HX-Redirect`](/headers/hx-redirect)            | can be used to do a client-side redirect to a new location                                                                                                                             |
 | `HX-Refresh`                                         | if set to "true" the client-side will do a full refresh of the page                                                                                                                    |
 | [`HX-Replace-Url`](/headers/hx-replace-url)      | replaces the current URL in the location bar                                                                                                                                           |
-| `HX-Reswap`                                          | allows you to specify how the response will be swapped. See [hx-swap](/attributes/hx-swap) for possible values                                                                     |
+| `HX-Reswap`                                          | allows you to specify how the response will be swapped. See [hx-swap](/reference/attributes/hx-swap) for possible values                                                                     |
 | `HX-Retarget`                                        | a CSS selector that updates the target of the content update to a different element on the page                                                                                        |
-| `HX-Reselect`                                        | a CSS selector that allows you to choose which part of the response is used to be swapped in. Overrides an existing [`hx-select`](/attributes/hx-select) on the triggering element |
+| `HX-Reselect`                                        | a CSS selector that allows you to choose which part of the response is used to be swapped in. Overrides an existing [`hx-select`](/reference/attributes/hx-select) on the triggering element |
 | [`HX-Trigger`](/headers/hx-trigger)              | allows you to trigger client-side events                                                                                                                                               |
 | [`HX-Trigger-After-Settle`](/headers/hx-trigger) | allows you to trigger client-side events after the settle step                                                                                                                         |
 | [`HX-Trigger-After-Swap`](/headers/hx-trigger)   | allows you to trigger client-side events after the swap step                                                                                                                           |
@@ -97,4 +97,4 @@ Htmx integrates with the [HTML5 Validation API](https://developer.mozilla.org/en
 and will not issue a request for a form if a validatable input is invalid.
 
 Non-form elements do not validate before they make requests by default, but you can enable validation by setting
-the [`hx-validate`](/attributes/hx-validate) attribute to "true".
+the [`hx-validate`](/reference/attributes/hx-validate) attribute to "true".

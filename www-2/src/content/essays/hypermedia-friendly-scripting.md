@@ -118,7 +118,7 @@ the `end` event triggered by Sortable.js:
 ```
 
 The `end` event is triggered by Sortable.js when a drag-and-drop completes.  htmx listens for this event via the 
-[`hx-trigger`](/attributes/hx-trigger) attribute and then issues an HTTP request, exchanging hypermedia with the 
+[`hx-trigger`](/reference/attributes/hx-trigger) attribute and then issues an HTTP request, exchanging hypermedia with the 
 server.  This turns this Sortable.js drag-and-drop powered widget into a new, powerful hypermedia control.
 
 ## Islands

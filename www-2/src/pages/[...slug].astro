@@ -17,8 +17,10 @@ export async function getStaticPaths() {
 				if (entry.id === 'index') {
 					continue;
 				}
+				// Patterns need the /patterns/ prefix, but other collections don't
+				const slug = collectionName === 'patterns' ? `patterns/${entry.id}` : entry.id;
 				paths.push({
-					params: { slug: `${collectionName}/${entry.id}` },
+					params: { slug },
 					props: { entry, collectionName },
 				});
 			}

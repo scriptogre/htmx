@@ -25,12 +25,13 @@ const isActive = (href: string | undefined) => {
 
 const navigationLinks = [
     { name: "docs", href: "/guides/docs", title: "Read the complete documentation and tutorials" },
-    { name: "reference", href: "/reference/", title: "Browse the full API reference" },
-    { name: "patterns", href: "/patterns/", title: "Explore common UI patterns and examples" },
+    { name: "reference", href: "/reference", title: "Browse the full API reference" },
+    { name: "patterns", href: "/patterns", title: "Explore common UI patterns and examples" },
     {
         name: "community",
         title: "Join the htmx community",
         dropdown: [
+            { name: "Essays", href: "/essays/", icon: "pixel:newspaper-solid", title: "Read essays about htmx and hypermedia" },
             { name: "GitHub", href: "https://github.com/bigskysoftware/htmx", icon: "pixel:github", title: "View source code and contribute on GitHub" },
             { name: "Discord", href: "/discord", icon: "pixel:discord", title: "Join 1.4K developers on Discord" },
             { name: "@htmx_org", href: "https://x.com/htmx_org", icon: "dinkie-icons:twitter-alt-small", title: "Follow @htmx_org on X (Twitter)" },

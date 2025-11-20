@@ -84,7 +84,7 @@ Let's take a look at them.
 
 #### `hx-ignore`
 
-The first tool htmx provides to help further secure your application is the [`hx-ignore`](/attributes/hx-ignore)
+The first tool htmx provides to help further secure your application is the [`hx-ignore`](/reference/attributes/hx-ignore)
 attribute.  This attribute will prevent processing of all htmx attributes on a given element, and on all elements within
 it.  So, for example, if you were including raw HTML content in a template (again, this is not recommended!) then you
 could place a div around the content with the `hx-ignore` attribute on it:

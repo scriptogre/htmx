@@ -3,7 +3,7 @@ title: "HX-Location Response Header"
 description: "Use the HX-Location response header in htmx to trigger a client-side redirection without reloading the whole page."
 ---
 
-This response header can be used to trigger a client side redirection without reloading the whole page. Instead of changing the page's location it will act like following a [`hx-boost` link](/attributes/hx-boost), creating a new history entry, issuing an ajax request to the value of the header and pushing the path into history.
+This response header can be used to trigger a client side redirection without reloading the whole page. Instead of changing the page's location it will act like following a [`hx-boost` link](/reference/attributes/hx-boost), creating a new history entry, issuing an ajax request to the value of the header and pushing the path into history.
 
 A sample response would be:
 

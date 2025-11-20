@@ -145,8 +145,8 @@ At the core of htmx are two attributes that allow you to issue fetch()-based AJA
 
 | Attribute                              | Description                                                                                             |
 |----------------------------------------|---------------------------------------------------------------------------------------------------------|
-| [hx-action](/attributes/hx-action) | Specifies a URL to issue the request to                                                                 |
-| [hx-method](/attributes/hx-method) | Specifies the [HTTP Method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods) to use |
+| [hx-action](/reference/attributes/hx-action) | Specifies a URL to issue the request to                                                                 |
+| [hx-method](/reference/attributes/hx-method) | Specifies the [HTTP Method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods) to use |
 
 These attributes can be used like so:
 
@@ -166,11 +166,11 @@ you to specify both in the same single attribute.
 
 | Attribute                              | Description                                |
 |----------------------------------------|--------------------------------------------|
-| [hx-get](/attributes/hx-get)       | Issues a `GET` request to the given URL    |
-| [hx-post](/attributes/hx-post)     | Issues a `POST` request to the given URL   |
-| [hx-put](/attributes/hx-put)       | Issues a `PUT` request to the given URL    |
-| [hx-patch](/attributes/hx-patch)   | Issues a `PATCH` request to the given URL  |
-| [hx-delete](/attributes/hx-delete) | Issues a `DELETE` request to the given URL |
+| [hx-get](/reference/attributes/hx-get)       | Issues a `GET` request to the given URL    |
+| [hx-post](/reference/attributes/hx-post)     | Issues a `POST` request to the given URL   |
+| [hx-put](/reference/attributes/hx-put)       | Issues a `PUT` request to the given URL    |
+| [hx-patch](/reference/attributes/hx-patch)   | Issues a `PATCH` request to the given URL  |
+| [hx-delete](/reference/attributes/hx-delete) | Issues a `DELETE` request to the given URL |
 
 These attributes are typically used in place of `hx-method` & `hx-action`.
 
@@ -271,7 +271,7 @@ By default, requests are triggered by the "natural" event of an element:
 * `form` is triggered on the `submit` event
 * everything else is triggered by the `click` event
 
-If you want different behavior you can use the [hx-trigger](/attributes/hx-trigger)
+If you want different behavior you can use the [hx-trigger](/reference/attributes/hx-trigger)
 attribute to specify which event will cause the request.
 
 Here is a `div` that posts to `/mouse_entered` when a mouse enters it:
@@ -304,7 +304,7 @@ so the request will trigger at the end of the time period.
 * `from:<CSS Selector>` - listen for the event on a different element.  This can be used for things like keyboard 
   shortcuts. Note that this CSS selector is not re-evaluated if the page changes.
 
-Multiple triggers can be specified in the [hx-trigger](/attributes/hx-trigger) attribute, separated by commas.
+Multiple triggers can be specified in the [hx-trigger](/reference/attributes/hx-trigger) attribute, separated by commas.
 
 You can use these features to implement many common UX patterns, such as [Active Search](/patterns/active-search):
 

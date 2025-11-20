@@ -5,7 +5,7 @@ description: "Use the HX-Replace-Url response header in htmx to replace the curr
 
 The `HX-Replace-Url` header allows you to replace the current URL in the browser [location history](https://developer.mozilla.org/en-US/docs/Web/API/History_API).
 This does not create a new history entry; in effect, it removes the previous current URL from the browser&rsquo;s history.
-This is similar to the [`hx-replace-url` attribute](/attributes/hx-replace-url).
+This is similar to the [`hx-replace-url` attribute](/reference/attributes/hx-replace-url).
 
 If present, this header overrides any behavior defined with attributes.
 

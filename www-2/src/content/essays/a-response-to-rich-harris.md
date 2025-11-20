@@ -57,14 +57,14 @@ and we will demonstrate how an MPA using a hypermedia-oriented technology, [htmx
 A general problem with standard MPAs is that they issue a full page refresh on
 every request.  This means something like a video or audio player will be replaced and, thus, stop playing, when a request is made.
 
-This problem can be addressed in htmx via the [`hx-preserve`](/attributes/hx-preserve) attribute, which tells htmx to
+This problem can be addressed in htmx via the [`hx-preserve`](/reference/attributes/hx-preserve) attribute, which tells htmx to
 preserve a particular piece of content between requests.
 
 ### "Back Button & Infinite Scroll Don't Work"
 
 In the presence of infinite scroll behavior (presumably implemented via javascript of some sort) the back button will not work properly with an MPA.  I would note that the presence of infinite scroll calls into question the term MPA, which would traditionally use paging instead of an infinite scroll.
 
-That said, [infinite scroll](/patterns/infinite-scroll) can be achieved quite easily using htmx, in a hypermedia-oriented and obvious manner.  When combined with the [`hx-push-url`](/attributes/hx-push-url) attribute, history and the back button works properly with very little effort by the developer, all with nice Copy-and-Pasteable URLs, sometimes referred to as "Deep Links" by people in the SPA community.
+That said, [infinite scroll](/patterns/infinite-scroll) can be achieved quite easily using htmx, in a hypermedia-oriented and obvious manner.  When combined with the [`hx-push-url`](/reference/attributes/hx-push-url) attribute, history and the back button works properly with very little effort by the developer, all with nice Copy-and-Pasteable URLs, sometimes referred to as "Deep Links" by people in the SPA community.
 
 ### "What about Nice Navigation Transitions?"
 

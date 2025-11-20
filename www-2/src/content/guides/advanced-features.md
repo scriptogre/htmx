@@ -7,7 +7,7 @@ title: "Advanced Features"
 Often you want to coordinate the requests between two elements.  For example, you may want a request from one element
 to supersede the request of another element, or to wait until the other element's request has finished.
 
-htmx offers a [`hx-sync`](/attributes/hx-sync) attribute to help you accomplish this.
+htmx offers a [`hx-sync`](/reference/attributes/hx-sync) attribute to help you accomplish this.
 
 Consider a race condition between a form submission and an individual input's validation request in this HTML:
 
@@ -50,7 +50,7 @@ cancel any in-flight requests:
 </button>
 ```
 
-More examples and details can be found on the [`hx-sync` attribute page.](/attributes/hx-sync)
+More examples and details can be found on the [`hx-sync` attribute page.](/reference/attributes/hx-sync)
 
 ### Parameters
 
@@ -62,7 +62,7 @@ As with HTML forms, the `name` attribute of the input is used as the parameter n
 Additionally, if the element causes a non-`GET` request, the values of all the inputs of the associated form will be
 included (typically this is the nearest enclosing form, but could be different if e.g. `<button form="associated-form">` is used).
 
-If you wish to include the values of other elements, you can use the [hx-include](/attributes/hx-include) attribute
+If you wish to include the values of other elements, you can use the [hx-include](/reference/attributes/hx-include) attribute
 with a CSS selector of all the elements whose values you want to include in the request.
 
 Finally, if you want to programmatically modify the parameters, you can use the [htmx:config:request](/events.md#)
@@ -70,7 +70,7 @@ event.
 
 #### File Upload {#files}
 
-If you wish to upload files via an htmx request, you can set the [hx-encoding](/attributes/hx-encoding) attribute to
+If you wish to upload files via an htmx request, you can set the [hx-encoding](/reference/attributes/hx-encoding) attribute to
 `multipart/form-data`.  This will use a `FormData` object to submit the request, which will properly include the file
 in the request.
 
@@ -79,7 +79,7 @@ differently.
 
 ### Confirming Requests {#confirming}
 
-Often you will want to confirm an action before issuing a request.  htmx supports the [`hx-confirm`](/attributes/hx-confirm)
+Often you will want to confirm an action before issuing a request.  htmx supports the [`hx-confirm`](/reference/attributes/hx-confirm)
 attribute, which allows you to confirm an action using a simple javascript dialog:
 
 ```html
@@ -154,7 +154,7 @@ This `hx-confirm` attribute will now apply to all htmx-powered elements within i
 
 ## Boosting
 
-Htmx supports "boosting" regular HTML anchors and forms with the [hx-boost](/attributes/hx-boost) attribute.  This
+Htmx supports "boosting" regular HTML anchors and forms with the [hx-boost](/reference/attributes/hx-boost) attribute.  This
 attribute will convert all anchor tags and forms into AJAX requests that, by default, target the body of the page.
 
 Here is an example:
@@ -367,7 +367,7 @@ This change makes history restoration much more reliable and reduces client-side
 Htmx provides a simple mechanism for interacting with the [browser history API](https://developer.mozilla.org/en-US/docs/Web/API/History_API):
 
 If you want a given element to push its request URL into the browser navigation bar and add the current state of the page
-to the browser's history, include the [hx-push-url](/attributes/hx-push-url) attribute:
+to the browser's history, include the [hx-push-url](/reference/attributes/hx-push-url) attribute:
 
 ```html
 <a hx-get="/blog" hx-push-url="true">Blog</a>

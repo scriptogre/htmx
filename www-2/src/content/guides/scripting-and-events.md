@@ -166,7 +166,7 @@ Unfortunately, HTML only allows `on*` attributes for a fixed
 number of [specific DOM events](https://www.w3schools.com/tags/ref_eventattributes.asp) (e.g. `onclick`) and
 doesn't provide a generalized mechanism for responding to arbitrary events on elements.
 
-In order to address this shortcoming, htmx offers [`hx-on:*`](/attributes/hx-on) attributes.
+In order to address this shortcoming, htmx offers [`hx-on:*`](/reference/attributes/hx-on) attributes.
 
 These attributes allow you to respond to any event in a manner that preserves the LoB of the standard `on*` properties,
 and provide some nice quality of life improvements over the standard javascript API.
@@ -279,7 +279,7 @@ customElements.define('my-counter', class extends HTMLElement {
 
 #### Targeting Elements Outside Shadow DOM
 
-Selectors like [`hx-target`](/attributes/hx-target) only see elements inside the same shadow DOM.
+Selectors like [`hx-target`](/reference/attributes/hx-target) only see elements inside the same shadow DOM.
 
 To break out:
 
