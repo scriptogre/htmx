@@ -13,8 +13,12 @@ export async function getStaticPaths() {
 		try {
 			const entries = await getCollection(collectionName);
 			for (const entry of entries) {
+				// Skip index files - they're handled by dedicated pages
+				if (entry.id === 'index') {
+					continue;
+				}
 				paths.push({
-					params: { slug: entry.id },
+					params: { slug: `${collectionName}/${entry.id}` },
 					props: { entry, collectionName },
 				});
 			}
