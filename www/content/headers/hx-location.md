@@ -22,16 +22,16 @@ HX-Location: {"path":"/test2", "target":"#testdiv"}
 
 Path is required and is url to load the response from. The rest of the data mirrors the [`ajax` api](@/api.md#ajax) context, which is:
 
-* `source` - the source element of the request
-* `event` - an event that "triggered" the request
-* `handler` - a callback that will handle the response HTML
-* `target` - the target to swap the response into
-* `swap` - how the response will be swapped in relative to the target
-* `values` - values to submit with the request
-* `headers` - headers to submit with the request
-* `select` - allows you to select the content you want swapped from a response
-* `push` - set to `'false'` or a path string to prevent or override the URL pushed to browser location history
-* `replace` - a path string to replace the URL in the browser location history
+- `source` - the source element of the request
+- `event` - an event that "triggered" the request
+- `handler` - a callback that will handle the response HTML
+- `target` - the target to swap the response into
+- `swap` - how the response will be swapped in relative to the target
+- `values` - values to submit with the request
+- `headers` - headers to submit with the request
+- `select` - allows you to select the content you want swapped from a response
+- `push` - set to `'false'` or a path string to prevent or override the URL pushed to browser location history
+- `replace` - a path string to replace the URL in the browser location history
 
 ## Notes
 

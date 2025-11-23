@@ -27,21 +27,21 @@ For detailed migration examples, see the
 Extensions are defined using `htmx.defineExtension()`:
 
 ```javascript
-htmx.defineExtension("my-ext", {
-    init: (internalAPI) => {
-        // Called once when extension is registered
-        // Store internalAPI reference if needed
-    },
+htmx.defineExtension('my-ext', {
+  init: internalAPI => {
+    // Called once when extension is registered
+    // Store internalAPI reference if needed
+  },
 
-    htmx_before_request: (elt, detail) => {
-        // Called before each request
-        // Return false to cancel
-    },
+  htmx_before_request: (elt, detail) => {
+    // Called before each request
+    // Return false to cancel
+  },
 
-    htmx_after_request: (elt, detail) => {
-        // Called after each request
-    },
-});
+  htmx_after_request: (elt, detail) => {
+    // Called after each request
+  },
+})
 ```
 
 ## Extension Approval
@@ -49,7 +49,7 @@ htmx.defineExtension("my-ext", {
 Extensions can be approved via the `extensions` config option in a meta tag:
 
 ```html
-<meta name="htmx:config" content='{"extensions": "my-ext,another-ext"}'>
+<meta name="htmx:config" content='{"extensions": "my-ext,another-ext"}' />
 ```
 
 If this is set then only approved extensions will be loaded. This prevents
@@ -129,13 +129,13 @@ of colons:
 Return `false` or set `detail.cancelled = true` to cancel an event:
 
 ```javascript
-htmx.defineExtension("validator", {
-    htmx_before_request: (elt, detail) => {
-        if (!isValid(detail.ctx)) {
-            return false; // Cancel request
-        }
-    },
-});
+htmx.defineExtension('validator', {
+  htmx_before_request: (elt, detail) => {
+    if (!isValid(detail.ctx)) {
+      return false // Cancel request
+    }
+  },
+})
 ```
 
 ## Internal API
@@ -143,20 +143,20 @@ htmx.defineExtension("validator", {
 The `init` hook receives an internal API object with helper methods:
 
 ```javascript
-let api;
+let api
 
-htmx.defineExtension("my-ext", {
-    init: (internalAPI) => {
-        api = internalAPI;
-    },
+htmx.defineExtension('my-ext', {
+  init: internalAPI => {
+    api = internalAPI
+  },
 
-    htmx_after_init: (elt) => {
-        // Use internal API
-        let value = api.attributeValue(elt, "hx-my-attr");
-        let specs = api.parseTriggerSpecs("click, keyup delay:500ms");
-        let { method, action } = api.determineMethodAndAction(elt, evt);
-    },
-});
+  htmx_after_init: elt => {
+    // Use internal API
+    let value = api.attributeValue(elt, 'hx-my-attr')
+    let specs = api.parseTriggerSpecs('click, keyup delay:500ms')
+    let { method, action } = api.determineMethodAndAction(elt, evt)
+  },
+})
 ```
 
 Available internal API methods:
@@ -204,62 +204,59 @@ The `detail.ctx` object contains request information:
 Extensions can implement custom swap strategies:
 
 ```javascript
-htmx.defineExtension("my-swap", {
-    htmx_handle_swap: (target, detail) => {
-        let { swapSpec, fragment } = detail;
-        if (swapSpec.style === "my-custom-swap") {
-            // Implement custom swap logic
-            target.appendChild(fragment);
-            return true; // Handled
-        }
-        return false; // Not handled
-    },
-});
+htmx.defineExtension('my-swap', {
+  htmx_handle_swap: (target, detail) => {
+    let { swapSpec, fragment } = detail
+    if (swapSpec.style === 'my-custom-swap') {
+      // Implement custom swap logic
+      target.appendChild(fragment)
+      return true // Handled
+    }
+    return false // Not handled
+  },
+})
 ```
 
 ## Complete Example
 
 ```javascript
-(() => {
-    let api;
+;(() => {
+  let api
 
-    htmx.defineExtension("preload", {
-        init: (internalAPI) => {
-            api = internalAPI;
-        },
+  htmx.defineExtension('preload', {
+    init: internalAPI => {
+      api = internalAPI
+    },
 
-        htmx_after_init: (elt) => {
-            let preloadSpec = api.attributeValue(elt, "hx-preload");
-            if (!preloadSpec) return;
+    htmx_after_init: elt => {
+      let preloadSpec = api.attributeValue(elt, 'hx-preload')
+      if (!preloadSpec) return
 
-            let specs = api.parseTriggerSpecs(preloadSpec);
-            let eventName = specs[0].name;
+      let specs = api.parseTriggerSpecs(preloadSpec)
+      let eventName = specs[0].name
 
-            elt.addEventListener(eventName, async (evt) => {
-                let ctx = api.createRequestContext(elt, evt);
-                // Prefetch logic here
-            });
-        },
+      elt.addEventListener(eventName, async evt => {
+        let ctx = api.createRequestContext(elt, evt)
+        // Prefetch logic here
+      })
+    },
 
-        htmx_before_request: (elt, detail) => {
-            // Use prefetched response if available
-            if (elt._htmx?.preload) {
-                detail.ctx.fetch = () => elt._htmx.preload;
-                delete elt._htmx.preload;
-            }
-        },
+    htmx_before_request: (elt, detail) => {
+      // Use prefetched response if available
+      if (elt._htmx?.preload) {
+        detail.ctx.fetch = () => elt._htmx.preload
+        delete elt._htmx.preload
+      }
+    },
 
-        htmx_before_cleanup: (elt) => {
-            // Clean up listeners
-            if (elt._htmx?.preloadListener) {
-                elt.removeEventListener(
-                    elt._htmx.preloadEvent,
-                    elt._htmx.preloadListener,
-                );
-            }
-        },
-    });
-})();
+    htmx_before_cleanup: elt => {
+      // Clean up listeners
+      if (elt._htmx?.preloadListener) {
+        elt.removeEventListener(elt._htmx.preloadEvent, elt._htmx.preloadListener)
+      }
+    },
+  })
+})()
 ```
 
 ## Migration from htmx 2.x
@@ -269,21 +266,21 @@ The htmx 4 extension API is completely different from htmx 2.x:
 **Old API (htmx 2.x):**
 
 ```javascript
-htmx.defineExtension("old", {
-    onEvent: function (name, evt) {},
-    transformResponse: function (text, xhr, elt) {},
-    handleSwap: function (swapStyle, target, fragment, settleInfo) {},
-});
+htmx.defineExtension('old', {
+  onEvent: function (name, evt) {},
+  transformResponse: function (text, xhr, elt) {},
+  handleSwap: function (swapStyle, target, fragment, settleInfo) {},
+})
 ```
 
 **New API (htmx 4):**
 
 ```javascript
-htmx.defineExtension("new", {
-    htmx_before_request: (elt, detail) => {},
-    htmx_after_request: (elt, detail) => {},
-    htmx_handle_swap: (elt, detail) => {},
-});
+htmx.defineExtension('new', {
+  htmx_before_request: (elt, detail) => {},
+  htmx_after_request: (elt, detail) => {},
+  htmx_handle_swap: (elt, detail) => {},
+})
 ```
 
 Key differences:

@@ -17,16 +17,17 @@ from older versions, see the migration guide at the bottom of this page.
 
 Use the following attributes to configure how SSE connections behave:
 
-* `sse-connect="<url>"` - The URL of the SSE server.
-* `sse-swap="<message-name>"` - The name of the message to swap into the DOM.
-* `hx-trigger="sse:<message-name>"` - SSE messages can also trigger HTTP callbacks using
+- `sse-connect="<url>"` - The URL of the SSE server.
+- `sse-swap="<message-name>"` - The name of the message to swap into the DOM.
+- `hx-trigger="sse:<message-name>"` - SSE messages can also trigger HTTP callbacks using
   the [`hx-trigger`](https://htmx.org/attributes/hx-trigger) attribute.
-* `sse-close=<message-name>` - To close the EventStream gracefully when that message is received. This might be helpful
+- `sse-close=<message-name>` - To close the EventStream gracefully when that message is received. This might be helpful
   if you want to send information to a client that will eventually stop.
 
 ## Installing
 
 The fastest way to install `sse` is to load it via a CDN. Remember to always include the core htmx library before the extension and [enable the extension](#usage).
+
 ```HTML
 <head>
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
@@ -34,31 +35,35 @@ The fastest way to install `sse` is to load it via a CDN. Remember to always inc
 </head>
 <body hx-ext="sse">
 ```
+
 An unminified version is also available at https://cdn.jsdelivr.net/npm/htmx-ext-sse/dist/sse.js.
 
 While the CDN approach is simple, you may want to consider [not using CDNs in production](https://blog.wesleyac.com/posts/why-not-javascript-cdn). The next easiest way to install `sse` is to simply copy it into your project. Download the extension from `https://cdn.jsdelivr.net/npm/htmx-ext-sse`, add it to the appropriate directory in your project and include it where necessary with a `<script>` tag.
 
 For npm-style build systems, you can install `sse` via [npm](https://www.npmjs.com/):
+
 ```bash
 npm install htmx-ext-sse
 ```
+
 After installing, you'll need to use appropriate tooling to bundle `node_modules/htmx-ext-sse/dist/sse.js` (or `.min.js`). For example, you might bundle the extension with htmx core from `node_modules/htmx.org/dist/htmx.js` and project-specific code.
 
 If you are using a bundler to manage your javascript (e.g. Webpack, Rollup):
+
 - Install `htmx.org` and `htmx-ext-sse` via npm
 - Import both packages to your `index.js`
+
 ```JS
 import `htmx.org`;
-import `htmx-ext-sse`; 
+import `htmx-ext-sse`;
 ```
 
 ## Usage
 
 ```html
-
 <div hx-ext="sse" sse-connect="/chatroom" sse-swap="message">
-    Contents of this box will be updated in real time
-    with every SSE message received from the chatroom.
+  Contents of this box will be updated in real time with every SSE message received from the
+  chatroom.
 </div>
 ```
 
@@ -86,7 +91,6 @@ data: <div>Content to swap into your HTML page.</div>
 We'll use the `sse-swap` attribute to listen for this event and swap its contents into our webpage.
 
 ```html
-
 <div hx-ext="sse" sse-connect="/event-source" sse-swap="EventName"></div>
 ```
 
@@ -106,7 +110,6 @@ data: <div>Content to swap into your HTML page.</div>
 ```
 
 ```html
-
 <div hx-ext="sse" sse-connect="/event-source" sse-swap="message"></div>
 ```
 
@@ -117,14 +120,13 @@ same element that contains the `hx-ext` and `sse-connect` attributes, or 2) chil
 the `hx-ext` and `sse-connect` attributes.
 
 ```html
-
 Multiple events in the same element
 <div hx-ext="sse" sse-connect="/server-url" sse-swap="event1,event2"></div>
 
 Multiple events in different elements (from the same source).
 <div hx-ext="sse" sse-connect="/server-url">
-    <div sse-swap="event1"></div>
-    <div sse-swap="event2"></div>
+  <div sse-swap="event1"></div>
+  <div sse-swap="event2"></div>
 </div>
 ```
 
@@ -137,11 +139,8 @@ an `hx-get` or similar will trigger the element to make a request.
 Here is an example:
 
 ```html
-
 <div hx-ext="sse" sse-connect="/event_stream">
-    <div hx-get="/chatroom" hx-trigger="sse:chatter">
-        ...
-    </div>
+  <div hx-get="/chatroom" hx-trigger="sse:chatter">...</div>
 </div>
 ```
 
@@ -167,12 +166,12 @@ for instructions on running and using the test server.
 Previous versions of htmx used a built-in tag `hx-sse` to implement Server Sent Events. This code has been migrated into
 an extension instead. Here are the steps you need to take to migrate to this version:
 
-| Old Attribute                  | New Attribute            | Comments                                                                                                                                                                                        |
-|--------------------------------|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `hx-sse=""`                    | `hx-ext="sse"`           | Use the `hx-ext="sse"` attribute to install the SSE extension into any HTML element.                                                                                                            |
-| `hx-sse="connect:<url>"`       | `sse-connect="<url>"`    | Add a new attribute `sse-connect` to the tag that specifies the URL of the Event Stream.  This attribute must be in the same tag as the `hx-ext` attribute.                                     |
-| `hx-sse="swap:<EventName>"`    | `sse-swap="<EventName>"` | Add a new attribute `sse-swap` to any elements that will be swapped in via the SSE extension.  This attribute must be placed **on** or **inside of** the tag containing the `hx-ext` attribute. |
-| `hx-trigger="sse:<EventName>"` | NO CHANGE                | any `hx-trigger` attributes do not need to change.  The extension will identify these attributes and add listeners for any events prefixed with `sse:`                                          |
+| Old Attribute                  | New Attribute            | Comments                                                                                                                                                                                       |
+| ------------------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hx-sse=""`                    | `hx-ext="sse"`           | Use the `hx-ext="sse"` attribute to install the SSE extension into any HTML element.                                                                                                           |
+| `hx-sse="connect:<url>"`       | `sse-connect="<url>"`    | Add a new attribute `sse-connect` to the tag that specifies the URL of the Event Stream. This attribute must be in the same tag as the `hx-ext` attribute.                                     |
+| `hx-sse="swap:<EventName>"`    | `sse-swap="<EventName>"` | Add a new attribute `sse-swap` to any elements that will be swapped in via the SSE extension. This attribute must be placed **on** or **inside of** the tag containing the `hx-ext` attribute. |
+| `hx-trigger="sse:<EventName>"` | NO CHANGE                | any `hx-trigger` attributes do not need to change. The extension will identify these attributes and add listeners for any events prefixed with `sse:`                                          |
 
 ### Listening to events dispatched by this extension
 
@@ -180,7 +179,7 @@ This extension dispatches several events. You can listen for these events like s
 
 ```javascript
 document.body.addEventListener('htmx:sseBeforeMessage', function (e) {
-    // do something before the event data is swapped in
+  // do something before the event data is swapped in
 })
 ```
 
@@ -192,9 +191,9 @@ This event is dispatched when an SSE connection has been successfully establishe
 
 ##### Details
 
-* `detail.elt` - The element on which the SSE connection was setup. This is the element which has the `sse-connect`
+- `detail.elt` - The element on which the SSE connection was setup. This is the element which has the `sse-connect`
   attribute.
-* `detail.source` - The [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource) object.
+- `detail.source` - The [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource) object.
 
 #### `htmx:sseError`
 
@@ -202,9 +201,9 @@ This event is dispatched when an SSE connection could not be established.
 
 ##### Details
 
-* `detail.error` - The error that occurred while creating
+- `detail.error` - The error that occurred while creating
   an [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource).
-* `detail.source` - The [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource).
+- `detail.source` - The [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource).
 
 #### `htmx:sseBeforeMessage`
 
@@ -215,7 +214,7 @@ by [EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource) w
 
 ##### Details
 
-* `detail.elt` - The swap target.
+- `detail.elt` - The swap target.
 
 #### `htmx:sseMessage`
 
@@ -247,10 +246,10 @@ document.body.addEventListener('htmx:sseClose', function (e) {
 
 ##### Details
 
-* `detail.elt` - The swap target.
+- `detail.elt` - The swap target.
 
 ### Additional SSE Resources
 
-* [Wikipedia](https://en.wikipedia.org/wiki/Server-sent_events)
-* [MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
-* [Can I Use?](https://caniuse.com/eventsource)
+- [Wikipedia](https://en.wikipedia.org/wiki/Server-sent_events)
+- [MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+- [Can I Use?](https://caniuse.com/eventsource)

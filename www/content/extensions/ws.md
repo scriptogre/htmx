@@ -10,17 +10,18 @@ page.
 
 Use the following attributes to configure how WebSockets behave:
 
-* `ws-connect="<url>"` or `ws-connect="<prefix>:<url>"` - A URL to establish a `WebSocket` connection against.
-* Prefixes `ws` or `wss` can optionally be specified. If not specified, HTMX defaults to adding the location's
+- `ws-connect="<url>"` or `ws-connect="<prefix>:<url>"` - A URL to establish a `WebSocket` connection against.
+- Prefixes `ws` or `wss` can optionally be specified. If not specified, HTMX defaults to adding the location's
   scheme-type,
   host and port to have browsers send cookies via websockets.
-* `ws-send` - Sends a message to the nearest websocket based on the trigger value for the element (either the natural
+- `ws-send` - Sends a message to the nearest websocket based on the trigger value for the element (either the natural
   event
   or the event specified by [`hx-trigger`])
 
 ## Installing
 
 The fastest way to install `ws` is to load it via a CDN. Remember to always include the core htmx library before the extension and [enable the extension](#usage).
+
 ```HTML
 <head>
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
@@ -28,36 +29,38 @@ The fastest way to install `ws` is to load it via a CDN. Remember to always incl
 </head>
 <body hx-ext="ws">
 ```
+
 An unminified version is also available at https://cdn.jsdelivr.net/npm/htmx-ext-ws/dist/ws.js.
 
 While the CDN approach is simple, you may want to consider [not using CDNs in production](https://blog.wesleyac.com/posts/why-not-javascript-cdn). The next easiest way to install `ws` is to simply copy it into your project. Download the extension from `https://cdn.jsdelivr.net/npm/htmx-ext-ws`, add it to the appropriate directory in your project and include it where necessary with a `<script>` tag.
 
 For npm-style build systems, you can install `ws` via [npm](https://www.npmjs.com/):
+
 ```bash
 npm install htmx-ext-ws
 ```
+
 After installing, you'll need to use appropriate tooling to bundle `node_modules/htmx-ext-ws/dist/ws.js` (or `.min.js`). For example, you might bundle the extension with htmx core from `node_modules/htmx.org/dist/htmx.js` and project-specific code.
 
 If you are using a bundler to manage your javascript (e.g. Webpack, Rollup):
+
 - Install `htmx.org` and `htmx-ext-ws` via npm
 - Import both packages to your `index.js`
+
 ```JS
 import `htmx.org`;
-import `htmx-ext-ws`; 
+import `htmx-ext-ws`;
 ```
 
 ## Usage
 
 ```html
-
 <div hx-ext="ws" ws-connect="/chatroom">
-    <div id="notifications"></div>
-    <div id="chat_room">
-        ...
-    </div>
-    <form id="form" ws-send>
-        <input name="chat_message">
-    </form>
+  <div id="notifications"></div>
+  <div id="chat_room">...</div>
+  <form id="form" ws-send>
+    <input name="chat_message" />
+  </form>
 </div>
 ```
 
@@ -84,17 +87,11 @@ you need to specify that in the message body, sent by the server.
 
 ```html
 <!-- will be interpreted as hx-swap-oob="true" by default -->
-<form id="form">
-    ...
-</form>
+<form id="form">...</form>
 <!-- will be appended to #notifications div -->
-<div id="notifications" hx-swap-oob="beforeend">
-    New message received
-</div>
+<div id="notifications" hx-swap-oob="beforeend">New message received</div>
 <!-- will be swapped using an extension -->
-<div id="chat_room" hx-swap-oob="morphdom">
-    ....
-</div>
+<div id="chat_room" hx-swap-oob="morphdom">....</div>
 ```
 
 ### Sending Messages to a WebSocket
@@ -121,7 +118,7 @@ time (in milliseconds) to wait before trying again.
 // example reconnect delay that you shouldn't use because
 // it's not as good as the algorithm that's already in place
 htmx.config.wsReconnectDelay = function (retryCount) {
-    return retryCount * 1000 // return value in milliseconds
+  return retryCount * 1000 // return value in milliseconds
 }
 ```
 
@@ -138,7 +135,7 @@ This event is triggered when a connection to a WebSocket endpoint is being attem
 
 ##### Details
 
-* `detail.event.type` - the type of the event (`'connecting'`)
+- `detail.event.type` - the type of the event (`'connecting'`)
 
 #### Event - `htmx:wsOpen` {#htmx:wsOpen}
 
@@ -146,9 +143,9 @@ This event is triggered when a connection to a WebSocket endpoint has been estab
 
 ##### Details
 
-* `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
-* `detail.event` - the original event from the socket
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
+- `detail.event` - the original event from the socket
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Event - `htmx:wsClose` {#htmx:wsClose}
 
@@ -157,9 +154,9 @@ You can check if the event was caused by an error by inspecting `detail.event` p
 
 ##### Details
 
-* `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
-* `detail.event` - the original event from the socket
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
+- `detail.event` - the original event from the socket
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Event - `htmx:wsError` {#htmx:wsError}
 
@@ -167,9 +164,9 @@ This event is triggered when `onerror` event on a socket is raised.
 
 ##### Details
 
-* `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
-* `detail.error` - the error object
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
+- `detail.error` - the error object
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Event - `htmx:wsBeforeMessage` {#htmx:wsBeforeMessage}
 
@@ -179,9 +176,9 @@ before any processing occurs.
 
 If the event is cancelled, no further processing will occur.
 
-* `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
-* `detail.message` - raw message content
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
+- `detail.message` - raw message content
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Event - `htmx:wsAfterMessage` {#htmx:wsAfterMessage}
 
@@ -190,9 +187,9 @@ settled, similar to `htmx:afterOnLoad`.
 
 Cancelling this event has no effect.
 
-* `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
-* `detail.message` - raw message content
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that holds the socket (the one with `ws-connect` attribute)
+- `detail.message` - raw message content
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Event - `htmx:wsConfigSend` {#htmx:wsConfigSend}
 
@@ -204,18 +201,18 @@ If the event is cancelled, no further processing will occur and no messages will
 
 ##### Details
 
-* `detail.parameters` - the parameters that will be submitted in the request
-* `detail.unfilteredParameters` - the parameters that were found before filtering
+- `detail.parameters` - the parameters that will be submitted in the request
+- `detail.unfilteredParameters` - the parameters that were found before filtering
   by [`hx-params`](https://htmx.org/attributes/hx-params)
-* `detail.headers` - the request headers. Will be attached to the body in `HEADERS` property, if not falsy
-* `detail.errors` - validation errors. Will prevent sending and
+- `detail.headers` - the request headers. Will be attached to the body in `HEADERS` property, if not falsy
+- `detail.errors` - validation errors. Will prevent sending and
   trigger [`htmx:validation:halted`](https://htmx.org/events#htmx:validation:halted) event if not empty
-* `detail.triggeringEvent` - the event that triggered sending
-* `detail.messageBody` - raw message body that will be sent to the socket. Undefined, can be set to value of any type,
+- `detail.triggeringEvent` - the event that triggered sending
+- `detail.messageBody` - raw message body that will be sent to the socket. Undefined, can be set to value of any type,
   supported by WebSockets. If set, will override
   default JSON serialization. Useful, if you want to use some other format, like XML or MessagePack
-* `detail.elt` - the element that dispatched the sending (the one with `ws-send` attribute)
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that dispatched the sending (the one with `ws-send` attribute)
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Event - `htmx:wsBeforeSend` {#htmx:wsBeforeSend}
 
@@ -226,9 +223,9 @@ If the event is cancelled, the message will be discarded from the queue and not 
 
 ##### Details
 
-* `detail.elt` - the element that dispatched the request (the one with `ws-connect` attribute)
-* `detail.message` - the raw message content
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that dispatched the request (the one with `ws-connect` attribute)
+- `detail.message` - the raw message content
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Event - `htmx:wsAfterSend` {#htmx:wsAfterSend}
 
@@ -238,9 +235,9 @@ Cancelling the event has no effect.
 
 ##### Details
 
-* `detail.elt` - the element that dispatched the request (the one with `ws-connect` attribute)
-* `detail.message` - the raw message content
-* `detail.socketWrapper` - the wrapper around socket object
+- `detail.elt` - the element that dispatched the request (the one with `ws-connect` attribute)
+- `detail.message` - the raw message content
+- `detail.socketWrapper` - the wrapper around socket object
 
 #### Socket wrapper
 
@@ -272,7 +269,7 @@ Previous versions of htmx used a built-in tag `hx-ws` to implement WebSockets. T
 extension instead. Here are the steps you need to take to migrate to this version:
 
 | Old Attribute           | New Attribute        | Comments                                                                                                                         |
-|-------------------------|----------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| ----------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `hx-ws=""`              | `hx-ext="ws"`        | Use the `hx-ext="ws"` attribute to install the WebSockets extension into any HTML element.                                       |
 | `hx-ws="connect:<url>"` | `ws-connect="<url>"` | Add a new attribute `ws-connect` to the tag that defines the extension to specify the URL of the WebSockets server you're using. |
 | `hx-ws="send"`          | `ws-send=""`         | Add a new attribute `ws-send` to mark any child forms that should send data to your WebSocket server                             |

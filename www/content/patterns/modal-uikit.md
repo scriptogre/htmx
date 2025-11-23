@@ -3,32 +3,35 @@ title = "Modal Dialogs with UIKit"
 template = "demo.html"
 +++
 
-Many CSS toolkits include styles (and Javascript) for creating modal dialog boxes. 
-This example shows how to use HTMX to display dynamic dialog using UIKit, and how to 
+Many CSS toolkits include styles (and Javascript) for creating modal dialog boxes.
+This example shows how to use HTMX to display dynamic dialog using UIKit, and how to
 trigger its animation styles with little or no Javascript.
 
-We start with a button that triggers the dialog, along with a DIV at the bottom of your 
+We start with a button that triggers the dialog, along with a DIV at the bottom of your
 markup where the dialog will be loaded:
 
-This is an example of using HTMX to remotely load modal dialogs using UIKit.  In this example we will use
+This is an example of using HTMX to remotely load modal dialogs using UIKit. In this example we will use
 [Hyperscript](https://hyperscript.org) to demonstrate how cleanly that scripting language allows you to
 glue htmx and other libraries together.
 
 ```html
-<button 
-	id="showButton"
-	hx-get="/uikit-modal.html" 
-	hx-target="#modals-here" 
-	class="uk-button uk-button-primary" 
-	_="on htmx:afterOnLoad wait 10ms then add .uk-open to #modal">Open Modal</button>
+<button
+  id="showButton"
+  hx-get="/uikit-modal.html"
+  hx-target="#modals-here"
+  class="uk-button uk-button-primary"
+  _="on htmx:afterOnLoad wait 10ms then add .uk-open to #modal"
+>
+  Open Modal
+</button>
 
 <div id="modals-here"></div>
 ```
 
-This button uses a `GET` request to `/uikit-modal.html` when this button is clicked.  The
+This button uses a `GET` request to `/uikit-modal.html` when this button is clicked. The
 contents of this file will be added to the DOM underneath the `#modals-here` DIV.
 
-Rather than using the standard UIKit Javascript library we are using a bit of Hyperscript, 
+Rather than using the standard UIKit Javascript library we are using a bit of Hyperscript,
 which triggers UIKit's smooth animations. It is delayed by 10ms so that UIKit's animations
 will run correctly.
 
@@ -36,48 +39,48 @@ Finally, the server responds with a slightly modified version of UIKit's standar
 
 ```html
 <div id="modal" class="uk-modal" style="display:block;">
-	<div class="uk-modal-dialog uk-modal-body">
-		<h2 class="uk-modal-title">Modal Dialog</h2>
-		<p>This modal dialog was loaded dynamically by HTMX.</p>
+  <div class="uk-modal-dialog uk-modal-body">
+    <h2 class="uk-modal-title">Modal Dialog</h2>
+    <p>This modal dialog was loaded dynamically by HTMX.</p>
 
-		<form _="on submit take .uk-open from #modal">
-			<div class="uk-margin">
-				<input class="uk-input" placeholder="What is Your Name?">
-			</div>
-			<button type="button" class="uk-button uk-button-primary">Save Changes</button>
-			<button 
-				id="cancelButton"
-				type="button" 
-				class="uk-button uk-button-default" 
-				_="on click take .uk-open from #modal wait 200ms then remove #modal">Close</button>
-		</form>
-	</div>
+    <form _="on submit take .uk-open from #modal">
+      <div class="uk-margin">
+        <input class="uk-input" placeholder="What is Your Name?" />
+      </div>
+      <button type="button" class="uk-button uk-button-primary">Save Changes</button>
+      <button
+        id="cancelButton"
+        type="button"
+        class="uk-button uk-button-default"
+        _="on click take .uk-open from #modal wait 200ms then remove #modal"
+      >
+        Close
+      </button>
+    </form>
+  </div>
 </div>
 ```
 
 Hyperscript on the button and the form trigger animations when this dialog is completed
-or canceled.  If you didn't use this Hyperscript, the modals will still work but UIKit's
+or canceled. If you didn't use this Hyperscript, the modals will still work but UIKit's
 fade in animations will not be triggered.
 
 You can, of course, use JavaScript rather than Hyperscript for this work, it's just a lot more code:
 
 ```javascript
-
 // This triggers the fade-in animation when a modal dialog is loaded and displayed
-window.document.getElementById("showButton").addEventListener("htmx:afterOnLoad", function() {
-	setTimeout(function(){
-		window.document.getElementById("modal").classList.add("uk-open")
-	}, 10)
+window.document.getElementById('showButton').addEventListener('htmx:afterOnLoad', function () {
+  setTimeout(function () {
+    window.document.getElementById('modal').classList.add('uk-open')
+  }, 10)
 })
 
-
 // This triggers the fade-out animation when the modal is closed.
-window.document.getElementById("cancelButton").addEventListener("click", function() {
-	window.document.getElementById("modal").classList.remove("uk-open")
-	setTimeout(function(){
-		window.document.getElementById("modals-here").innerHTML = ""
-		,200
-	})
+window.document.getElementById('cancelButton').addEventListener('click', function () {
+  window.document.getElementById('modal').classList.remove('uk-open')
+  setTimeout(function () {
+    ;((window.document.getElementById('modals-here').innerHTML = ''), 200)
+  })
 })
 ```
 

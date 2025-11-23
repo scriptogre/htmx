@@ -33,11 +33,11 @@ multi-page application (MPA) approach using HTMX. I wondered: Would a server-ren
 application, considering that most observability platforms are built on ReactJS?
 
 What I discovered is that you can create outstanding server-rendered applications if you pay attention to certain
-details. 
+details.
 
 **Here are some common MPA myths and what I've learned about them.**
 
-## Myth 1:  MPA Page Transitions are slow because JavaScript and CSS are downloaded on every page navigation
+## Myth 1: MPA Page Transitions are slow because JavaScript and CSS are downloaded on every page navigation
 
 The perception that MPA page transitions are slow is widespread—and not entirely unfounded—since this is the default
 behavior of browsers. However, browsers have made significant improvements over the past decade to mitigate this issue.
@@ -56,8 +56,6 @@ most of the page's head section assets don't need to be reloaded or re-downloade
 
 But there’s a lesser known way of reducing how much assets are re-downloaded or evaluated during page transitions.
 
-
-
 ### Client-side Caching via Service workers
 
 Frontend developers who have built Progressive Web Applications (PWA) with SPA frameworks might know about service
@@ -68,8 +66,6 @@ write Javascript code that sits between your users and the network, intercepting
 handles them.
 
 ![service-worker-chart.png](/img/you-cant/service-worker-chart.png)
-
-
 
 Due to its association with the PWA trend, service workers are only ordinary among SPA developers, and developers need
 to realize that this technology can also be used for regular Multi-Page Applications.
@@ -108,15 +104,15 @@ help you—I prefer using Google's [Workbox](https://developer.chrome.com/docs/w
 
 1. **Install Workbox**: Install Workbox via npm or your preferred package manager:
 
-    ```bash
-    npm install workbox-cli --global
-    ```
+   ```bash
+   npm install workbox-cli --global
+   ```
 
 2. Generate a Workbox Configuration file: Run the following command to create a configuration file:
 
-    ```bash
-    workbox wizard
-    ```
+   ```bash
+   workbox wizard
+   ```
 
 3. **Configure Asset Handling**: In the generated `workbox-config.js` file, define how different assets should be
    cached. Use the `urlPattern` property—a regular expression—to match specific HTTP requests. For each matching
@@ -124,29 +120,31 @@ help you—I prefer using Google's [Workbox](https://developer.chrome.com/docs/w
 
    ![workbox-cfg.png](/img/you-cant/workbox-cfg.png)
 
+4. **Build the Service Worker**: Run the Workbox build command to generate the `sw.js` file based on your configuration:
 
-1. **Build the Service Worker**: Run the Workbox build command to generate the `sw.js` file based on your configuration:
+   ```bash
+   workbox generateSW workbox-config.js
+   ```
 
-    ```bash
-    workbox generateSW workbox-config.js
-    ```
-
-2. **Register the Service Worker in Your Application**: Add the following script to your HTML pages to register the
+5. **Register the Service Worker in Your Application**: Add the following script to your HTML pages to register the
    service worker:
 
-    ```html
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js').then(function(registration) {
-            console.log('ServiceWorker registration successful with scope: ', registration.scope);
-          }, function(err) {
-            console.log('ServiceWorker registration failed: ', err);
-          });
-        });
-      }
-    </script>
-    ```
+   ```html
+   <script>
+     if ('serviceWorker' in navigator) {
+       window.addEventListener('load', function () {
+         navigator.serviceWorker.register('/sw.js').then(
+           function (registration) {
+             console.log('ServiceWorker registration successful with scope: ', registration.scope)
+           },
+           function (err) {
+             console.log('ServiceWorker registration failed: ', err)
+           },
+         )
+       })
+     }
+   </script>
+   ```
 
 By following these steps, you instruct the browser to serve cached assets whenever possible, drastically reducing load
 times and improving the overall performance of your multi-page application.
@@ -176,7 +174,6 @@ either be prefetched or prerendered.
 
 [Example impact of prerendering (Chrome Team)](https://developer.chrome.com/docs/web-platform/prerender-pages)
 
-
 ## Myth 2: MPAs can't operate offline and save updates to retry when there's network
 
 From the last sections, you know that service workers can cache everything and make our apps operate entirely offline.
@@ -204,8 +201,6 @@ transitioning between both pages. This only works when navigating within the sam
 
 [Paint holding documentation on chrome.com](https://developer.chrome.com/blog/paint-holding).
 
-
-
 ## Myth 4: Fancy Cross-document page transitions are not possible with MPAs.
 
 The advent of single-page application frameworks made custom transitions between pages more popular. The allure of
@@ -215,7 +210,6 @@ transitions have mostly been popular within the demos at web dev conference talk
 <video controls>
   <source src="/img/you-cant/page-transitions.mp4">
 </video>
-
 
 [Cross Document Transitions documentation on chrome.com](https://developer.chrome.com/docs/web-platform/view-transitions).
 
@@ -254,8 +248,6 @@ component event fits in a Javascript file.
   <source src="/img/you-cant/webcomponents-filter-element2.mp4">
 </video>
 
-
-
 ## Myth 6: Operating directly on the DOM is slow. Therefore, it would be best to use React/Virtual DOM.
 
 The speed of direct DOM operations was a major motivation for building ReactJS on and popularizing the virtual DOM
@@ -282,15 +274,13 @@ an HTML label as a button and give it a `for="checkboxID`" attribute, so clickin
     Content to be toggled when label/btn is clicked
 </div>
 ```
+
 We can combine such a checkbox with HTMX intersect to fetch content from an endpoint when the button is clicked.
 
 ```html
-<input id="published" class="peer" type="checkbox" name="status"/>
-<div
-        class="hidden peer-checked:block"
-        hx-trigger="intersect once"
-        hx-get="/log-item"
->Shell/Loading text etc
+<input id="published" class="peer" type="checkbox" name="status" />
+<div class="hidden peer-checked:block" hx-trigger="intersect once" hx-get="/log-item">
+  Shell/Loading text etc
 </div>
 ```
 
@@ -301,7 +291,7 @@ hand. Below is a video of that code being used to hide or reveal log items in th
   <source src="/img/you-cant/expanding-log-item.mp4">
 </video>
 
-## Final Myth: Without a *“Proper”* frontend framework, your Client-side Javascript will be [Spaghetti and Unmaintainable](https://www.reddit.com/r/webdev/comments/bkk0gl/avoiding_the_vanillajs_spaghetticode/).
+## Final Myth: Without a _“Proper”_ frontend framework, your Client-side Javascript will be [Spaghetti and Unmaintainable](https://www.reddit.com/r/webdev/comments/bkk0gl/avoiding_the_vanillajs_spaghetticode/).
 
 This may or may not be true.
 

@@ -4,23 +4,23 @@ description = """\
   Use the HX-Trigger family of response headers in htmx to trigger client-side actions from an htmx response."""
 +++
 
-These response headers can be used to trigger client side actions on the target element within a response to htmx.  You
+These response headers can be used to trigger client side actions on the target element within a response to htmx. You
 can trigger a single event or as many uniquely named events as you would like.
 
 The headers are:
 
-* `HX-Trigger` - trigger events as soon as the response is received.
+- `HX-Trigger` - trigger events as soon as the response is received.
 
 To trigger a single event with no additional details you can simply send the event name in a header like so:
 
 `HX-Trigger: myEvent`
 
-This will trigger `myEvent` on the triggering element and will bubble up to the body.  As an example you could
+This will trigger `myEvent` on the triggering element and will bubble up to the body. As an example you could
 listen for this event like this:
 
 ```javascript
-document.body.addEventListener("myEvent", function(evt){
-    alert("myEvent was triggered!");
+document.body.addEventListener('myEvent', function (evt) {
+  alert('myEvent was triggered!')
 })
 ```
 
@@ -38,12 +38,12 @@ If you want to pass details along with the event, you can move to JSON for the v
 To handle this event you would write the following code:
 
 ```javascript
-document.body.addEventListener("showMessage", function(evt){
-    alert(evt.detail.value);
+document.body.addEventListener('showMessage', function (evt) {
+  alert(evt.detail.value)
 })
 ```
 
-Note that the value of the message was put into the `detail.value` slot.  If you wish to pass multiple pieces of data
+Note that the value of the message was put into the `detail.value` slot. If you wish to pass multiple pieces of data
 you can use a nested JSON object on the right hand side of the JSON object:
 
 `HX-Trigger: {"showMessage":{"level" : "info", "message" : "Here Is A Message"}}`
@@ -51,10 +51,10 @@ you can use a nested JSON object on the right hand side of the JSON object:
 And handle this event like so:
 
 ```javascript
-document.body.addEventListener("showMessage", function(evt){
-   if(evt.detail.level === "info"){
-     alert(evt.detail.message);   
-   }
+document.body.addEventListener('showMessage', function (evt) {
+  if (evt.detail.level === 'info') {
+    alert(evt.detail.message)
+  }
 })
 ```
 

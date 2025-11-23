@@ -14,28 +14,28 @@ tag = ["posts"]
 ## In The Beginning...
 
 htmx began life as [intercooler.js](https://intercoolerjs.org), a library built around jQuery that added behavior based
-on HTML attributes. 
+on HTML attributes.
 
 For developers who are not familiar with it, [jQuery](https://jquery.com/) is a venerable JavaScript
 library that made writing cross-platform JavaScript a lot easier during a time when browser implementations were very
 inconsistent, and JavaScript didn’t have many of the convenient APIs and features that it does now.
 
-Today many web developers consider jQuery to be “legacy software.” With all due respect to this perspective, jQuery is 
+Today many web developers consider jQuery to be “legacy software.” With all due respect to this perspective, jQuery is
 currently used on [75% of all public websites](https://w3techs.com/technologies/overview/javascript_library), a number that dwarfs all other JavaScript tools.
 
 Why has jQuery remained so ubiquitous?
 
 Here are three technical reasons we believe contribute to its ongoing success:
 
-* It is very easy to add to a project (just a single, dependency-free link)
-* It has maintained a very consistent API, remaining largely backwards compatible over its life (intercooler.js works
+- It is very easy to add to a project (just a single, dependency-free link)
+- It has maintained a very consistent API, remaining largely backwards compatible over its life (intercooler.js works
   with jQuery v1, v2 and v3)
-* As a library, you can use as much or as little of it as you like: it stays out of the way otherwise and doesn’t
+- As a library, you can use as much or as little of it as you like: it stays out of the way otherwise and doesn’t
   dictate the structure of your application
 
 ## htmx is the New jQuery
 
-Now, that’s a ridiculous (and arrogant) statement to make, of course, but it is an *ideal* that we on the htmx team are
+Now, that’s a ridiculous (and arrogant) statement to make, of course, but it is an _ideal_ that we on the htmx team are
 striving for.
 
 In particular, we want to emulate these technical characteristics of jQuery that make it such a low-cost, high-value
@@ -46,7 +46,7 @@ useful tool for exactly that use case.
 Websites that are built with jQuery stay online for a very long time, and websites built with htmx should be capable of
 the same (or better).
 
-Going forward, htmx will be developed with its *existing* users in mind.
+Going forward, htmx will be developed with its _existing_ users in mind.
 
 If you are an existing user of htmx—or are thinking about becoming one—here’s what that means.
 
@@ -88,7 +88,7 @@ htmx does not aim to be a total solution for building web applications and servi
 it [generalizes hypermedia controls](https://dl.acm.org/doi/pdf/10.1145/3648188.3675127), and that’s roughly about it.
 
 This means that a very important way to improve htmx — and one with lots of work remaining — is by helping improve the tools
-and techniques that people use *in conjunction* with htmx.
+and techniques that people use _in conjunction_ with htmx.
 
 Doing so makes htmx dramatically more useful _without_ any changes to htmx itself.
 
@@ -120,7 +120,7 @@ In particular, we are trying to push [the ideas](https://dl.acm.org/doi/pdf/10.1
 HTML standard itself, via the [Triptych project](https://alexanderpetros.com/triptych/). In an ideal world, htmx
 functionality disappears into the web platform itself.
 
-htmx code written *today* will continue working forever, of course, but in the very long run perhaps there will be no
+htmx code written _today_ will continue working forever, of course, but in the very long run perhaps there will be no
 need to include the library to achieve [similar UI patterns](https://htmx.org/examples) via hypermedia.
 
 ## Intercooler Was Right
@@ -130,13 +130,13 @@ At the [end of the intercooler docs](https://intercoolerjs.org/docs#philosophy),
 > Many javascript projects are updated at a dizzying pace. Intercooler is not.
 >
 > This is not because it is dead, but rather because it is (mostly) right: the basic idea is right, and the implementation
-at least right enough.
+> at least right enough.
 >
 > This means there will not be constant activity and churn on the project, but rather
-a [stewardship](https://en.wikipedia.org/wiki/Stewardship_\(theology\)) relationship: the main goal now is to not screw
-it up. The documentation will be improved, tests will be added, small new declarative features will be added around the
-edges, but there will be no massive rewrite or constant updating. This is in contrast with the software industry in
-general and the front end world in particular, which has comical levels of churn.
+> a [stewardship](<https://en.wikipedia.org/wiki/Stewardship_(theology)>) relationship: the main goal now is to not screw
+> it up. The documentation will be improved, tests will be added, small new declarative features will be added around the
+> edges, but there will be no massive rewrite or constant updating. This is in contrast with the software industry in
+> general and the front end world in particular, which has comical levels of churn.
 >
 > Intercooler is a sturdy, reliable tool for web development.
 

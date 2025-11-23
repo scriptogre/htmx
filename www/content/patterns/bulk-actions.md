@@ -2,34 +2,32 @@
 title = "Bulk Actions"
 template = "demo.html"
 +++
-This demo shows how to implement a common pattern where rows are selected and then bulk updated.  This is
+
+This demo shows how to implement a common pattern where rows are selected and then bulk updated. This is
 accomplished by putting a form around a table, with checkboxes in the table, and then including the checked
 values in the form submission (`POST` request):
 
 ```html
-<form id="checked-contacts"
-      hx-post="/users"
-      hx-swap="innerHTML settle:3s"
-      hx-target="#toast">
-    <table>
-      <thead>
+<form id="checked-contacts" hx-post="/users" hx-swap="innerHTML settle:3s" hx-target="#toast">
+  <table>
+    <thead>
       <tr>
         <th>Name</th>
         <th>Email</th>
         <th>Active</th>
       </tr>
-      </thead>
-      <tbody id="tbody">
-        <tr>
-          <td>Joe Smith</td>
-          <td>joe@smith.org</td>
-          <td><input type="checkbox" name="active:joe@smith.org"></td>
-        </tr>
-        ...
-      </tbody>
-    </table>
-    <input type="submit" value="Bulk Update" class="btn primary">
-    <output id="toast"></output>
+    </thead>
+    <tbody id="tbody">
+      <tr>
+        <td>Joe Smith</td>
+        <td>joe@smith.org</td>
+        <td><input type="checkbox" name="active:joe@smith.org" /></td>
+      </tr>
+      ...
+    </tbody>
+  </table>
+  <input type="submit" value="Bulk Update" class="btn primary" />
+  <output id="toast"></output>
 </form>
 ```
 
@@ -47,7 +45,7 @@ not connected to a form it would make sense to use an ARIA live region, eg
 }
 
 #toast {
-  background: #E1F0DA;
+  background: #e1f0da;
   opacity: 0;
   transition: opacity 3s ease-out;
 }
@@ -71,7 +69,7 @@ You can see a working example of this code below.
 }
 </style>
 
-[//]: # ({{ demo_environment&#40;&#41; }})
+[//]: # '{{ demo_environment() }}'
 
 <script>
     //=========================================================================

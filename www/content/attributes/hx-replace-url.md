@@ -16,9 +16,7 @@ The possible values of this attribute are:
 Here is an example:
 
 ```html
-<div hx-get="/account" hx-replace-url="true">
-  Go to My Account
-</div>
+<div hx-get="/account" hx-replace-url="true">Go to My Account</div>
 ```
 
 This will cause htmx to snapshot the current DOM to `localStorage` and replace the URL `/account' in the browser location bar.
@@ -26,15 +24,13 @@ This will cause htmx to snapshot the current DOM to `localStorage` and replace t
 Another example:
 
 ```html
-<div hx-get="/account" hx-replace-url="/account/home">
-  Go to My Account
-</div>
+<div hx-get="/account" hx-replace-url="/account/home">Go to My Account</div>
 ```
 
 This will replace the URL `/account/home' in the browser location bar.
 
 ## Notes
 
-* The [`HX-Replace-Url` response header](@/headers/hx-replace-url.md) has similar behavior and can override this attribute.
-* The [`hx-push-url` attribute](@/attributes/hx-push-url.md) is a similar and more commonly used attribute, which creates a 
+- The [`HX-Replace-Url` response header](@/headers/hx-replace-url.md) has similar behavior and can override this attribute.
+- The [`hx-push-url` attribute](@/attributes/hx-push-url.md) is a similar and more commonly used attribute, which creates a
   new history entry rather than replacing the current one.

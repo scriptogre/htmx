@@ -2,7 +2,8 @@
 title = "Delete in Place"
 template = "demo.html"
 +++
-This example shows how to implement a delete button that removes a table row upon completion.  First let's look at the
+
+This example shows how to implement a delete button that removes a table row upon completion. First let's look at the
 table body:
 
 ```html
@@ -15,16 +16,20 @@ table body:
       <th></th>
     </tr>
   </thead>
-  <tbody hx-confirm:inherited="Are you sure?" hx-target:inherited="closest tr" hx-swap:inherited="outerHTML">
+  <tbody
+    hx-confirm:inherited="Are you sure?"
+    hx-target:inherited="closest tr"
+    hx-swap:inherited="outerHTML"
+  >
     ...
   </tbody>
 </table>
 ```
 
-The table body has a [`hx-confirm`](@/attributes/hx-confirm.md) attribute to confirm the delete action.  It also
+The table body has a [`hx-confirm`](@/attributes/hx-confirm.md) attribute to confirm the delete action. It also
 set the target to be the `closest tr` that is, the closest table row, for all the buttons ([`hx-target`](@/attributes/hx-target.md)
-is inherited from parents in the DOM.)  The swap specification in [`hx-swap`](@/attributes/hx-swap.md) says to swap the
-entire target out and to wait 1 second after receiving a response.  This last bit is so that we can use the following
+is inherited from parents in the DOM.) The swap specification in [`hx-swap`](@/attributes/hx-swap.md) says to swap the
+entire target out and to wait 1 second after receiving a response. This last bit is so that we can use the following
 CSS:
 
 ```css
@@ -46,9 +51,7 @@ row should be replaced with nothing.
   <td>angie@macdowell.org</td>
   <td>Active</td>
   <td>
-    <button class="btn danger" hx-delete="/contact/1">
-      Delete
-    </button>
+    <button class="btn danger" hx-delete="/contact/1">Delete</button>
   </td>
 </tr>
 ```

@@ -41,7 +41,6 @@ Large refactors typically have a bad track record so we wrote a quick and dirty 
 
 ![sidekick-port-loc.jpg](/img/sidekick-port-loc.jpg)
 
-
 The rewrite went far better than I could have imagined. It definitely won't be representative of every experience, our app was definitely uniquely suited to HTMX. Axum and some custom middleware also went a long way for sharing common infrastructure across the site. Though we don't have proper metrics, we've anecdotally noticed significantly improved load times.
 
 ## Reflection

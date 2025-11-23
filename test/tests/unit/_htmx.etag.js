@@ -1,76 +1,71 @@
-describe('ETag Tests', function() {
+describe('ETag Tests', function () {
+  beforeEach(function () {
+    setupTest()
+  })
 
-    beforeEach(function() {
-        setupTest();
-    });
+  afterEach(function () {
+    cleanupTest()
+  })
 
-    afterEach(function() {
-        cleanupTest();
-    });
+  it('stores ETag from response header on element', async function () {
+    mockResponse('GET', '/test', 'Response 1', {
+      headers: { Etag: '"abc123"' },
+    })
 
-    it('stores ETag from response header on element', async function() {
-        mockResponse('GET', '/test', 'Response 1', {
-            headers: { 'Etag': '"abc123"' }
-        });
+    const button = createProcessedHTML('<button hx-get="/test">Load</button>')
+    button.click()
+    await forRequest()
 
-        const button = createProcessedHTML('<button hx-get="/test">Load</button>');
-        button.click();
-        await forRequest();
+    assert.equal(button._htmx.etag, '"abc123"')
+  })
 
-        assert.equal(button._htmx.etag, '"abc123"');
-    });
+  it('sends If-None-Match header on subsequent request with stored ETag', async function () {
+    mockResponse('GET', '/test', 'Response 1', {
+      headers: { Etag: '"abc123"' },
+    })
 
-    it('sends If-None-Match header on subsequent request with stored ETag', async function() {
-        mockResponse('GET', '/test', 'Response 1', {
-            headers: { 'Etag': '"abc123"' }
-        });
+    const button = createProcessedHTML('<button hx-get="/test">Load</button>')
 
-        const button = createProcessedHTML('<button hx-get="/test">Load</button>');
+    // First request
+    button.click()
+    await forRequest()
 
-        // First request
-        button.click();
-        await forRequest();
+    // Mock second request
+    mockResponse('GET', '/test', 'Response 2', {
+      headers: { Etag: '"def456"' },
+    })
 
-        // Mock second request
-        mockResponse('GET', '/test', 'Response 2', {
-            headers: { 'Etag': '"def456"' }
-        });
+    // Second request
+    button.click()
+    await forRequest()
 
-        // Second request
-        button.click();
-        await forRequest();
+    // Check that the second request included If-None-Match header
+    const calls = fetchMock.getCalls()
+    const secondCall = calls[1]
+    assert.equal(secondCall.request.headers['If-none-match'], '"abc123"')
+  })
 
-        // Check that the second request included If-None-Match header
-        const calls = fetchMock.getCalls();
-        const secondCall = calls[1];
-        assert.equal(secondCall.request.headers['If-none-match'], '"abc123"');
-    });
+  it('updates stored ETag when new ETag received', async function () {
+    mockResponse('GET', '/test1', 'Response 1', {
+      headers: { Etag: '"abc123"' },
+    })
+    mockResponse('GET', '/test2', 'Response 2', {
+      headers: { Etag: '"def456"' },
+    })
 
-    it('updates stored ETag when new ETag received', async function() {
+    const div = createProcessedHTML('<div hx-get="/test1">Load</div>')
 
-        mockResponse('GET', '/test1', 'Response 1', {
-            headers: { 'Etag': '"abc123"' }
-        });
-        mockResponse('GET', '/test2', 'Response 2', {
-            headers: { 'Etag': '"def456"' }
-        });
+    // First request
+    div.click()
+    await forRequest()
+    assert.equal(div._htmx.etag, '"abc123"')
 
-        const div = createProcessedHTML('<div hx-get="/test1">Load</div>');
+    // Second request
+    div.setAttribute('hx-get', '/test2')
+    div.click()
+    await forRequest()
 
-        // First request
-        div.click();
-        await forRequest();
-        assert.equal(div._htmx.etag, '"abc123"');
-
-
-        // Second request
-        div.setAttribute("hx-get", "/test2")
-        div.click();
-        await forRequest();
-
-        // ETag should be updated
-        assert.equal(div._htmx.etag, '"def456"');
-    });
-
-
-});
+    // ETag should be updated
+    assert.equal(div._htmx.etag, '"def456"')
+  })
+})

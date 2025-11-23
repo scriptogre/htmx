@@ -2,7 +2,7 @@
 
 The htmx.org website is built with [Zola](https://www.getzola.org/).
 
-Use `npm run site` to run the site locally. 
+Use `npm run site` to run the site locally.
 
 The site will be available at http://localhost:1111
 

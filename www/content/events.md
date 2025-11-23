@@ -15,7 +15,7 @@ Htmx provides an extensive events system that can be used to modify and enhance 
 
 ### Event - `htmx:abort` {#htmx:abort}
 
-This event is different than other events: htmx does not *trigger* it, but rather *listens* for it.
+This event is different than other events: htmx does not _trigger_ it, but rather _listens_ for it.
 
 If you send an `htmx:abort` event to an element making a request, it will abort the request:
 
@@ -33,27 +33,27 @@ The `detail` object contains a function, `evt.detail.issueRequest(skipConfirmati
 Combining these two features allows you to create an asynchronous confirmation dialog.
 
 ```javascript
-document.body.addEventListener('htmx:confirm', function(evt) {
-  if (!evt.detail.target.hasAttribute('hx-confirm')) return;
+document.body.addEventListener('htmx:confirm', function (evt) {
+  if (!evt.detail.target.hasAttribute('hx-confirm')) return
 
-  evt.preventDefault();
+  evt.preventDefault()
 
   // Your custom confirmation logic here
-  if (confirm("Are you sure?")) {
-    evt.detail.issueRequest(true); // true to skip built-in confirm
+  if (confirm('Are you sure?')) {
+    evt.detail.issueRequest(true) // true to skip built-in confirm
   }
-});
+})
 ```
 
 ##### Details
 
-* `detail.elt` - the element in question
-* `detail.issueRequest(skipConfirmation=false)` - function to issue the request
-* `detail.path` - the path of the request
-* `detail.target` - the element that triggered the request
-* `detail.triggeringEvent` - the original event that triggered this request
-* `detail.verb` - the verb of the request (e.g. `GET`)
-* `detail.question` - the question from `hx-confirm` attribute (if present)
+- `detail.elt` - the element in question
+- `detail.issueRequest(skipConfirmation=false)` - function to issue the request
+- `detail.path` - the path of the request
+- `detail.target` - the element that triggered the request
+- `detail.triggeringEvent` - the original event that triggered this request
+- `detail.verb` - the verb of the request (e.g. `GET`)
+- `detail.question` - the question from `hx-confirm` attribute (if present)
 
 ## Lifecycle Events
 
@@ -65,7 +65,7 @@ This event is triggered before htmx initializes a DOM node and processes its `hx
 
 ##### Details
 
-* `detail.elt` - the element being initialized
+- `detail.elt` - the element being initialized
 
 ### Event - `htmx:after:init` {#htmx:after:init}
 
@@ -75,7 +75,7 @@ This event is triggered after htmx has initialized a DOM node. Note that this ev
 
 ##### Details
 
-* `detail.elt` - the newly initialized element
+- `detail.elt` - the newly initialized element
 
 ### Event - `htmx:before:cleanup` {#htmx:before:cleanup}
 
@@ -85,7 +85,7 @@ This event is triggered before htmx disables or removes an element from the DOM.
 
 ##### Details
 
-* `detail.elt` - the element to be cleaned up
+- `detail.elt` - the element to be cleaned up
 
 ### Event - `htmx:after:cleanup` {#htmx:after:cleanup}
 
@@ -93,7 +93,7 @@ This event is triggered after htmx has cleaned up an element.
 
 ##### Details
 
-* `detail.elt` - the element that was cleaned up
+- `detail.elt` - the element that was cleaned up
 
 ## Request Events
 
@@ -104,23 +104,23 @@ This event is triggered after htmx has cleaned up an element.
 This event is triggered before the request is made, allowing you to configure request parameters, headers, and other options.
 
 ```javascript
-document.body.addEventListener('htmx:config:request', function(evt) {
-  let ctx = evt.detail.ctx;
+document.body.addEventListener('htmx:config:request', function (evt) {
+  let ctx = evt.detail.ctx
   // Modify request configuration
-  ctx.request.headers['X-Auth-Token'] = getToken();
-});
+  ctx.request.headers['X-Auth-Token'] = getToken()
+})
 ```
 
 ##### Details
 
-* `detail.ctx` - the request context object containing:
-  * `ctx.sourceElement` - the element that triggered the request
-  * `ctx.request` - the request configuration with properties:
-    * `action` - the URL
-    * `method` - the HTTP method
-    * `headers` - headers object
-    * `body` - request body (FormData)
-    * `credentials`, `mode`, `cache`, etc. - fetch options
+- `detail.ctx` - the request context object containing:
+  - `ctx.sourceElement` - the element that triggered the request
+  - `ctx.request` - the request configuration with properties:
+    - `action` - the URL
+    - `method` - the HTTP method
+    - `headers` - headers object
+    - `body` - request body (FormData)
+    - `credentials`, `mode`, `cache`, etc. - fetch options
 
 ### Event - `htmx:before:request` {#htmx:before:request}
 
@@ -130,7 +130,7 @@ This event is triggered before an AJAX request is issued. If you call `preventDe
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ### Event - `htmx:after:request` {#htmx:after:request}
 
@@ -140,7 +140,7 @@ This event is triggered after an AJAX request has completed (whether successful 
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ### Event - `htmx:finally:request` {#htmx:finally:request}
 
@@ -148,7 +148,7 @@ This event is always triggered after a request completes, similar to a `finally`
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ## Swap Events
 
@@ -162,17 +162,17 @@ If you call `preventDefault()`, no swap will occur.
 You can modify swap behavior by setting properties on `detail.ctx`:
 
 ```javascript
-document.body.addEventListener('htmx:before:swap', function(evt) {
-  let ctx = evt.detail.ctx;
+document.body.addEventListener('htmx:before:swap', function (evt) {
+  let ctx = evt.detail.ctx
   // Modify swap behavior
-  ctx.swap = 'outerHTML';
-  ctx.target = document.querySelector('#other-target');
-});
+  ctx.swap = 'outerHTML'
+  ctx.target = document.querySelector('#other-target')
+})
 ```
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ### Event - `htmx:after:swap` {#htmx:after:swap}
 
@@ -182,7 +182,7 @@ This event is triggered after new content has been swapped into the DOM.
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ### Event - `htmx:before:oob:swap` {#htmx:before:oob:swap}
 
@@ -192,8 +192,8 @@ This event is triggered before an out-of-band swap occurs.
 
 ##### Details
 
-* `detail.ctx` - the request context object
-* `detail.fragment` - the OOB fragment being swapped
+- `detail.ctx` - the request context object
+- `detail.fragment` - the OOB fragment being swapped
 
 ### Event - `htmx:after:oob:swap` {#htmx:after:oob:swap}
 
@@ -203,8 +203,8 @@ This event is triggered after an out-of-band swap occurs.
 
 ##### Details
 
-* `detail.ctx` - the request context object
-* `detail.fragment` - the OOB fragment that was swapped
+- `detail.ctx` - the request context object
+- `detail.fragment` - the OOB fragment that was swapped
 
 ## History Events
 
@@ -216,8 +216,8 @@ This event is triggered before history is updated. You can modify the path or pr
 
 ##### Details
 
-* `detail.ctx` - the request context object
-* `detail.path` - the path to be saved in history
+- `detail.ctx` - the request context object
+- `detail.path` - the path to be saved in history
 
 ### Event - `htmx:after:history:update` {#htmx:after:history:update}
 
@@ -225,7 +225,7 @@ This event is triggered after history has been updated.
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ### Event - `htmx:after:push:into:history` {#htmx:after:push:into:history}
 
@@ -235,7 +235,7 @@ This event is triggered after a URL has been pushed into history.
 
 ##### Details
 
-* `detail.path` - the path that was pushed
+- `detail.path` - the path that was pushed
 
 ### Event - `htmx:after:replace:into:history` {#htmx:after:replace:into:history}
 
@@ -245,7 +245,7 @@ This event is triggered after a URL has been replaced in history.
 
 ##### Details
 
-* `detail.path` - the path that was replaced
+- `detail.path` - the path that was replaced
 
 ### Event - `htmx:before:restore:history` {#htmx:before:restore:history}
 
@@ -255,7 +255,7 @@ This event is triggered before history restoration occurs (back/forward navigati
 
 ##### Details
 
-* `detail.path` - the path being restored
+- `detail.path` - the path being restored
 
 ## Error Event
 
@@ -266,18 +266,18 @@ This event is triggered before history restoration occurs (back/forward navigati
 This event consolidates all error events into a single event. It is triggered when an error occurs during any phase of the htmx request lifecycle.
 
 ```javascript
-document.body.addEventListener('htmx:error', function(evt) {
-  let ctx = evt.detail.ctx;
-  console.error('Error:', ctx.status, evt.detail.error);
-});
+document.body.addEventListener('htmx:error', function (evt) {
+  let ctx = evt.detail.ctx
+  console.error('Error:', ctx.status, evt.detail.error)
+})
 ```
 
 ##### Details
 
-* `detail.ctx` - the request context object containing:
-  * `ctx.status` - a string describing the error
-  * `ctx.response` - the response object (if available)
-* `detail.error` - the error that occurred (if available)
+- `detail.ctx` - the request context object containing:
+  - `ctx.status` - a string describing the error
+  - `ctx.response` - the response object (if available)
+- `detail.error` - the error that occurred (if available)
 
 ## View Transition Events
 
@@ -289,7 +289,7 @@ This event is triggered before a [View Transition](https://developer.mozilla.org
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ### Event - `htmx:after:viewTransition` {#htmx:after:viewTransition}
 
@@ -297,7 +297,7 @@ This event is triggered after a View Transition completes.
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ## Server-Sent Events (SSE)
 
@@ -307,8 +307,8 @@ This event is triggered before an SSE (Server-Sent Events) stream is processed. 
 
 ##### Details
 
-* `detail.ctx` - the request context object
-* `detail.stream` - the SSE stream configuration
+- `detail.ctx` - the request context object
+- `detail.stream` - the SSE stream configuration
 
 ### Event - `htmx:after:sse:stream` {#htmx:after:sse:stream}
 
@@ -316,29 +316,29 @@ This event is triggered after an SSE stream ends (either naturally or due to err
 
 ##### Details
 
-* `detail.ctx` - the request context object
+- `detail.ctx` - the request context object
 
 ### Event - `htmx:before:sse:message` {#htmx:before:sse:message}
 
 This event is triggered before each SSE message is processed. You can set `detail.message.cancelled = true` to skip processing this message.
 
 ```javascript
-document.body.addEventListener('htmx:before:sse:message', function(evt) {
+document.body.addEventListener('htmx:before:sse:message', function (evt) {
   // Skip messages of certain type
   if (evt.detail.message.event === 'heartbeat') {
-    evt.detail.message.cancelled = true;
+    evt.detail.message.cancelled = true
   }
-});
+})
 ```
 
 ##### Details
 
-* `detail.ctx` - the request context object
-* `detail.message` - the SSE message object with properties:
-  * `data` - the message data
-  * `event` - the event type (if specified)
-  * `id` - the message ID (if specified)
-  * `cancelled` - set to `true` to skip this message
+- `detail.ctx` - the request context object
+- `detail.message` - the SSE message object with properties:
+  - `data` - the message data
+  - `event` - the event type (if specified)
+  - `id` - the message ID (if specified)
+  - `cancelled` - set to `true` to skip this message
 
 ### Event - `htmx:after:sse:message` {#htmx:after:sse:message}
 
@@ -346,26 +346,26 @@ This event is triggered after an SSE message has been processed and swapped.
 
 ##### Details
 
-* `detail.ctx` - the request context object
-* `detail.message` - the SSE message object
+- `detail.ctx` - the request context object
+- `detail.message` - the SSE message object
 
 ### Event - `htmx:before:sse:reconnect` {#htmx:before:sse:reconnect}
 
 This event is triggered before reconnecting to an SSE stream (when using `continuous` mode). You can set `detail.reconnect.cancelled = true` to prevent the reconnection.
 
 ```javascript
-document.body.addEventListener('htmx:before:sse:reconnect', function(evt) {
+document.body.addEventListener('htmx:before:sse:reconnect', function (evt) {
   // Stop reconnecting after 10 attempts
   if (evt.detail.reconnect.attempt > 10) {
-    evt.detail.reconnect.cancelled = true;
+    evt.detail.reconnect.cancelled = true
   }
-});
+})
 ```
 
 ##### Details
 
-* `detail.ctx` - the request context object
-* `detail.reconnect` - the reconnection configuration with properties:
-  * `attempt` - the reconnection attempt number
-  * `delay` - the delay before reconnection (in milliseconds)
-  * `cancelled` - set to `true` to cancel the reconnection
+- `detail.ctx` - the request context object
+- `detail.reconnect` - the reconnection configuration with properties:
+  - `attempt` - the reconnection attempt number
+  - `delay` - the delay before reconnection (in milliseconds)
+  - `cancelled` - set to `true` to cancel the reconnection

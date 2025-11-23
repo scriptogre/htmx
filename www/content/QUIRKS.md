@@ -21,8 +21,8 @@ div:
 
 ```html
 <div hx-target="#output">
-    <button hx-post="/items/100/like">Like</button>
-    <button hx-delete="/items/100">Delete</button>
+  <button hx-post="/items/100/like">Like</button>
+  <button hx-delete="/items/100">Delete</button>
 </div>
 <output id="output"></output>
 ```
@@ -40,12 +40,12 @@ Some people prefer to disable inheritance in htmx entirely, using the `htmx.conf
 Here is a `meta` tag configuration that does so:
 
 ```html
-  <meta name="htmx-config" content='{"disableInheritance":true}'>
+<meta name="htmx-config" content='{"disableInheritance":true}' />
 ```
 
 ## The Default Swap Strategy is `innerHTML`
 
-The [`hx-swap`](@/attributes/hx-swap.md) attribute allows you to control how a swap is performed.  The default strategy is
+The [`hx-swap`](@/attributes/hx-swap.md) attribute allows you to control how a swap is performed. The default strategy is
 `innerHTML`, that is, to place the response HTML content within the target element.
 
 Many people prefer to use the `outerHTML` strategy as the default instead.
@@ -56,7 +56,7 @@ You can change this behavior using the `htmx.config.defaultSwapStyle`
 Here is a `meta` tag configuration that does so:
 
 ```html
-  <meta name="htmx-config" content='{"defaultSwapStyle":"outerHTML"}'>
+<meta name="htmx-config" content='{"defaultSwapStyle":"outerHTML"}' />
 ```
 
 ## Targeting the `body` Always Performs an innerHTML Swap
@@ -80,10 +80,11 @@ Here is the default configuration:
 ```json
 {
   "responseHandling": [
-    {"code":"204", "swap": false},
-    {"code":"[23]..", "swap": true},
-    {"code":"[45]..", "swap": false, "error":true},
-    {"code":"...", "swap": false}]
+    { "code": "204", "swap": false },
+    { "code": "[23]..", "swap": true },
+    { "code": "[45]..", "swap": false, "error": true },
+    { "code": "...", "swap": false }
+  ]
 }
 ```
 
@@ -93,8 +94,7 @@ If you want to swap everything regardless of response code, you can use this con
 
 ```json
 {
-  "responseHandling": [
-    {"code":"...", "swap": true}]
+  "responseHandling": [{ "code": "...", "swap": true }]
 }
 ```
 
@@ -103,18 +103,19 @@ If you want to specifically allow `422` responses to swap, you can use this conf
 ```json
 {
   "responseHandling": [
-    {"code":"422", "swap": true},
-    {"code":"204", "swap": false},
-    {"code":"[23]..", "swap": true},
-    {"code":"[45]..", "swap": false, "error":true},
-    {"code":"...", "swap": false}]
+    { "code": "422", "swap": true },
+    { "code": "204", "swap": false },
+    { "code": "[23]..", "swap": true },
+    { "code": "[45]..", "swap": false, "error": true },
+    { "code": "...", "swap": false }
+  ]
 }
 ```
 
 Here is a meta tag allowing all responses to swap:
 
 ```html
-  <meta name="htmx-config" content='{"responseHandling": [{"code":"...", "swap": true}]}'>
+<meta name="htmx-config" content='{"responseHandling": [{"code":"...", "swap": true}]}' />
 ```
 
 ## `GET` Requests on Non-Form Elements Do Not Include Form Values by Default
@@ -129,17 +130,14 @@ If you wish to include the values of the enclosing form when issuing an `GET` yo
 [`hx-include`](@/attributes/hx-include.md) attribute like so:
 
 ```html
-<button hx-get="/search"
-        hx-include="closest form">
-  Search
-</button>
+<button hx-get="/search" hx-include="closest form">Search</button>
 ```
 
 ## History Can Be Tricky
 
 {{ construction_warning() }}
 
-htmx provides support for interacting with the browser's [history](@/docs.md).  This can be very powerful, but it
+htmx provides support for interacting with the browser's [history](@/docs.md). This can be very powerful, but it
 can also be tricky, particularly if you are using 3rd party JavaScript libraries that modify the DOM.
 
 Most of these issues can be solved by disabling any local history cache and simply issuing a server request when a
@@ -148,7 +146,7 @@ user navigates backwards in history, with the tradeoff that history navigation w
 Here is a meta tag that disables history caching:
 
 ```html
-  <meta name="htmx-config" content='{"historyCacheSize": 0}'>
+<meta name="htmx-config" content='{"historyCacheSize": 0}' />
 ```
 
 ## Some People Don't Like `hx-boost`
@@ -160,9 +158,9 @@ This can speed the feel of these interactions up, and also allows the forms and 
 [JavaScript is disabled](https://developer.mozilla.org/en-US/docs/Glossary/Progressive_Enhancement), however it comes
 with some tradeoffs:
 
-* The history issues mentioned above can show up
-* Only the body of the web page will be updated, so any styles and scripts in the new page `head` tag will be discarded
-* The global javascript scope is not refreshed, so it is possible to have strange interactions between pages.  For example
+- The history issues mentioned above can show up
+- Only the body of the web page will be updated, so any styles and scripts in the new page `head` tag will be discarded
+- The global javascript scope is not refreshed, so it is possible to have strange interactions between pages. For example
   a global `let` may start failing because a symbol is already defined.
 
 Some members on the core htmx team feel that, due to these issues, as well as the fact that browsers have improved
@@ -188,7 +186,7 @@ Keep in mind, also, that if your DOM content loads before htmx does, all the htm
 
 ## The JavaScript API Is Not A Focus
 
-htmx is a hypermedia-oriented front end library.  This means that htmx enhances HTML via
+htmx is a hypermedia-oriented front end library. This means that htmx enhances HTML via
 [attributes](@/reference.md#attributes) in the HTML , rather than providing an elaborate
 JavaScript API.
 

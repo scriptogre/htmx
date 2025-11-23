@@ -5,8 +5,8 @@ insert_anchor_links = "left"
 
 ### Demo
 
-Note that the video kept playing, despite the fact it is now a child of a `figure` element.  And you can click back
-and the video should continue to work as well.  I enjoy flipping back and forth.
+Note that the video kept playing, despite the fact it is now a child of a `figure` element. And you can click back
+and the video should continue to work as well. I enjoy flipping back and forth.
 
 ### Rick-Rolling
 
@@ -27,8 +27,7 @@ video. When one clicks on a seemingly unrelated link, the site with the music vi
 and they have been "Rickrolled". The meme has also extended to using the song's lyrics, or singing it, in unexpected
 contexts. Astley himself has also been Rickrolled on several occasions.
 
-The meme grew out of a similar bait-and-switch trick called "duck rolling" that was popular on the 4chan website in
-2006. The video bait-and-switch trick grew popular on 4chan by 2007 during April Fools' Day and spread to other Internet
+The meme grew out of a similar bait-and-switch trick called "duck rolling" that was popular on the 4chan website in 2006. The video bait-and-switch trick grew popular on 4chan by 2007 during April Fools' Day and spread to other Internet
 sites later that year. The meme gained mainstream attention in 2008 through several publicised events, particularly when
 YouTube used it on its 2008 April Fools' Day event.
 
@@ -36,4 +35,3 @@ Astley, who had only returned to performing after a 10-year hiatus, was initiall
 popularity from the meme to further his career but accepted the fame by Rickrolling the 2008 Macy's Thanksgiving Day
 Parade with a surprise performance of the song. Since then, Astley has seen his performance career revitalized by the
 meme's popularity, and Rickrolling saw a massive resurgence online in the early 2020s.
-

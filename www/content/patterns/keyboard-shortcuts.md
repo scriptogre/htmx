@@ -2,13 +2,19 @@
 title = "Keyboard Shortcuts"
 template = "demo.html"
 +++
+
 In this example we show how to create a keyboard shortcut for an action.
 
 We start with a simple button that loads some content from the server:
 
 ```html
-<button class="btn primary" hx-trigger="click, keyup[altKey&&shiftKey&&key=='D'] from:body"
-        hx-post="/doit">Do It! (alt-shift-D)</button>
+<button
+  class="btn primary"
+  hx-trigger="click, keyup[altKey&&shiftKey&&key=='D'] from:body"
+  hx-post="/doit"
+>
+  Do It! (alt-shift-D)
+</button>
 ```
 
 Note that the button responds to both the `click` event (as usual) and also the keyup event when `alt-shift-D` is pressed.
@@ -21,7 +27,7 @@ You can find out the conditions needed for a given keyboard shortcut here:
 
 [https://javascript.info/keyboard-events](https://javascript.info/keyboard-events)
 
-[//]: # ({{ demo_environment&#40;&#41; }})
+[//]: # '{{ demo_environment() }}'
 
 <script>
 

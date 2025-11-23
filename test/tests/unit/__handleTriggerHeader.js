@@ -1,144 +1,173 @@
-describe('__handleTriggerHeader unit tests', function() {
+describe('__handleTriggerHeader unit tests', function () {
+  beforeEach(function () {
+    setupTest()
+  })
 
-    beforeEach(function() {
-        setupTest();
-    });
+  afterEach(function () {
+    cleanupTest()
+  })
 
-    afterEach(function() {
-        cleanupTest();
-    });
-
-    it('triggers single event from simple string', function () {
-        let eventFired = false
-        let container = createProcessedHTML('<div></div>')
-        container.addEventListener('myEvent', () => { eventFired = true })
-
-        htmx.__handleTriggerHeader('myEvent', container)
-
-        assert.isTrue(eventFired)
+  it('triggers single event from simple string', function () {
+    let eventFired = false
+    let container = createProcessedHTML('<div></div>')
+    container.addEventListener('myEvent', () => {
+      eventFired = true
     })
 
-    it('triggers multiple events from comma-separated string', function () {
-        let event1Fired = false
-        let event2Fired = false
-        let event3Fired = false
-        let container = createProcessedHTML('<div></div>')
+    htmx.__handleTriggerHeader('myEvent', container)
 
-        container.addEventListener('event1', () => { event1Fired = true })
-        container.addEventListener('event2', () => { event2Fired = true })
-        container.addEventListener('event3', () => { event3Fired = true })
+    assert.isTrue(eventFired)
+  })
 
-        htmx.__handleTriggerHeader('event1, event2, event3', container)
+  it('triggers multiple events from comma-separated string', function () {
+    let event1Fired = false
+    let event2Fired = false
+    let event3Fired = false
+    let container = createProcessedHTML('<div></div>')
 
-        assert.isTrue(event1Fired)
-        assert.isTrue(event2Fired)
-        assert.isTrue(event3Fired)
+    container.addEventListener('event1', () => {
+      event1Fired = true
+    })
+    container.addEventListener('event2', () => {
+      event2Fired = true
+    })
+    container.addEventListener('event3', () => {
+      event3Fired = true
     })
 
-    it('trims whitespace from event names', function () {
-        let eventFired = false
-        let container = createProcessedHTML('<div></div>')
-        container.addEventListener('myEvent', () => { eventFired = true })
+    htmx.__handleTriggerHeader('event1, event2, event3', container)
 
-        htmx.__handleTriggerHeader('  myEvent  ', container)
+    assert.isTrue(event1Fired)
+    assert.isTrue(event2Fired)
+    assert.isTrue(event3Fired)
+  })
 
-        assert.isTrue(eventFired)
+  it('trims whitespace from event names', function () {
+    let eventFired = false
+    let container = createProcessedHTML('<div></div>')
+    container.addEventListener('myEvent', () => {
+      eventFired = true
     })
 
-    it('triggers event with detail from JSON object', function () {
-        let eventDetail = null
-        let container = createProcessedHTML('<div></div>')
-        container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
+    htmx.__handleTriggerHeader('  myEvent  ', container)
 
-        htmx.__handleTriggerHeader('{"myEvent": {"key": "value", "num": 42}}', container)
+    assert.isTrue(eventFired)
+  })
 
-        assert.isNotNull(eventDetail)
-        assert.equal(eventDetail.key, 'value')
-        assert.equal(eventDetail.num, 42)
+  it('triggers event with detail from JSON object', function () {
+    let eventDetail = null
+    let container = createProcessedHTML('<div></div>')
+    container.addEventListener('myEvent', e => {
+      eventDetail = e.detail
     })
 
-    it('triggers event with simple value from JSON object', function () {
-        let eventDetail = null
-        let container = createProcessedHTML('<div></div>')
-        container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
+    htmx.__handleTriggerHeader('{"myEvent": {"key": "value", "num": 42}}', container)
 
-        htmx.__handleTriggerHeader('{"myEvent": "simpleValue"}', container)
+    assert.isNotNull(eventDetail)
+    assert.equal(eventDetail.key, 'value')
+    assert.equal(eventDetail.num, 42)
+  })
 
-        assert.isNotNull(eventDetail)
-        assert.equal(eventDetail.value, 'simpleValue')
+  it('triggers event with simple value from JSON object', function () {
+    let eventDetail = null
+    let container = createProcessedHTML('<div></div>')
+    container.addEventListener('myEvent', e => {
+      eventDetail = e.detail
     })
 
-    it('triggers multiple events from JSON object', function () {
-        let event1Detail = null
-        let event2Detail = null
-        let container = createProcessedHTML('<div></div>')
+    htmx.__handleTriggerHeader('{"myEvent": "simpleValue"}', container)
 
-        container.addEventListener('event1', (e) => { event1Detail = e.detail })
-        container.addEventListener('event2', (e) => { event2Detail = e.detail })
+    assert.isNotNull(eventDetail)
+    assert.equal(eventDetail.value, 'simpleValue')
+  })
 
-        htmx.__handleTriggerHeader('{"event1": {"data": "first"}, "event2": {"data": "second"}}', container)
+  it('triggers multiple events from JSON object', function () {
+    let event1Detail = null
+    let event2Detail = null
+    let container = createProcessedHTML('<div></div>')
 
-        assert.equal(event1Detail.data, 'first')
-        assert.equal(event2Detail.data, 'second')
+    container.addEventListener('event1', e => {
+      event1Detail = e.detail
+    })
+    container.addEventListener('event2', e => {
+      event2Detail = e.detail
     })
 
-    it('uses custom target from JSON detail', function () {
-        let eventFired = false
-        let container = createProcessedHTML('<div><span id="target"></span></div>')
-        let target = container.querySelector('#target')
+    htmx.__handleTriggerHeader(
+      '{"event1": {"data": "first"}, "event2": {"data": "second"}}',
+      container,
+    )
 
-        target.addEventListener('myEvent', () => { eventFired = true })
+    assert.equal(event1Detail.data, 'first')
+    assert.equal(event2Detail.data, 'second')
+  })
 
-        htmx.__handleTriggerHeader('{"myEvent": {"target": "#target", "data": "test"}}', container)
+  it('uses custom target from JSON detail', function () {
+    let eventFired = false
+    let container = createProcessedHTML('<div><span id="target"></span></div>')
+    let target = container.querySelector('#target')
 
-        assert.isTrue(eventFired)
+    target.addEventListener('myEvent', () => {
+      eventFired = true
     })
 
-    it('falls back to provided element if target not found', function () {
-        let eventFired = false
-        let container = createProcessedHTML('<div></div>')
+    htmx.__handleTriggerHeader('{"myEvent": {"target": "#target", "data": "test"}}', container)
 
-        container.addEventListener('myEvent', () => { eventFired = true })
+    assert.isTrue(eventFired)
+  })
 
-        htmx.__handleTriggerHeader('{"myEvent": {"target": "#nonexistent", "data": "test"}}', container)
+  it('falls back to provided element if target not found', function () {
+    let eventFired = false
+    let container = createProcessedHTML('<div></div>')
 
-        assert.isTrue(eventFired)
+    container.addEventListener('myEvent', () => {
+      eventFired = true
     })
 
-    it('uses document.body if element is not connected', function () {
-        let eventFired = false
-        let disconnectedElt = document.createElement('div')
+    htmx.__handleTriggerHeader('{"myEvent": {"target": "#nonexistent", "data": "test"}}', container)
 
-        document.addEventListener('myEvent', () => { eventFired = true })
+    assert.isTrue(eventFired)
+  })
 
-        try {
-            htmx.__handleTriggerHeader('myEvent', disconnectedElt)
-            assert.isTrue(eventFired)
-        } finally {
-            document.removeEventListener('myEvent', () => {})
-        }
+  it('uses document.body if element is not connected', function () {
+    let eventFired = false
+    let disconnectedElt = document.createElement('div')
+
+    document.addEventListener('myEvent', () => {
+      eventFired = true
     })
 
-    it('passes through object detail as-is when it is an object', function () {
-        let eventDetail = null
-        let container = createProcessedHTML('<div></div>')
-        container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
+    try {
+      htmx.__handleTriggerHeader('myEvent', disconnectedElt)
+      assert.isTrue(eventFired)
+    } finally {
+      document.removeEventListener('myEvent', () => {})
+    }
+  })
 
-        htmx.__handleTriggerHeader('{"myEvent": {"foo": "bar", "baz": 123}}', container)
-
-        assert.equal(eventDetail.foo, 'bar')
-        assert.equal(eventDetail.baz, 123)
-        assert.isUndefined(eventDetail.value)
+  it('passes through object detail as-is when it is an object', function () {
+    let eventDetail = null
+    let container = createProcessedHTML('<div></div>')
+    container.addEventListener('myEvent', e => {
+      eventDetail = e.detail
     })
 
-    it('wraps non-object detail in value property', function () {
-        let eventDetail = null
-        let container = createProcessedHTML('<div></div>')
-        container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
+    htmx.__handleTriggerHeader('{"myEvent": {"foo": "bar", "baz": 123}}', container)
 
-        htmx.__handleTriggerHeader('{"myEvent": 42}', container)
+    assert.equal(eventDetail.foo, 'bar')
+    assert.equal(eventDetail.baz, 123)
+    assert.isUndefined(eventDetail.value)
+  })
 
-        assert.equal(eventDetail.value, 42)
+  it('wraps non-object detail in value property', function () {
+    let eventDetail = null
+    let container = createProcessedHTML('<div></div>')
+    container.addEventListener('myEvent', e => {
+      eventDetail = e.detail
     })
 
-});
+    htmx.__handleTriggerHeader('{"myEvent": 42}', container)
+
+    assert.equal(eventDetail.value, 42)
+  })
+})

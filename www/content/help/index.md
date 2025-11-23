@@ -90,7 +90,6 @@ title = "Help"
   </a>
 </div>
 
-
 ## Team
 
 <div class="not-prose grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 my-8 max-w-6xl mx-auto">
@@ -185,7 +184,6 @@ title = "Help"
     </p>
   </a>
 </div>
-
 
 ## Training
 

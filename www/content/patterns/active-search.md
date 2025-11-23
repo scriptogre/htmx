@@ -2,6 +2,7 @@
 title = "Active Search"
 template = "demo.html"
 +++
+
 This example actively searches a contacts database as the user enters text.
 
 We start with a search input and an empty table:
@@ -9,43 +10,45 @@ We start with a search input and an empty table:
 ```html
 <h3>
   Search Contacts
-  <span class="htmx-indicator">
-    <img src="/img/bars.svg" alt=""/> Searching...
-   </span>
+  <span class="htmx-indicator"> <img src="/img/bars.svg" alt="" /> Searching... </span>
 </h3>
-<input class="form-control" type="search"
-       name="search" placeholder="Begin Typing To Search Users..."
-       hx-post="/search"
-       hx-trigger="input changed delay:500ms, keyup[key=='Enter'], load"
-       hx-target="#search-results"
-       hx-indicator=".htmx-indicator">
+<input
+  class="form-control"
+  type="search"
+  name="search"
+  placeholder="Begin Typing To Search Users..."
+  hx-post="/search"
+  hx-trigger="input changed delay:500ms, keyup[key=='Enter'], load"
+  hx-target="#search-results"
+  hx-indicator=".htmx-indicator"
+/>
 
 <table class="table">
-    <thead>
+  <thead>
     <tr>
       <th>First Name</th>
       <th>Last Name</th>
       <th>Email</th>
     </tr>
-    </thead>
-    <tbody id="search-results">
-    </tbody>
+  </thead>
+  <tbody id="search-results"></tbody>
 </table>
 ```
 
 The input issues a `POST` to `/search` on the [`input`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event) event and sets the body of the table to be the resulting content.
 
-We add the `delay:500ms` modifier to the trigger to delay sending the query until the user stops typing.  Additionally,
+We add the `delay:500ms` modifier to the trigger to delay sending the query until the user stops typing. Additionally,
 we add the `changed` modifier to the trigger to ensure we don't send new queries when the user doesn't change the
 value of the input (e.g. they hit an arrow key, or pasted the same value).
 
 We can use multiple triggers by separating them with a comma, this way we add 2 more triggers:
+
 - `keyup[key=='Enter']` triggers once enter is pressed. We use [event filters](/attributes/hx-trigger#standard-event-filters) here to check for [the key property in the KeyboardEvent object](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key).
 - `load` in order to show all results initially on load.
 
 Finally, we show an indicator when the search is in flight with the `hx-indicator` attribute.
 
-[//]: # ({{ demo_environment&#40;&#41; }})
+[//]: # '{{ demo_environment() }}'
 
 <script>
     

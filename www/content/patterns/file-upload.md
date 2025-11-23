@@ -2,6 +2,7 @@
 title = "File Uploads"
 template = "demo.html"
 +++
+
 Upload files with progress tracking and validation handling. Use `multipart/form-data` encoding.
 
 ## Upload with Progress
@@ -10,7 +11,7 @@ Create a form with multipart encoding:
 
 ```html
 <form hx-encoding="multipart/form-data" hx-post="/upload">
-  <input type="file" name="file">
+  <input type="file" name="file" />
   <button>Upload</button>
   <progress id="progress" value="0" max="100"></progress>
 </form>
@@ -20,13 +21,13 @@ Listen for progress events and update the progress bar:
 
 ```html
 <script>
-  htmx.on('#form', 'htmx:xhr:progress', function(evt) {
-    htmx.find('#progress').setAttribute('value', evt.detail.loaded / evt.detail.total * 100);
-  });
+  htmx.on('#form', 'htmx:xhr:progress', function (evt) {
+    htmx.find('#progress').setAttribute('value', (evt.detail.loaded / evt.detail.total) * 100)
+  })
 </script>
 ```
 
-[//]: # ({{ demo_environment&#40;&#41; }})
+[//]: # '{{ demo_environment() }}'
 
 <form id="upload-form" hx-encoding="multipart/form-data" hx-post="/upload"
       class="space-y-4 p-4 border border-neutral-200 dark:border-neutral-700 rounded mb-8">
@@ -59,10 +60,13 @@ Listen for progress events and update the progress bar:
 Use hyperscript for cleaner syntax:
 
 ```html
-<form hx-encoding="multipart/form-data" hx-post="/upload"
-      _="on htmx:xhr:progress(loaded, total)
-         set #progress.value to (loaded/total)*100">
-  <input type="file" name="file">
+<form
+  hx-encoding="multipart/form-data"
+  hx-post="/upload"
+  _="on htmx:xhr:progress(loaded, total)
+         set #progress.value to (loaded/total)*100"
+>
+  <input type="file" name="file" />
   <button>Upload</button>
   <progress id="progress" value="0" max="100"></progress>
 </form>
@@ -80,7 +84,7 @@ Add `hx-preserve` to keep the file selection:
 
 ```html
 <form enctype="multipart/form-data" hx-post="/submit">
-  <input hx-preserve type="file" name="file">
+  <input hx-preserve type="file" name="file" />
   <button>Submit</button>
 </form>
 ```
@@ -145,7 +149,7 @@ The file stays selected when the form swaps with error messages.
 Place the file input outside the swap target:
 
 ```html
-<input form="form-id" type="file" name="file">
+<input form="form-id" type="file" name="file" />
 
 <form id="form-id" enctype="multipart/form-data" hx-post="/submit">
   <button>Submit</button>

@@ -13,6 +13,7 @@ unused requests. Use this extension carefully!
 ## Installing
 
 The fastest way to install `preload` is to load it via a CDN. Remember to always include the core htmx library before the extension and [enable the extension](#usage).
+
 ```HTML
 <head>
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
@@ -21,22 +22,27 @@ The fastest way to install `preload` is to load it via a CDN. Remember to always
 <body hx-ext="preload">
 ...
 ```
+
 An unminified version is also available at https://cdn.jsdelivr.net/npm/htmx-ext-preload/dist/preload.js.
 
 While the CDN approach is simple, you may want to consider [not using CDNs in production](https://blog.wesleyac.com/posts/why-not-javascript-cdn). The next easiest way to install `preload` is to simply copy it into your project. Download the extension from `https://cdn.jsdelivr.net/npm/htmx-ext-preload`, add it to the appropriate directory in your project and include it where necessary with a `<script>` tag.
 
 For npm-style build systems, you can install `preload` via [npm](https://www.npmjs.com/):
+
 ```bash
 npm install htmx-ext-preload
 ```
+
 After installing, you'll need to use appropriate tooling to bundle `node_modules/htmx-ext-preload/dist/preload.js` (or `.min.js`). For example, you might bundle the extension with htmx core from `node_modules/htmx.org/dist/htmx.js` and project-specific code.
 
 If you are using a bundler to manage your javascript (e.g. Webpack, Rollup):
+
 - Install `htmx.org` and `htmx-ext-preload` via npm
 - Import both packages to your `index.js`
+
 ```JS
 import `htmx.org`;
-import `htmx-ext-preload`; 
+import `htmx-ext-preload`;
 ```
 
 ## Usage
@@ -66,19 +72,21 @@ elements, and all of them will be preloaded. Be careful with this setting, becau
 you preload many more resources than you need.
 
 ```html
-
 <body hx-ext="preload">
-<ul preload>
-    <li><a href="/server/1">This will be preloaded because of the attribute in the node above.</a>
-    <li><a href="/server/2">This will also be preloaded for the same reason.</a>
-    <li><a href="/server/3">This will be preloaded, too. Lorem ipsum.</a>
-</ul>
+  <ul preload>
+    <li>
+      <a href="/server/1">This will be preloaded because of the attribute in the node above.</a>
+    </li>
+    <li><a href="/server/2">This will also be preloaded for the same reason.</a></li>
+    <li><a href="/server/3">This will be preloaded, too. Lorem ipsum.</a></li>
+  </ul>
 </body>
 ```
 
 ### Preloading Forms
 
 The extension can preload some form elements if the form includes `hx-get` attribute or uses `method="get"`. The `preload` attribute can be added to the form or to some of its selected elements. Currently these form elements can be preloaded:
+
 - `<input type="radio>">` will be preloaded as if the radio button was clicked and form submitted
 - `<input type="checkbox">` will be preloaded as if the checkbox was checked and form submitted
 - `<input type="checkbox" checked>` will be preloaded as if the checkbox was unchecked and form submitted
@@ -92,9 +100,8 @@ load or run linked Javascript or Cascading Stylesheet content, whether linked or
 preload images as well, use the following syntax.
 
 ```html
-
 <div hx-ext="preload">
-    <a href="/my-next-page" preload="mouseover" preload-images="true">Next Page</a>
+  <a href="/my-next-page" preload="mouseover" preload-images="true">Next Page</a>
 </div>
 ```
 
@@ -118,17 +125,18 @@ click.
 
 To preload links more aggressively, you can trigger the preload to happen when the user's mouse hovers over the link
 instead. To prevent many resources from being loaded when the user scrolls or moves the mouse across a large list of
-objects, a 100ms delay is built in to this action. If the user's mouse leaves the element *before* this timeout expires,
+objects, a 100ms delay is built in to this action. If the user's mouse leaves the element _before_ this timeout expires,
 then the resource is not preloaded.
 
 Typical users hover over links for several hundred milliseconds before they click, which gives your server even more
 time to respond to the request than the `mousedown` option
-above.  [Test your own hover timing here.](http://instantclick.io/click-test). However, be careful when using this
+above. [Test your own hover timing here.](http://instantclick.io/click-test). However, be careful when using this
 option because it can increase server load by requesting resources unnecessarily.
 
 ```html
-<a href="/server/1" preload="mouseover">This will be preloaded when the user's mouse remains over it for more than
-    100ms.</a>
+<a href="/server/1" preload="mouseover"
+  >This will be preloaded when the user's mouse remains over it for more than 100ms.</a
+>
 ```
 
 #### preload="custom-event-name"
@@ -163,13 +171,13 @@ the screen, saving you 300ms of waiting time on Android, and 450ms on iOS.
 
 ### Limitations
 
-* Links must be marked with a `preload` attribute, or have an ancestor node that has the `preload` attribute.
-* Only `GET` transactions (including `<a href="">` and `hx-get=""`) can be preloaded. Following REST principles, `GET`
+- Links must be marked with a `preload` attribute, or have an ancestor node that has the `preload` attribute.
+- Only `GET` transactions (including `<a href="">` and `hx-get=""`) can be preloaded. Following REST principles, `GET`
   transactions are assumed to not make any significant changes to a resource. Transactions that can potentially make a
   change (such as `POST`, `PUT`, and `DELETE`) will not be preloaded under any circumstances.
-* When listening to `mouseover` events, preload waits for 100ms before downloading the linked resource. If the mouse
+- When listening to `mouseover` events, preload waits for 100ms before downloading the linked resource. If the mouse
   leaves the resource before this timeout expires, the resource is not preloaded.
-* Preloaded responses will only be cached in the browser if the response headers allow it. For example, the response
+- Preloaded responses will only be cached in the browser if the response headers allow it. For example, the response
   header `Cache-Control: private, max-age=60` allows the browser to cache the response,
   whereas `Cache-Control: no-cache` prevents it.
 

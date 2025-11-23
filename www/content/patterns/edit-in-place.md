@@ -2,6 +2,7 @@
 title = "Edit in Place"
 template = "demo.html"
 +++
+
 <style type="text/tailwindcss">
 /* macOS 9 Platinum Demo Window */
 .demo-window {
@@ -38,19 +39,14 @@ In view mode, display the current value(s) with a way to switch to **Edit Mode**
 
 ```html
 <div hx-target:inherited="this">
+  <p>Name: <span>{{ user.name }}</span></p>
 
-    <p>Name: <span>{{ user.name }}</span></p>
-
-    <!-- On click, switch to edit mode -->
-    <button hx-get="/users/1/edit"
-            hx-swap="outerHTML">
-        Edit
-    </button>
-
+  <!-- On click, switch to edit mode -->
+  <button hx-get="/users/1/edit" hx-swap="outerHTML">Edit</button>
 </div>
 ```
-_The \<button\> `GET`s the edit form & replaces the parent `<div>` with it._
 
+_The \<button\> `GET`s the edit form & replaces the parent `<div>` with it._
 
 ### 2. Edit Mode
 
@@ -58,35 +54,29 @@ In edit mode, show a form with **Save** & **Cancel** options.
 
 ```html
 <!-- On submit, save changes & return to view mode -->
-<form hx-put="/users/1"
-      hx-target:inherited="this"
-      hx-swap:inherited="outerHTML">
+<form hx-put="/users/1" hx-target:inherited="this" hx-swap:inherited="outerHTML">
+  <p>Name: <input name="name" value="{{ user.name }}" autofocus /></p>
 
-    <p>Name: <input name="name" value="{{ user.name }}" autofocus></p>
+  <button type="submit">Save</button>
 
-    <button type="submit">
-        Save
-    </button>
-
-    <!-- On click, return to view mode (without saving) -->
-    <button type="button" hx-get="/users/1">
-        Cancel
-    </button>
-
+  <!-- On click, return to view mode (without saving) -->
+  <button type="button" hx-get="/users/1">Cancel</button>
 </form>
 ```
+
 _The form `PUT`s the updated value to the server, which returns the updated view mode HTML to replace the form._
 
 **Note:**
 
 The endpoints follow REST conventions:
+
 - `GET /users/1` - Retrieve the current view
 - `GET /users/1/edit` - Retrieve the edit form
 - `PUT /users/1` - Update the resource
 
 The URL represents the resource (`/users/1`), and the HTTP method indicates the action.
 
-[//]: # ({{ demo_environment&#40;&#41; }})
+[//]: # '{{ demo_environment() }}'
 
 <script>
 const user = { name: "Joe Smith" };

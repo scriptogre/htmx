@@ -11,7 +11,7 @@ The `hx-optimistic` attribute allows you to show optimistic content immediately 
 Load the extension in your htmx configuration:
 
 ```javascript
-htmx.config.extensions = 'optimistic';
+htmx.config.extensions = 'optimistic'
 ```
 
 Or load the extension file directly (if available as a separate extension).
@@ -22,11 +22,11 @@ The attribute takes a CSS selector that points to the optimistic content to swap
 
 ```html
 <div hx-post="/like" hx-optimistic="#liked-state">
-    <div id="unliked-state">♡ Like</div>
+  <div id="unliked-state">♡ Like</div>
 </div>
 
 <template id="liked-state">
-    <div>♥ Liked!</div>
+  <div>♥ Liked!</div>
 </template>
 ```
 
@@ -39,11 +39,11 @@ The attribute takes a CSS selector that points to the optimistic content to swap
 
 ## Notes
 
-* Optimistic content is swapped in immediately when the request is triggered
-* If the request fails, the optimistic content is rolled back to the original
-* Useful for providing immediate feedback to users
-* Can use `<template>` tags or any hidden element as the source of optimistic content
+- Optimistic content is swapped in immediately when the request is triggered
+- If the request fails, the optimistic content is rolled back to the original
+- Useful for providing immediate feedback to users
+- Can use `<template>` tags or any hidden element as the source of optimistic content
 
 ## See Also
 
-* [Extensions](@/docs.md#extensions)
+- [Extensions](@/docs.md#extensions)

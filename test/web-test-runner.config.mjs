@@ -1,10 +1,7 @@
-import {
-  summaryReporter,
-  defaultReporter
-} from '@web/test-runner'
+import { summaryReporter, defaultReporter } from '@web/test-runner'
 
 const config = {
-  testRunnerHtml: (testFramework) => `
+  testRunnerHtml: testFramework => `
   <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -45,12 +42,13 @@ const config = {
   nodeResolve: true,
   coverage: true,
   coverageConfig: {
-    include: ['src/htmx.js']
+    include: ['src/htmx.js'],
   },
-  files: [
-    'test/tests/**/*.js'
+  files: ['test/tests/**/*.js'],
+  reporters: [
+    summaryReporter({ flatten: false, reportTestLogs: false, reportTestErrors: true }),
+    defaultReporter({ reportTestProgress: true, reportTestResults: true }),
   ],
-  reporters: [summaryReporter({ flatten: false, reportTestLogs: false, reportTestErrors: true }), defaultReporter({ reportTestProgress: true, reportTestResults: true })]
 }
 
 export default config

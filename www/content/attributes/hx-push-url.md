@@ -19,9 +19,7 @@ The possible values of this attribute are:
 Here is an example:
 
 ```html
-<div hx-get="/account" hx-push-url="true">
-  Go to My Account
-</div>
+<div hx-get="/account" hx-push-url="true">Go to My Account</div>
 ```
 
 This will cause htmx to snapshot the current DOM to `localStorage` and push the URL `/account' into the browser location bar.
@@ -29,13 +27,11 @@ This will cause htmx to snapshot the current DOM to `localStorage` and push the 
 Another example:
 
 ```html
-<div hx-get="/account" hx-push-url="/account/home">
-  Go to My Account
-</div>
+<div hx-get="/account" hx-push-url="/account/home">Go to My Account</div>
 ```
 
 This will push the URL `/account/home' into the location history.
 
 ## Notes
 
-* The [`HX-Push-Url` response header](@/headers/hx-push-url.md) has similar behavior and can override this attribute.
+- The [`HX-Push-Url` response header](@/headers/hx-push-url.md) has similar behavior and can override this attribute.

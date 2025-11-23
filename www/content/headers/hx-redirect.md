@@ -5,7 +5,7 @@ description = """\
   reload."""
 +++
 
-This response header can be used to trigger a client side redirection to a new url that will do a full reload of the whole page. It uses the browser to redirect to the new location which can be useful when redirecting to non htmx endpoints that may contain different HTML `head` content or scripts.  See [`HX-Location`](@/headers/hx-location.md) if you want more control over the redirect or want to use ajax requests instead of full browser reloads. 
+This response header can be used to trigger a client side redirection to a new url that will do a full reload of the whole page. It uses the browser to redirect to the new location which can be useful when redirecting to non htmx endpoints that may contain different HTML `head` content or scripts. See [`HX-Location`](@/headers/hx-location.md) if you want more control over the redirect or want to use ajax requests instead of full browser reloads.
 
 A sample response would be:
 

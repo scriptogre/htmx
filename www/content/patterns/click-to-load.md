@@ -2,25 +2,29 @@
 title = "Click to Load"
 template = "demo.html"
 +++
-This example shows how to implement click-to-load the next page in a table of data.  The crux of the demo is
+
+This example shows how to implement click-to-load the next page in a table of data. The crux of the demo is
 the final row:
 
 ```html
 <tr id="replaceMe">
   <td colspan="3">
-    <button class='btn primary' hx-get="/contacts/?page=2"
-                        hx-target="#replaceMe"
-                        hx-swap="outerHTML">
-         Load More Agents... <img class="htmx-indicator" src="/img/bars.svg" alt="">
+    <button
+      class="btn primary"
+      hx-get="/contacts/?page=2"
+      hx-target="#replaceMe"
+      hx-swap="outerHTML"
+    >
+      Load More Agents... <img class="htmx-indicator" src="/img/bars.svg" alt="" />
     </button>
   </td>
 </tr>
 ```
 
 This row contains a button that will replace the entire row with the next page of
-results (which will contain a button to load the *next* page of results).  And so on.
+results (which will contain a button to load the _next_ page of results). And so on.
 
-[//]: # ({{ demo_environment&#40;&#41; }})
+[//]: # '{{ demo_environment() }}'
 
 <script>
     //=========================================================================

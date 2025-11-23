@@ -11,25 +11,30 @@ markup where the dialog will be loaded:
 
 ```html
 <button
-    hx-get="/modal"
-    hx-target="#modals-here"
-    hx-trigger="click"
-    data-bs-toggle="modal"
-    data-bs-target="#modals-here"
-    class="btn primary">Open Modal</button>
+  hx-get="/modal"
+  hx-target="#modals-here"
+  hx-trigger="click"
+  data-bs-toggle="modal"
+  data-bs-target="#modals-here"
+  class="btn primary"
+>
+  Open Modal
+</button>
 
-<div id="modals-here"
-    class="modal modal-blur fade"
-    style="display: none"
-    aria-hidden="false"
-    tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
-        <div class="modal-content"></div>
-    </div>
+<div
+  id="modals-here"
+  class="modal modal-blur fade"
+  style="display: none"
+  aria-hidden="false"
+  tabindex="-1"
+>
+  <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
+    <div class="modal-content"></div>
+  </div>
 </div>
 ```
 
-This button uses a `GET` request to `/modal` when this button is clicked.  The
+This button uses a `GET` request to `/modal` when this button is clicked. The
 contents of this file will be added to the DOM underneath the `#modals-here` DIV.
 
 The server responds with a slightly modified version of Bootstrap's standard modal

@@ -16,7 +16,7 @@ tag = ["posts"]
 People interested in htmx often ask us about component libraries.
 React and other JavaScript frameworks have great ecosystems of pre-built components that can be imported into your project; htmx doesn't really have anything similar.
 
-The first and most important thing to understand is that htmx doesn't preclude you from using *anything*.
+The first and most important thing to understand is that htmx doesn't preclude you from using _anything_.
 Because htmx-based websites are [often multi-page apps](https://unplannedobsolescence.com/blog/less-htmx-is-more/), each page is a blank canvas on which you can import as much or as little JavaScript as you like.
 If your app is largely hypermedia, but you want an interactive, React-based calendar for one page, just import it on that one page with a script tag.
 
@@ -53,9 +53,25 @@ I built this as a regular HTML table ([closing tags are omitted](https://develop
 
 ```html
 <table>
-  <tr><th>Name    <th>Carousel  <th>Roller Coaster
-  <tr><td>Alex    <td>Yes       <td>No
-  <tr><td>Sophia  <td>Yes       <td>Yes
+  <tr>
+    <th>Name</th>
+    <th>Carousel</th>
+    <th>
+      Roller Coaster
+      <tr>
+        <td>Alex</td>
+        <td>Yes</td>
+        <td>
+          No
+          <tr>
+            <td>Sophia</td>
+            <td>Yes</td>
+            <td>Yes</td>
+          </tr>
+        </td>
+      </tr>
+    </th>
+  </tr>
 </table>
 ```
 

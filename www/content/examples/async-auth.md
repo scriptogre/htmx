@@ -11,12 +11,8 @@ using the [`htmx:confirm`](@/events.md#htmx:confirm) event.
 We first have a button that should not issue a request until an auth token has been retrieved:
 
 ```html
-  <button hx-post="/example" hx-target="next output">
-    An htmx-Powered button
-  </button>
-  <output>
-    --
-  </output>
+<button hx-post="/example" hx-target="next output">An htmx-Powered button</button>
+<output> -- </output>
 ```
 
 Next we will add some scripting to work with an `auth` promise (returned by a library):
@@ -26,25 +22,25 @@ Next we will add some scripting to work with an `auth` promise (returned by a li
   // auth is a promise returned by our authentication system
 
   // await the auth token and store it somewhere
-  let authToken = null;
-  auth.then((token) => {
+  let authToken = null
+  auth.then(token => {
     authToken = token
   })
-  
+
   // gate htmx requests on the auth token
-  htmx.on("htmx:confirm", (e)=> {
+  htmx.on('htmx:confirm', e => {
     // if there is no auth token
-    if(authToken == null) {
+    if (authToken == null) {
       // stop the regular request from being issued
-      e.preventDefault() 
+      e.preventDefault()
       // only issue it once the auth promise has resolved
-      auth.then(() => e.detail.issueRequest()) 
+      auth.then(() => e.detail.issueRequest())
     }
   })
 
   // add the auth token to the request as a header
-  htmx.on("htmx:configRequest", (e)=> {
-    e.detail.headers["AUTH"] = authToken
+  htmx.on('htmx:configRequest', e => {
+    e.detail.headers['AUTH'] = authToken
   })
 </script>
 ```

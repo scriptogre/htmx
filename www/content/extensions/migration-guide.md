@@ -26,10 +26,10 @@ init: function(api) {
 **htmx 4:**
 
 ```javascript
-init: ((internalAPI) => {
-    // Store API reference for later use
-    api = internalAPI;
-});
+init: internalAPI => {
+  // Store API reference for later use
+  api = internalAPI
+}
 ```
 
 **Notes:**
@@ -59,13 +59,13 @@ getSelectors: function() {
 **Migration approach:**
 
 ```javascript
-htmx_after_init: ((elt) => {
-    // Check if element has your attribute
-    let value = api.attributeValue(elt, "hx-my-attr");
-    if (value) {
-        // Initialize for this element
-    }
-});
+htmx_after_init: elt => {
+  // Check if element has your attribute
+  let value = api.attributeValue(elt, 'hx-my-attr')
+  if (value) {
+    // Initialize for this element
+  }
+}
 ```
 
 **Real-world example:**
@@ -205,13 +205,13 @@ transformResponse: function(text, xhr, elt) {
 **Migration approach:**
 
 ```javascript
-htmx_after_request: ((elt, detail) => {
-    // Skip if SSE (ctx.text not set for SSE responses)
-    if (!detail.ctx.text) return;
+htmx_after_request: (elt, detail) => {
+  // Skip if SSE (ctx.text not set for SSE responses)
+  if (!detail.ctx.text) return
 
-    // Transform the response text
-    detail.ctx.text = transformText(detail.ctx.text);
-});
+  // Transform the response text
+  detail.ctx.text = transformText(detail.ctx.text)
+}
 ```
 
 **Real-world example (client-side-templates extension):**
@@ -233,7 +233,7 @@ transformResponse: function(text, xhr, elt) {
 htmx_after_request: (elt, detail) => {
     // Skip if SSE (ctx.text not set for SSE responses)
     if (!detail.ctx.text) return;
-    
+
     var mustacheTemplate = elt.closest('[mustache-template]');
     if (mustacheTemplate) {
         var data = JSON.parse(detail.ctx.text);
@@ -272,7 +272,7 @@ isInlineSwap: function(swapStyle) {
 
 **Important for OOB swaps:**
 
-In htmx 2.x, `isInlineSwap` was used to prevent automatic stripping of wrapper elements for custom outer swap styles. In htmx 4, OOB swaps automatically strip the wrapper element for non-outer swap styles (those not starting with "outer"). 
+In htmx 2.x, `isInlineSwap` was used to prevent automatic stripping of wrapper elements for custom outer swap styles. In htmx 4, OOB swaps automatically strip the wrapper element for non-outer swap styles (those not starting with "outer").
 
 If your custom swap style needs the wrapper element:
 
@@ -282,17 +282,18 @@ If your custom swap style needs the wrapper element:
 
 ```javascript
 htmx_handle_swap: (target, detail) => {
-    if (detail.swapSpec.style === 'my-outer-swap') {
-        // For OOB swaps, use unstripped if available
-        let frag = (detail.type === 'oob' && detail.unstripped) || detail.fragment;
-        target.parentNode.replaceChild(frag.firstElementChild, target);
-        return true;
-    }
-    return false;
+  if (detail.swapSpec.style === 'my-outer-swap') {
+    // For OOB swaps, use unstripped if available
+    let frag = (detail.type === 'oob' && detail.unstripped) || detail.fragment
+    target.parentNode.replaceChild(frag.firstElementChild, target)
+    return true
+  }
+  return false
 }
 ```
 
 **Notes:**
+
 - `detail.unstripped` contains the original fragment before stripping (only set when stripping occurs)
 - `detail.type` indicates if this is an 'oob', 'main', or 'partial' swap
 - For main swaps, stripping doesn't occur automatically
@@ -316,14 +317,14 @@ handleSwap: function(swapStyle, target, fragment, settleInfo) {
 **htmx 4:**
 
 ```javascript
-htmx_handle_swap: ((target, detail) => {
-    let { swapSpec, fragment } = detail;
-    if (swapSpec.style === "my-swap") {
-        target.appendChild(fragment);
-        return true; // Handled
-    }
-    return false; // Not handled
-});
+htmx_handle_swap: (target, detail) => {
+  let { swapSpec, fragment } = detail
+  if (swapSpec.style === 'my-swap') {
+    target.appendChild(fragment)
+    return true // Handled
+  }
+  return false // Not handled
+}
 ```
 
 **Real-world example (morphdom-swap extension):**
@@ -388,12 +389,12 @@ encodeParameters: function(xhr, parameters, elt) {
 **Migration approach:**
 
 ```javascript
-htmx_config_request: ((elt, detail) => {
-    // Convert FormData to JSON
-    let data = Object.fromEntries(detail.ctx.request.body);
-    detail.ctx.request.body = JSON.stringify(data);
-    detail.ctx.request.headers["Content-Type"] = "application/json";
-});
+htmx_config_request: (elt, detail) => {
+  // Convert FormData to JSON
+  let data = Object.fromEntries(detail.ctx.request.body)
+  detail.ctx.request.body = JSON.stringify(data)
+  detail.ctx.request.headers['Content-Type'] = 'application/json'
+}
 ```
 
 **Real-world example (json-enc extension):**
@@ -424,7 +425,7 @@ encodeParameters: function(xhr, parameters, elt) {
 // htmx 4
 htmx_config_request: (elt, detail) => {
     detail.ctx.request.headers['Content-Type'] = 'application/json';
-    
+
     const object = {};
     detail.ctx.request.body.forEach(function(value, key) {
         if (Object.hasOwn(object, key)) {

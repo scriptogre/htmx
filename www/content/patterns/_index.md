@@ -60,7 +60,8 @@ Common UX patterns implemented with htmx. Copy and adapt for your project.
 
 <div class="not-prose mt-8">
 
-[//]: # (TODO: migrate to Astro to not require doing stuff like this)
+[//]: # 'TODO: migrate to Astro to not require doing stuff like this'
+
 {{ pattern_groups() }}
 
 </div>
@@ -85,7 +86,6 @@ Common UX patterns implemented with htmx. Copy and adapt for your project.
         </p>
     </div>
 </a>
-
 
 <a href="/server-examples" class="not-prose group mt-8 p-4 text-xs flex items-center gap-4 border border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-700 rounded-[3px] transition">
     <!-- GitHub Logo -->

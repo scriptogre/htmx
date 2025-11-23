@@ -89,7 +89,6 @@ experiences, and leverage a wealth of existing tools and libraries.
 <figcaption>Gumroad Helper Before & After - Click Image To View</figcaption>
 </figure>
 
-
 This experience has reinforced a valuable lesson: while it's important to consider lightweight alternatives, it's
 equally crucial to choose technologies that can grow with your project and support your long-term vision. For Helper,
 React and Next.js have proven to be that choice.

@@ -11,19 +11,19 @@ authors = ["Carson Gross"]
 tag = ["posts"]
 +++
 
-**TLDR:** If you split your API into Data and Application APIs, [as advocated here](https://max.engineer/server-informed-ui), 
-you should consider changing your Application API from JSON to Hypermedia (HTML) & using a *hypermedia-oriented* library like
+**TLDR:** If you split your API into Data and Application APIs, [as advocated here](https://max.engineer/server-informed-ui),
+you should consider changing your Application API from JSON to Hypermedia (HTML) & using a _hypermedia-oriented_ library like
 [htmx](/) to reap the benefits of the hypermedia model (simplicity, reliability, flexibility, etc.)
 
 ## The Problem
 
-Recently, [Max Chernyak](https://max.engineer/) wrote an essay entitled 
-[Don’t Build A General Purpose API To Power Your Own Front End](https://max.engineer/server-informed-ui).  His
+Recently, [Max Chernyak](https://max.engineer/) wrote an essay entitled
+[Don’t Build A General Purpose API To Power Your Own Front End](https://max.engineer/server-informed-ui). His
 TLDR is this:
 
 > YAGNI, unless you’re working in a big company with federated front-ends or GraphQL.
 
-He then discusses some of the different needs of a general purpose API and your application API.  He lists the 
+He then discusses some of the different needs of a general purpose API and your application API. He lists the
 following as needs for a generic API:
 
 <div style="padding-left:64px">
@@ -54,29 +54,29 @@ Max's recommendation is to split the API into two "halves": a generic API and an
 
 > I suggest you stop treating your frontend as some generic API client, and start treating it as a half of your app.
 >
->  Imagine if you could just send it the whole “page” worth of JSON. Make an endpoint for `/page/a` and render the whole JSON for `/page/a` there. 
->  Do this for every page. Don’t force your front-end developers to send a bunch of individual requests to render a complex page. 
->  Stop annoying them with contrived limitations. Align yourselves.
+> Imagine if you could just send it the whole “page” worth of JSON. Make an endpoint for `/page/a` and render the whole JSON for `/page/a` there.
+> Do this for every page. Don’t force your front-end developers to send a bunch of individual requests to render a complex page.
+> Stop annoying them with contrived limitations. Align yourselves.
 
 ## Right about What's Wrong
 
-I agree entirely with Max on the problem here.  
+I agree entirely with Max on the problem here.
 
-I would particularly emphasise the fact that the generic API needs to be stable, whereas the application API must change 
-rapidly to address application needs.  
+I would particularly emphasise the fact that the generic API needs to be stable, whereas the application API must change
+rapidly to address application needs.
 
 Jean-Jacques Dubray, in [this article](https://www.infoq.com/articles/no-more-mvc-frameworks/) relates the following sad state of affairs for
 API designers:
 
-> The worst part of my job these days is designing APIs for front-end developers. The conversation goes inevitably as: 
+> The worst part of my job these days is designing APIs for front-end developers. The conversation goes inevitably as:
 >
->  Dev – So, this screen has data element x,y,z… could you please create an API with the response format {x: , y:, z: }
+> Dev – So, this screen has data element x,y,z… could you please create an API with the response format {x: , y:, z: }
 >
->  Me – Ok
+> Me – Ok
 
-This is a perfect encapsulation of the tension that Max has noticed, where API engineers want to design general, 
+This is a perfect encapsulation of the tension that Max has noticed, where API engineers want to design general,
 stable APIs, but are subject to the whims of a quickly-changing UI with complex data needs that are often best
-solved on *the server side*.
+solved on _the server side_.
 
 As Max points out:
 
@@ -84,32 +84,32 @@ As Max points out:
 
 ## Wrong about What's Right
 
-So, again, I agree entirely with Max that there is a Data/App API Impedance Mismatch problem and I applaud him for suggesting 
+So, again, I agree entirely with Max that there is a Data/App API Impedance Mismatch problem and I applaud him for suggesting
 that, rather than bailing out to a solution to like GraphQL, you split the APIs into two.
 
 However, there is a **next step** to take:
 
-Once you have split your application API from your generic data API, *you are no longer bound by the constraints of
- a public data API* and are free to reconsider the *entire form* of that application API.  We can do whatever we'd like with 
- it, so let's get a bit expansive in our thinking.
- 
-Note that core problems with the application API are rapid change and page (or resource) specific tuning.  It turns out that we
-have a very good technology for dealing with *exactly* this problem: [Hypermedia](https://en.wikipedia.org/wiki/Hypermedia)!  
+Once you have split your application API from your generic data API, _you are no longer bound by the constraints of
+a public data API_ and are free to reconsider the _entire form_ of that application API. We can do whatever we'd like with
+it, so let's get a bit expansive in our thinking.
 
-Hypermedia, by way of HATEOAS, makes API churn [much less of a problem](https://intercoolerjs.org/2016/02/17/api-churn-vs-security.html).  When you change the shape of your hypermedia API, well, 
-that's fine: the *new* API is simply reflected in the *new* HTML returned by the server.  You can add and modify end points
+Note that core problems with the application API are rapid change and page (or resource) specific tuning. It turns out that we
+have a very good technology for dealing with _exactly_ this problem: [Hypermedia](https://en.wikipedia.org/wiki/Hypermedia)!
+
+Hypermedia, by way of HATEOAS, makes API churn [much less of a problem](https://intercoolerjs.org/2016/02/17/api-churn-vs-security.html). When you change the shape of your hypermedia API, well,
+that's fine: the _new_ API is simply reflected in the _new_ HTML returned by the server. You can add and modify end points
 and, lo and behold (to a first order of approximation) your clients (that is, browsers) don't need to be updated.
 
 The browsers simply see the new HTML, and [the humans driving them react to the new functionality appropriately](https://intercoolerjs.org/2016/05/08/hatoeas-is-for-humans.html).
 
-So, while I feel Max is on the right track, I also think he *doesn't go far enough*: once you have made the mental 
-jump to solving the Data/APP API Impedance Mismatch problem by splitting the two into separate concerns, it is only a 
+So, while I feel Max is on the right track, I also think he _doesn't go far enough_: once you have made the mental
+jump to solving the Data/APP API Impedance Mismatch problem by splitting the two into separate concerns, it is only a
 bit further down the road to rediscovering the advantages of hypermedia.
 
 You may object that: "Oh, but hypermedia applications aren't very usable, we don't want to go back to web 1.0."
 
-That is a perfectly reasonable objection, but people have been working on that problem and there are now many libraries 
-available that address the usability issues of HTML *within the hypermedia model*.  
+That is a perfectly reasonable objection, but people have been working on that problem and there are now many libraries
+available that address the usability issues of HTML _within the hypermedia model_.
 
 Two of my favorites are [unpoly](https://unpoly.com/) and, of course, my own [htmx](/).
 
@@ -118,8 +118,8 @@ Two of my favorites are [unpoly](https://unpoly.com/) and, of course, my own [ht
 If you switch to a hypermedia application API (which really just means "use HTML, like you used to") then you get all
 of the benefits of the REST-ful web model (simplicity, reliability, etc.) and of server-side rendering in mature web frameworks
 (caching, SQL tuning, etc.)
-  
-And, by choosing a hypermedia-oriented front end technology like htmx, you can create [excellent user experiences](/examples) within 
+
+And, by choosing a hypermedia-oriented front end technology like htmx, you can create [excellent user experiences](/examples) within
 that model.
 
 Everything old is new again, but, this time, a little bit better.

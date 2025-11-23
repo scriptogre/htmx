@@ -125,24 +125,12 @@
           "pattern": {
             "or": [
               {
-                "items": [
-                  "/js/events"
-                ],
-                "template": [
-                  "hx-on:",
-                  "#...",
-                  "#item:JS event"
-                ]
+                "items": ["/js/events"],
+                "template": ["hx-on:", "#...", "#item:JS event"]
               },
               {
-                "items": [
-                  "/js/htmx-events"
-                ],
-                "template": [
-                  "hx-on::",
-                  "#...",
-                  "#item:HTMX event"
-                ]
+                "items": ["/js/htmx-events"],
+                "template": ["hx-on::", "#...", "#item:HTMX event"]
               }
             ]
           },
@@ -337,14 +325,8 @@
         {
           "name": "HTMX event",
           "pattern": {
-            "items": [
-              "/js/htmx-events"
-            ],
-            "template": [
-              "htmx:",
-              "$...",
-              "#item:HTMX event"
-            ]
+            "items": ["/js/htmx-events"],
+            "template": ["htmx:", "$...", "#item:HTMX event"]
           }
         }
       ],
