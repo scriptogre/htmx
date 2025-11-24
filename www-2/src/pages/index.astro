@@ -1,9 +1,9 @@
 ---
 import BaseLayout from './_base.astro';
-import Sponsors from "../components/Sponsors.astro";
-import EasterEggs from "../components/EasterEggs.astro";
-import Hero from "../components/Hero.astro";
-import CdnGenerator from "../components/CDNGenerator.astro";
+import Sponsors from "../components/index/Sponsors.astro";
+import EasterEggs from "../components/index/EasterEggs.astro";
+import Hero from "../components/index/Hero.astro";
+import CDNGenerator from "../components/index/CDNGenerator.astro";
 ---
 
 <BaseLayout
@@ -15,7 +15,7 @@ import CdnGenerator from "../components/CDNGenerator.astro";
 
     <Hero />
 
-    <CdnGenerator />
+    <CDNGenerator />
 
     <!-- TODO: Add content/index.md here -->
 

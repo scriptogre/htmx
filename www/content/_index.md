@@ -2,7 +2,7 @@
 insert_anchor_links = "heading"
 +++
 
-<!-- Hero Section -->
+<!-- IndexHero Section -->
 <div id="hero-section" class="not-prose pt-8 pb-12 sm:pt-16 sm:pb-24 w-screen relative left-1/2 -ml-[50vw] overflow-hidden">
     <div id="hero" class="relative text-center transition starting:opacity-0 duration-500">
       <!-- Logo -->

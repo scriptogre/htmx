@@ -1,0 +1,171 @@
+---
+// Expect nav to be passed as a prop, or define them here if static
+const { navigation = [] } = Astro.props;
+
+// Helper: Check if link is active
+const isCurrent = (href) => {
+    if (href === '/' && Astro.url.pathname === '/') return true;
+    if (href !== '/' && Astro.url.pathname.startsWith(href)) return true;
+    return false;
+};
+---
+
+<header role="banner" class="sticky top-0 z-20 bg-neutral-25 dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+    <div class="flex items-center justify-between max-w-[1680px] mx-auto px-4 py-3 sm:px-6 lg:px-6 xl:px-8 sm:py-4 gap-12">
+
+        <!-- LOGO -->
+        <a href="/" aria-label="HTMX Homepage" class="group/logo text-[28px] whitespace-nowrap font-mono tracking-tight font-extrabold inline-flex items-center text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 shrink-0 transition rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+            <span aria-hidden="true">&lt;</span>
+            <b class="text-blue-600 dark:text-blue-400 group-hover/logo:text-blue-700 dark:group-hover/logo:text-blue-300 transition" aria-hidden="true">/</b>
+            <span aria-hidden="true">&gt;</span>
+            <span class="font-chicago text-xl sm:text-2xl ms-2 inline-block relative">
+                <span class="group-hover/logo:opacity-0 transition-opacity duration-150">htm<b class="text-blue-600 dark:text-blue-400">x</b></span>
+                <span class="absolute inset-0 opacity-0 group-hover/logo:opacity-100 transition-opacity duration-150">hom<b class="text-blue-600 dark:text-blue-400">e</b></span>
+            </span>
+        </a>
+
+        <!-- ************************************************************************* -->
+        <!-- DESKTOP NAVIGATION                                                        -->
+        <!-- ************************************************************************* -->
+        <nav aria-label="Main Navigation" class="hidden lg:flex items-center gap-4 xl:gap-6 flex-1" hx-preload:inherited="mouseenter">
+            <ul class="flex gap-6 items-center justify-center text-base lg:text-base xl:text-lg font-chicago tracking-tight">
+                {navigation.map((item) => (
+                        <li class={item.dropdown ? "relative group/dropdown focus-within:z-40" : ""}>
+                            {item.dropdown ? (
+                                    <button
+                                            type="button"
+                                            aria-haspopup="true"
+                                            aria-expanded="false"
+                                            class="px-3 py-1 text-neutral-600 dark:text-neutral-400 cursor-default inline-flex items-center gap-1 rounded-[2px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                                    >
+                                        {item.name}
+                                        <svg class="size-4 translate-y-0.5 translate-x-0.5 opacity-60" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>
+                                    </button>
+                            ) : (
+                                    <a
+                                            href={item.href}
+                                            title={item.title}
+                                            aria-current={isCurrent(item.href) ? 'page' : undefined}
+                                            class="px-3 py-1 transition hover:underline text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 aria-[current=page]:text-blue-600 dark:aria-[current=page]:text-blue-400 rounded-[2px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                                    >
+                                        {item.name}
+                                    </a>
+                            )}
+                            {/* Dropdown Menu */}
+                            {item.dropdown && (
+                                    <ul class="opacity-0 invisible group-hover/dropdown:opacity-100 group-hover/dropdown:visible group-focus-within/dropdown:opacity-100 group-focus-within/dropdown:visible absolute top-full right-0 min-w-[200px] transition-all duration-200 ease-out origin-top-right z-30 mt-2 bg-white dark:bg-neutral-850 border border-neutral-200 dark:border-neutral-800 font-chicago rounded-[3px] shadow-[4px_4px_0_0_rgba(0,0,0,0.25)] dark:shadow-[2px_2px_0_0_rgba(255,255,255,0.1)] p-1.5">
+                                        {item.dropdown.map((item) => (
+                                                <li>
+                                                    <a href={item.href} title={item.title}
+                                                       class="flex items-center gap-3 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-blue-600 hover:text-white rounded-[2px] transition focus:bg-blue-600 focus:text-white outline-none"
+                                                       target={item.href.startsWith('http') ? "_blank" : undefined}
+                                                       rel={item.href.startsWith('http') ? "noopener noreferrer" : undefined}>
+                                                        {item.icon && <iconify-icon icon={item.icon} aria-hidden="true" class="size-4.5 shrink-0 translate-y-px" height="none"></iconify-icon>}
+                                                        <span>{item.name}</span>
+                                                    </a>
+                                                </li>
+                                        ))}
+                                    </ul>
+                            )}
+                        </li>
+                ))}
+            </ul>
+        </nav>
+
+        <!-- Status Bar (Desktop) -->
+        <div id="status-bar" aria-hidden="true" class="hidden lg:block flex-1 text-center font-chicago text-xs xl:text-sm text-neutral-700 dark:text-neutral-300 translate-y-0.5 truncate min-w-0"
+             _="on mouseenter from <[title]/> put event.target's @title into me
+                on mouseleave from <[title]/> put '' into me">
+        </div>
+
+        <!-- ************************************************************************* -->
+        <!-- HEADER ACTIONS                                                            -->
+        <!-- ************************************************************************* -->
+        <div class="flex items-center">
+
+            <!-- Desktop Search -->
+            <form role="search" hx-boost="false" action="https://google.com/search" class="hidden lg:flex group">
+                <label class="relative cursor-text bg-white dark:bg-neutral-850 border-2 border-neutral-300/50 dark:border-neutral-700/50 leading-none pl-4 pe-3 py-1.5 min-w-[200px] rounded-[3px] focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+                    <input type="hidden" name="q" value="+[inurl:htmx.org]">
+                    <input type="text" name="q" placeholder="     Search" aria-label="Search" class="peer bg-transparent outline-none text-neutral-950 dark:text-neutral-100 placeholder-neutral-600 dark:placeholder-neutral-400 w-full"
+                           _="on keydown[key=='Meta'] from document or keydown[key=='CTRL'] from document
+                              on keydown[key=='k'] from document event.preventDefault() call me.focus()">
+                    <iconify-icon icon="pixel:search" aria-hidden="true" class="peer-placeholder-shown:opacity-50 opacity-0 absolute left-3.5 top-1/2 -translate-y-1/2 text-xs block pointer-events-none"></iconify-icon>
+                    <kbd aria-hidden="true" class="absolute right-4 top-1/2 -translate-y-1/2 opacity-50 font-chicago text-xs pointer-events-none group-has-focus:opacity-0 transition"
+                         _="init if navigator.platform.toLowerCase() contains 'mac' put '⌘ K' into me">Ctrl K</kbd>
+                </label>
+            </form>
+
+            <div class="hidden lg:block h-6 w-px bg-neutral-200 dark:bg-neutral-800 ml-7.5 mr-5.5" role="separator"></div>
+
+            <div class="flex items-center gap-3">
+                <!-- Social Icons -->
+                <a href="/discord" aria-label="Join Discord" title="Join the Discord community" class="hidden lg:flex px-3 py-2 group transition rounded-[2px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+                    <iconify-icon icon="pixel:discord" aria-hidden="true" class="size-5.5 scale-[1.1] text-neutral-600 dark:text-neutral-400 group-hover:text-neutral-800 dark:group-hover:text-neutral-100 transition" height="none"></iconify-icon>
+                </a>
+                <a href="https://github.com/bigskysoftware/htmx" aria-label="View Source on GitHub" target="_blank" rel="noopener noreferrer" title="View source code on GitHub" class="hidden lg:flex px-3 py-2 group transition rounded-[2px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+                    <iconify-icon icon="pixel:github" aria-hidden="true" class="size-5.5 text-neutral-600 dark:text-neutral-400 group-hover:text-neutral-800 dark:group-hover:text-neutral-100 transition" height="none"></iconify-icon>
+                </a>
+
+                <!-- Mobile Menu Button (Trigger Only) -->
+                <label for="mobile-menu-toggle" role="button" tabindex="0" class="lg:hidden flex items-center justify-center size-10 cursor-pointer rounded-[2px] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600" aria-label="Toggle Navigation Menu">
+                    <iconify-icon icon="mdi:menu" aria-hidden="true" class="[html:has(#mobile-menu-toggle:checked)_&]:hidden size-6 text-neutral-600 dark:text-neutral-400" height="none"></iconify-icon>
+                    <iconify-icon icon="mdi:close" aria-hidden="true" class="hidden [html:has(#mobile-menu-toggle:checked)_&]:block size-6 text-neutral-600 dark:text-neutral-400" height="none"></iconify-icon>
+                </label>
+            </div>
+        </div>
+
+        <!-- ************************************************************************* -->
+        <!-- MOBILE MENU DRAWER                                                        -->
+        <!-- ************************************************************************* -->
+        <nav id="mobile-menu" aria-label="Mobile Navigation" class="z-10 peer/mobile-menu opacity-0 has-checked:opacity-100 pointer-events-none has-checked:pointer-events-auto lg:hidden fixed inset-x-0 top-[98px] sm:top-[106px] text-lg bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 shadow-lg transition-opacity duration-100">
+            <input type="checkbox" class="sr-only" id="mobile-menu-toggle">
+
+            <ul class="flex flex-col py-4 gap-1 font-chicago select-none">
+                {navigation.map((item) => (
+                        <li>
+                            {item.dropdown ? (
+                                    <>
+                                        <div class="px-4 pt-5 pb-2 lowercase text-neutral-500 dark:text-neutral-500">
+                                            {item.name}
+                                        </div>
+                                        <ul class="space-y-1">
+                                            {item.dropdown.map((item) => (
+                                                    <li>
+                                                        <a href={item.href} class="flex items-center gap-3 px-4 pl-10 py-3 text-neutral-700 dark:text-neutral-300 hover:bg-blue-600 hover:text-white transition focus:bg-blue-600 focus:text-white outline-none lowercase"
+                                                           target={item.href.startsWith('http') ? "_blank" : undefined}
+                                                           rel={item.href.startsWith('http') ? "noopener noreferrer" : undefined}>
+                                                            {item.icon && <iconify-icon icon={item.icon} aria-hidden="true" class="size-5 shrink-0 text-neutral-400 dark:text-neutral-500 [a:hover_&]:text-white"></iconify-icon>}
+                                                            <span>{item.name}</span>
+                                                        </a>
+                                                    </li>
+                                            ))}
+                                        </ul>
+                                    </>
+                            ) : (
+                                    <a
+                                            href={item.href}
+                                            aria-current={isCurrent(item.href) ? 'page' : undefined}
+                                            class="block px-4 py-3 transition hover:bg-blue-600 hover:text-white text-neutral-700 dark:text-neutral-300 aria-[current=page]:text-blue-600 dark:aria-[current=page]:text-blue-400 aria-[current=page]:font-bold focus:bg-blue-600 focus:text-white outline-none lowercase"
+                                    >
+                                        {item.name}
+                                    </a>
+                            )}
+                        </li>
+                ))}
+
+                <!-- Mobile Search -->
+                <li class="mt-4 px-4 pb-2">
+                    <form role="search" action="https://google.com/search" class="text-sm flex group">
+                        <label class="relative cursor-text flex-1 bg-white dark:bg-neutral-850 border-2 border-neutral-300/50 dark:border-neutral-700/50 leading-none pl-12 pe-3 py-2.5 w-full rounded-[3px] focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500">
+                            <input type="hidden" name="q" value="+[inurl:htmx.org]">
+                            <input type="text" name="q" placeholder="Search..." aria-label="Search" class="peer bg-transparent outline-none text-neutral-950 dark:text-neutral-100 w-full placeholder-neutral-500">
+                            <iconify-icon icon="pixel:search" aria-hidden="true" class="peer-placeholder-shown:opacity-50 opacity-0 absolute left-4 top-1/2 -translate-y-1/2 block pointer-events-none"></iconify-icon>
+                        </label>
+                    </form>
+                </li>
+            </ul>
+        </nav>
+
+    </div>
+</header>

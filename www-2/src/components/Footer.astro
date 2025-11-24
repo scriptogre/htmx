@@ -1,0 +1,45 @@
+---
+const { footer } = Astro.props;
+---
+<footer class="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-25 dark:bg-neutral-900 mt-16 sm:mt-24">
+    <div class="max-w-[1536px] mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+        <!-- Main footer grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 lg:gap-12 mb-12">
+            {footer.map((section) => (
+                    <div>
+                        <h2 class="text-sm font-bold font-chicago tracking-wider uppercase text-neutral-900 dark:text-neutral-100 mb-4">
+                            {section.title}
+                        </h2>
+                        {section.content ? (
+                                <p class="text-sm italic text-neutral-600 dark:text-neutral-400 leading-relaxed" set:html={section.content}></p>
+                        ) : (
+                                <ul class="space-y-2 font-chicago text-sm">
+                                    {section.items?.map((item) => (
+                                            <li>
+                                                <a href={item.href} class="text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition inline-flex items-center gap-2"
+                                                   target={item.href?.startsWith('http') ? "_blank" : undefined}
+                                                   rel={item.href?.startsWith('http') ? "noopener noreferrer" : undefined}>
+                                                    {item.icon && <iconify-icon icon={item.icon} class="text-base"></iconify-icon>}
+                                                    {item.name}
+                                                </a>
+                                            </li>
+                                    ))}
+                                </ul>
+                        )}
+                    </div>
+            ))}
+        </div>
+
+        <!-- Bottom section -->
+        <div class="mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-500">
+            <span class="font-chicago flex items-center gap-1.5">
+                &copy; {new Date().getFullYear()}
+                <a href="https://bigsky.software" target="_blank" rel="noopener noreferrer" title="Big Sky Software" class="group inline-flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition">
+                    <img src="/img/bss-bars.png" alt="Big Sky Software" class="size-3 mx-1 group-hover:brightness-125" loading="lazy" />
+                    Big Sky Software
+                </a>
+            </span>
+            <p>made with &hearts; / <span class="font-chicago text-[0.675rem]">hypertext</span> (same thing)</p>
+        </div>
+    </div>
+</footer>
