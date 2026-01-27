@@ -1,17 +1,369 @@
 # htmx 4.0 Architecture
 
-This document describes the htmx 4.0 architecture: a middleware-like feature system where order = definition order.
+```javascript
+// ╔═══════════════════════════════════════════════════════════════════════════════╗
+// ║ HTMX 4.0                                                                      ║
+// ║                                                                               ║
+// ║ Principles:                                                                   ║
+// ║ 1. Kernel: activation, triggers, verbs, fetch, swap, events                   ║
+// ║ 2. Features: middleware that modify request/response/swap in definition order ║
+// ║ 3. Clean DOM: WeakMap for state, no element._htmx                             ║
+// ║ 4. JIT: read attributes when needed, not upfront                              ║
+// ║ 5. Wrapped elements: element.attr(), element.find(), element.trigger()        ║
+// ╚═══════════════════════════════════════════════════════════════════════════════╝
 
----
+var htmx = (function() {
+    'use strict'
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SECTION 1: CORE
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    
+    // ───────────────────────────────────────────────────────────────────────────
+    // 1.1 STATE - WeakMap for per-element data (replaces element._htmx)
+    // ───────────────────────────────────────────────────────────────────────────
+    
+    const _state = new WeakMap()
+    
+    const state = {
+        get(element) {
+            let s = _state.get(element)
+            if (!s) {
+                s = {
+                    trigger: {
+                        listeners: [],    // [{ target, event, handler }] - for cleanup
+                        observers: [],    // [IntersectionObserver] - for cleanup
+                        intervals: [],    // [id] - setInterval IDs (for `every`)
+                        timeouts: [],     // [id] - setTimeout IDs (for `delay`)
+                    },
+                    request: {
+                        queue: null,      // RequestQueue instance (for hx-sync)
+                        controller: null, // Current AbortController
+                    },
+                    cache: {
+                        etag: null,       // Last ETag for conditional requests
+                    },
+                }
+                _state.set(element, s)
+            }
+            return s
+        },
+        has(element) {
+            return _state.has(element)
+        },
+        delete(element) {
+            _state.delete(element)
+        },
+    }
+    
+    
+    // ───────────────────────────────────────────────────────────────────────────
+    // 1.2 CONFIG
+    // ───────────────────────────────────────────────────────────────────────────
+    
+    const config = {
+        
+        // ─── Request defaults (Fetch API options) ───────────────────────────────
+        request: {
+            credentials: 'same-origin',
+            mode: 'same-origin',
+            
+            // Static headers - sent with every request
+            // Dynamic headers (HX-Current-URL, HX-Target) added by 'dynamicHeaders' feature
+            headers: {
+                'HX-Request': 'true',
+            },
+        },
+        
+        // ─── Swap defaults ──────────────────────────────────────────────────────
+        swap: {
+            method: 'innerHTML',
+            target: 'this',
+            
+            // Modifier defaults - features read these and apply their behavior
+            // Set htmx.config.swap.modifiers.transition = true to enable globally
+            // Or use hx-swap="innerHTML transition:true" per-element
+            modifiers: {
+                transition: false,    // View Transitions API (feature: 'transition')
+                ignoreTitle: false,   // Don't update document.title (feature: 'title')
+                scroll: null,         // { target, position } (feature: 'scroll')
+                show: null,           // { target, position } (feature: 'show')
+                focus: null,          // Selector to focus (feature: 'focus')
+                swapDelay: 0,         // Delay before swap in ms (feature: 'timing')
+                settleDelay: 20,      // Delay for settle in ms (feature: 'timing')
+            },
+        },
+        
+        // ─── Trigger defaults ───────────────────────────────────────────────────
+        trigger: {
+            // Which event to listen for, by element type
+            // '*' is the fallback for elements not matching other selectors
+            events: {
+                '*': 'click',
+                'form': 'submit',
+                'input:not([type=button]), select, textarea': 'change',
+            },
+            
+            // Modifier defaults - features read these
+            modifiers: {
+                delay: 0,
+                throttle: 0,
+            },
+        },
+        
+        // ─── Syntax ─────────────────────────────────────────────────────────────
+        syntax: {
+            prefix: 'hx-',
+            delimiter: ':',
+            format: RelaxedJSON,      // Pluggable parser - must have parse(str) method
+                                      // Users can swap: htmx.config.syntax.format = JSON
+        },
+        
+        // ─── Inheritance ────────────────────────────────────────────────────────
+        inheritance: {
+            enabled: true,
+            mode: 'explicit',         // 'explicit' requires marker, 'implicit' auto-inherits
+            marker: 'inherited',      // e.g. hx-target:inherited
+        },
+        
+        // ─── Security ───────────────────────────────────────────────────────────
+        security: {
+            allowEval: true,          // Allow js: in attributes
+            nonce: null,              // CSP nonce for inline scripts/styles
+        },
+        
+        // ─── CSS classes ────────────────────────────────────────────────────────
+        classes: {
+            indicator: 'htmx-indicator',
+            request: 'htmx-request',
+            swapping: 'htmx-swapping',
+            settling: 'htmx-settling',
+            added: 'htmx-added',
+        },
+        
+        debug: false,
+    }
+    
+    
+    // ───────────────────────────────────────────────────────────────────────────
+    // 1.3 PARSE - Attribute value parser
+    // ───────────────────────────────────────────────────────────────────────────
+    
+    // htmx.parse('innerHTML swap:100ms transition:true', 'method')
+    // → { method: 'innerHTML', swap: '100ms', transition: 'true' }
+    //
+    // htmx.parse('click delay:500ms changed', 'event')
+    // → { event: 'click', delay: '500ms', changed: true }
+    //
+    // Uses config.syntax.format for the actual parsing (pluggable).
+    // The firstKey parameter names the first unnamed token.
+    
+    function parse(str, firstKey) {
+        // If string looks like JSON, use format.parse directly
+        if (str.trim().startsWith('{')) {
+            return config.syntax.format.parse(str)
+        }
+        
+        const result = {}
+        const tokens = str.trim().split(/\s+/)
+        
+        tokens.forEach((token, i) => {
+            if (i === 0 && firstKey && !token.includes(':')) {
+                // First token without colon gets the firstKey name
+                result[firstKey] = token
+            } else if (token.includes(':')) {
+                // key:value pair
+                const [key, value] = token.split(':')
+                result[key] = value
+            } else {
+                // Boolean flag
+                result[token] = true
+            }
+        })
+        
+        return result
+    }
+    
+    // RelaxedJSON - default parser that handles htmx attribute syntax
+    // Supports: key:value pairs, boolean flags, JSON objects
+    const RelaxedJSON = {
+        parse(str) {
+            if (str.trim().startsWith('{')) {
+                return JSON.parse(str)
+            }
+            // Parse key:value and boolean flags
+            const result = {}
+            str.trim().split(/\s*,\s*|\s+/).forEach(token => {
+                if (token.includes(':')) {
+                    const [key, value] = token.split(':')
+                    result[key] = value
+                } else if (token) {
+                    result[token] = true
+                }
+            })
+            return result
+        }
+    }
+    
+    
+    // ───────────────────────────────────────────────────────────────────────────
+    // 1.4 EVENTS - 7 total, no before/after pairs
+    // ───────────────────────────────────────────────────────────────────────────
+    //
+    // Features run in definition order. First to return false cancels.
+    //
+    // Event              Detail
+    // ─────────────────────────────────────────────────────────────────────────
+    // htmx:init          {}
+    // htmx:activate      { source: { element } }
+    // htmx:deactivate    { source: { element } }
+    // htmx:request       { source: { element, event }, request, swap }
+    // htmx:response      { source: { element, event }, request, response, swap }
+    // htmx:swap          { source: { element, event }, request, response, swap }
+    // htmx:done          { source: { element, event }, request, response, swap, error }
+    
+    
+    // ───────────────────────────────────────────────────────────────────────────
+    // 1.5 REQUEST LIFECYCLE
+    // ───────────────────────────────────────────────────────────────────────────
+    //
+    // This shows the complete flow and where objects are created/modified.
+    
+    async function issueRequest(sourceElement, sourceEvent) {
+        const element = wrap(sourceElement)
+        
+        // ─── Build request (Fetch API compatible) ───────────────────────────────
+        // Kernel creates with config defaults. Features modify during htmx:request.
+        const controller = new AbortController()
+        state.get(sourceElement).request.controller = controller
+        
+        const request = {
+            url: '',                                    // Set by kernel from hx-get/post/etc
+            method: 'GET',                              // Set by kernel from hx-get/post/etc
+            headers: { ...config.request.headers },     // Static headers from config
+            body: null,                                 // Features populate (form data, hx-vals)
+            signal: controller.signal,
+            credentials: config.request.credentials,
+            mode: config.request.mode,
+        }
+        // Example after features run:
+        // {
+        //     url: '/api/users',
+        //     method: 'POST',
+        //     headers: {
+        //         'HX-Request': 'true',
+        //         'HX-Current-URL': 'http://localhost/page',  // added by dynamicHeaders
+        //         'HX-Target': '#results',                    // added by dynamicHeaders
+        //         'X-CSRF-Token': 'abc123',                   // added by csrf feature
+        //     },
+        //     body: FormData { name: 'John', email: '...' },
+        //     signal: AbortSignal,
+        //     credentials: 'same-origin',
+        //     mode: 'same-origin',
+        // }
+        
+        // ─── Build swap (DOM mutation instructions) ─────────────────────────────
+        // Kernel creates with config defaults. Features modify during htmx:request.
+        const swap = {
+            method: config.swap.method,
+            target: config.swap.target,                 // Selector string, resolved JIT
+            modifiers: { ...config.swap.modifiers },
+        }
+        // Example after features run:
+        // {
+        //     method: 'innerHTML',
+        //     target: '#results',                      // Still a selector here
+        //     modifiers: {
+        //         transition: true,
+        //         swapDelay: 100,
+        //         settleDelay: 20,
+        //         select: '.content',                  // Added by hx-select feature
+        //     },
+        // }
+        
+        // ─── Detail object (passed to all events) ───────────────────────────────
+        const detail = {
+            source: {
+                element,                                // Wrapped element
+                event: sourceEvent,                     // Original DOM event
+            },
+            request,
+            response: null,                             // Set after fetch
+            swap,
+            error: null,                                // Set if something fails
+            
+            // Transient state - features attach here, GC'd when request completes
+            // Examples:
+            //   detail.indicators = [...]              // hx-indicator feature
+            //   detail.disabled = [...]                // hx-disable feature  
+            //   detail.timeoutId = 123                 // timeout feature
+            //   detail.historyPath = '/new-url'        // history feature
+        }
+        
+        try {
+            // ─── htmx:request ───────────────────────────────────────────────────
+            // Features can: modify request/swap, add transient state, cancel
+            if (!trigger('htmx:request', detail)) return
+            
+            // ─── Fetch ─────────────────────────────────────────────────────────
+            const fetchResponse = await fetch(request.url, request)
+            
+            // ─── Build response (immutable snapshot) ────────────────────────────
+            const headers = {}
+            fetchResponse.headers.forEach((v, k) => headers[k.toLowerCase()] = v)
+            
+            detail.response = {
+                status: fetchResponse.status,
+                url: fetchResponse.url,
+                headers,                                // Lowercase keys
+                text: await fetchResponse.text(),
+            }
+            // Example:
+            // {
+            //     status: 200,
+            //     url: 'http://localhost/api/users',
+            //     headers: {
+            //         'content-type': 'text/html',
+            //         'hx-trigger': 'userAdded',
+            //         'hx-push-url': '/users/123',
+            //     },
+            //     text: '<div id="results">...</div>',
+            // }
+            
+            // ─── htmx:response ──────────────────────────────────────────────────
+            // Features can: read response, modify swap, cancel
+            if (!trigger('htmx:response', detail)) return
+            
+            // ─── Resolve target JIT ─────────────────────────────────────────────
+            swap.target = resolveTarget(sourceElement, swap.target)
+            
+            // ─── Parse fragment ─────────────────────────────────────────────────
+            swap.fragment = makeFragment(detail.response.text)
+            
+            // ─── htmx:swap ──────────────────────────────────────────────────────
+            // Features can: manipulate fragment, perform OOB swaps, cancel
+            if (!trigger('htmx:swap', detail)) return
+            
+            // ─── Kernel performs swap ───────────────────────────────────────────
+            performSwap(swap)
+            
+        } catch (e) {
+            detail.error = e
+        } finally {
+            // ─── htmx:done ──────────────────────────────────────────────────────
+            // Always fires. Features clean up transient state here.
+            trigger('htmx:done', detail)
+            
+            state.get(sourceElement).request.controller = null
+        }
+    }
 
-## Core Principles
 
-1. **Kernel handles fundamentals** - Activation, trigger binding (hx-trigger), verb extraction (hx-get/post/...), request execution, swap
-2. **Features are middleware** - They run in definition order, modifying request/response/swap
-3. **`htmx.features` is an object** - Keys are feature names, order = insertion order
-4. **Arrow functions** - Handlers use arrow functions; `feature` is injected as a parameter
-5. **Feature injection is scoped** - Features get `{ feature, element, request, swap, ... }`, external listeners get `{ element, request, swap, ... }` (no `feature`)
-6. **Wrapped elements** - `element` is always wrapped with `attr()`, `find()`, `trigger()`, etc.
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 2: FEATURES
+// ═══════════════════════════════════════════════════════════════════════════════
+```
 
 ---
 
@@ -28,10 +380,10 @@ htmx.features = {
 
     'hx-boost': {
         on: {
-            'htmx:after:activate': ({ element }) => {
+            'htmx:activate': ({ element }) => {
                 if (element.attr('hx-boost') !== 'true') return
 
-                for (const link of element.querySelectorAll('a')) {
+                for (const link of element.native.querySelectorAll('a')) {
                     if (link.hasAttribute('data-htmx-boosted')) continue
                     if (link.closest('[hx-boost="false"]')) continue
                     if (link.target === '_blank') continue
@@ -39,19 +391,21 @@ htmx.features = {
                     if (!htmx.isSameOrigin(link.href)) continue
 
                     link.toggleAttribute('data-htmx-boosted', true)
-                    link._htmx = { listeners: [] }
-                    link.addEventListener('click', htmx.createRequestHandler(link))
+                    const handler = htmx.createRequestHandler(link)
+                    link.addEventListener('click', handler)
+                    htmx.state.get(link).listeners = [{ target: link, event: 'click', handler }]
                 }
 
-                for (const form of element.querySelectorAll('form')) {
+                for (const form of element.native.querySelectorAll('form')) {
                     if (form.hasAttribute('data-htmx-boosted')) continue
                     if (form.closest('[hx-boost="false"]')) continue
                     if (form.method === 'dialog') continue
                     if (!htmx.isSameOrigin(form.action)) continue
 
                     form.toggleAttribute('data-htmx-boosted', true)
-                    form._htmx = { listeners: [] }
-                    form.addEventListener('submit', htmx.createRequestHandler(form))
+                    const handler = htmx.createRequestHandler(form)
+                    form.addEventListener('submit', handler)
+                    htmx.state.get(form).listeners = [{ target: form, event: 'submit', handler }]
                 }
             }
         }
@@ -59,19 +413,19 @@ htmx.features = {
 
     'hx-on': {
         on: {
-            'htmx:after:activate': ({ element }) => {
+            'htmx:activate': ({ element }) => {
                 const prefix = htmx.config.syntax.prefix
                 const xpathQuery = `.//*[@*[starts-with(name(), "${prefix}on:")]]`
 
                 const xpath = new XPathEvaluator().createExpression(xpathQuery)
-                const iter = xpath.evaluate(element, XPathResult.UNORDERED_NODE_ITERATOR_TYPE)
+                const iter = xpath.evaluate(element.native, XPathResult.UNORDERED_NODE_ITERATOR_TYPE)
 
                 let node
                 while (node = iter.iterateNext()) {
                     htmx.processHxOnAttributes(node)
                 }
 
-                htmx.processHxOnAttributes(element)
+                htmx.processHxOnAttributes(element.native)
             }
         }
     },
@@ -307,6 +661,33 @@ htmx.features = {
     },
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // TIMEOUT - Uses AbortController signal to abort after delay
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    'timeout': {
+        delay: 60000,                 // Default 60 seconds
+
+        on: {
+            'htmx:request': ({ feature, element, detail }) => {
+                const timeout = element.attr('hx-timeout') 
+                    ?? feature.delay
+                if (!timeout) return
+                
+                const state = htmx.state.get(element.native)
+                detail.timeoutId = setTimeout(() => {
+                    state.controller?.abort()
+                }, htmx.parseInterval(timeout))
+            },
+            
+            'htmx:done': ({ detail }) => {
+                if (detail.timeoutId) {
+                    clearTimeout(detail.timeoutId)
+                }
+            }
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // RESPONSE PROCESSING - After fetch, before swap
     // ═══════════════════════════════════════════════════════════════════════════
 
@@ -369,14 +750,14 @@ htmx.features = {
 
     'etag': {
         on: {
-            'htmx:before:request': ({ element, request }) => {
-                const etag = element.native._htmx?.etag
+            'htmx:request': ({ element, request }) => {
+                const etag = htmx.state.get(element.native).etag
                 if (etag) request.headers['If-None-Match'] = etag
             },
 
-            'htmx:after:request': ({ element, response }) => {
-                const etag = response.headers['ETag']
-                if (etag) element.native._htmx.etag = etag
+            'htmx:response': ({ element, response }) => {
+                const etag = response.headers['etag']  // lowercase
+                if (etag) htmx.state.get(element.native).etag = etag
             }
         }
     },
@@ -409,7 +790,7 @@ htmx.features = {
         pauseInBackground: false,
 
         on: {
-            'htmx:after:request': async ({ feature, request, response, swap }) => {
+            'htmx:response': async ({ feature, request, response, swap }) => {
                 if (!response.headers['content-type']?.includes('text/event-stream')) return
 
                 swap.method = 'none'
@@ -417,6 +798,55 @@ htmx.features = {
                 // Parse SSE stream, emit htmx:sse:message events,
                 // swap each message, handle reconnection with exponential backoff,
                 // pause when document hidden if pauseInBackground enabled
+            }
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SWAP PROCESSING - Runs during htmx:swap, before DOM mutation
+    // Features here manipulate swap.fragment before kernel performs swap
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    'select': {
+        on: {
+            'htmx:swap': ({ element, swap }) => {
+                // hx-select: extract only matching elements from response
+                const selector = element.attr('hx-select') 
+                    ?? swap.modifiers.select
+                if (!selector || !swap.fragment) return
+                
+                const selected = swap.fragment.querySelectorAll(selector)
+                const newFragment = document.createDocumentFragment()
+                newFragment.append(...selected)
+                swap.fragment = newFragment
+            }
+        }
+    },
+
+    'oob': {
+        on: {
+            'htmx:swap': ({ element, swap }) => {
+                if (!swap.fragment) return
+                
+                // Process hx-select-oob attribute (from triggering element)
+                const selectOOB = element.attr('hx-select-oob')
+                if (selectOOB) {
+                    for (const spec of selectOOB.split(',')) {
+                        const [selector, targetSpec] = spec.trim().split(':')
+                        for (const el of swap.fragment.querySelectorAll(selector)) {
+                            htmx.swapOOB(el, targetSpec || 'true')
+                            el.remove()  // Remove from main fragment
+                        }
+                    }
+                }
+                
+                // Process elements with hx-swap-oob attribute (in response)
+                for (const el of swap.fragment.querySelectorAll('[hx-swap-oob]')) {
+                    const oobValue = el.getAttribute('hx-swap-oob')
+                    el.removeAttribute('hx-swap-oob')
+                    htmx.swapOOB(el, oobValue)
+                    el.remove()  // Remove from main fragment
+                }
             }
         }
     },
@@ -531,85 +961,106 @@ htmx.features = {
 
 ## Config Object
 
-Config provides kernel settings and convenient aliases to feature config.
-
 ```javascript
 htmx.config = {
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // ALIASES - Point to feature config for ergonomics
+    // KERNEL - Request defaults (Fetch API options)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    get swap() { return htmx.features['hx-swap'] },
+    request: {
+        credentials: 'same-origin',
+        mode: 'same-origin',
+        
+        headers: {
+            'HX-Request': 'true',
+            'Accept': 'text/html, text/event-stream',
+        },
+    },
+    
+    // NOTE: timeout is a FEATURE config, not here. See htmx.features['timeout']
 
-    // Trigger defaults (kernel config, not a feature)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // KERNEL - Swap defaults
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    swap: {
+        method: 'innerHTML',
+        target: 'this',
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // KERNEL - Trigger defaults
+    // ═══════════════════════════════════════════════════════════════════════════
+
     trigger: {
         default: 'click',
         defaults: {
             'form': 'submit',
             'input:not([type=button])': 'change',
             'select': 'change',
-            'textarea': 'change'
-        }
-    },
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // KERNEL SETTINGS
-    // ═══════════════════════════════════════════════════════════════════════════
-
-    request: {
-        timeout: 60000,
-        credentials: 'same-origin',
-        mode: 'same-origin',
-        encoding: null,
-
-        headers: {
-            'HX-Request': 'true',
-            'Accept': 'text/html, text/event-stream',
-            'HX-Current-URL': () => window.location.href,
-            'HX-Source': (request) => request.element.id || null,
-            'HX-Target': (swap) => swap.target?.id || null,
+            'textarea': 'change',
         },
-
-        queue: 'replace'
     },
 
-    morph: {
-        ignore: ['data-htmx-powered'],
-        scanLimit: 10,
-        skip: null,
-        skipChildren: null
-    },
+    // ═══════════════════════════════════════════════════════════════════════════
+    // KERNEL - Syntax configuration
+    // ═══════════════════════════════════════════════════════════════════════════
 
     syntax: {
         prefix: 'hx-',
         delimiter: ':',
-        format: RelaxedJSON  // Object with parse(str) and stringify(obj) methods
+        format: RelaxedJSON,  // Object with parse(str) and stringify(obj) methods
     },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // KERNEL - Inheritance behavior
+    // ═══════════════════════════════════════════════════════════════════════════
 
     inheritance: {
         enable: true,
-        mode: 'explicit',   // 'explicit' requires hx-attr:marker, 'implicit' auto-inherits
-        marker: 'inherited' // produces "hx-target:inherited", or use '*' for "hx-target:*"
+        mode: 'explicit',     // 'explicit' requires marker, 'implicit' auto-inherits
+        marker: 'inherited',  // produces "hx-target:inherited"
     },
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // KERNEL - Security
+    // ═══════════════════════════════════════════════════════════════════════════
+
     security: {
-        allowEval: true,    // Set false to disable js:/javascript: in attributes
-        nonce: null,        // CSP nonce for inline scripts/styles
-        allowOrigins: null, // null = unrestricted, ['self'] = same-origin, [...] = whitelist
-        trustedTypes: null  // null = disabled, string = policy name
+        allowEval: true,      // Set false to disable js:/javascript: in attributes
+        nonce: null,          // CSP nonce for inline scripts/styles
     },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // KERNEL - CSS classes used by features
+    // ═══════════════════════════════════════════════════════════════════════════
 
     classes: {
         indicator: 'htmx-indicator',
         request: 'htmx-request',
         swapping: 'htmx-swapping',
         settling: 'htmx-settling',
-        added: 'htmx-added'
+        added: 'htmx-added',
     },
 
-    debug: false
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DEBUG
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    debug: false,
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE CONFIGS - Live on the feature, not htmx.config
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// htmx.features['timeout'].delay = 60000
+// htmx.features['morph'].scanLimit = 10
+// htmx.features['sse'].reconnect = { ... }
+
+// Access via: htmx.features['timeout'].delay
+// Or define alias: get timeout() { return htmx.features['timeout'] }
 ```
 
 ---
@@ -1045,162 +1496,183 @@ htmx.request = async function(element, event) {
 
 ## Element State
 
-State is stored based on what it is:
-
-### 1. `data-htmx-*` Attributes (CSS-targetable, debugging)
-
-Boolean flags only. Useful for CSS selectors (e.g., Tailwind `data-htmx-activated:opacity-50`).
-
-```html
-<button hx-get="/api" data-htmx-activated>
-<a href="/page" data-htmx-boosted>
-```
-
 ```javascript
-// Set
+// ═══════════════════════════════════════════════════════════════════════════════
+// STATE STORAGE - Three categories
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// 1. DATA ATTRIBUTES - CSS-targetable boolean flags
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// Useful for CSS selectors (e.g., Tailwind `data-htmx-activated:opacity-50`)
 element.toggleAttribute('data-htmx-activated', true)
+element.toggleAttribute('data-htmx-boosted', true)
 
 // Check
 if (element.hasAttribute('data-htmx-activated')) return
 
-// Remove
+// HTML result:
+// <button hx-get="/api" data-htmx-activated>
+// <a href="/page" data-htmx-boosted>
+
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// 2. WEAKMAP STATE - Internal state (replaces element._htmx)
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// See Section 1.5 for full structure
+const s = htmx.state.get(element)
+s.listeners.push({ target, event, handler })
+s.controller = new AbortController()
+s.etag = response.headers['etag']
+
+// Benefits:
+// - Auto-GC when element removed (no memory leaks)
+// - Clean DOM (no _htmx polluting elements)
+// - Debuggable via htmx.state.get(element)
+
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// 3. JIT FROM ATTRIBUTES - Never stored, always read fresh
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// verb/url    → hx-get, hx-post, hx-put, hx-patch, hx-delete
+// swap config → hx-swap, hx-target
+// trigger     → hx-trigger
+// everything  → read at the moment it's needed, not cached
+
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// 4. TRANSIENT STATE - Per-request, on detail object
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// See Section 1.6 - features attach to detail, GC'd when request completes
+detail.indicators = [...]
+detail.disabled = [...]
+detail.historyPush = '/new-url'
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATA FLOW
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// 1. Activation
+element.toggleAttribute('data-htmx-activated', true)
+htmx.state.get(element).listeners = []
+
+// 2. Trigger fires
+// Read hx-* attributes JIT, build detail object
+
+// 3. Request lifecycle  
+// Features attach transient state to detail
+
+// 4. Cleanup
+for (const { target, event, handler } of htmx.state.get(element).listeners) {
+    target.removeEventListener(event, handler)
+}
+
+// 5. Deactivation
 element.removeAttribute('data-htmx-activated')
+htmx.state.delete(element)
 ```
-
-**What goes here:**
-- `data-htmx-activated` - element has been processed
-- `data-htmx-boosted` - element was boosted (listener attached)
-
-### 2. `element._htmx` (internal state)
-
-Everything else - non-serializable objects and internal values:
-
-```javascript
-element._htmx = {
-    listeners: [...],    // Array of {fromElt, eventName, handler} for cleanup
-    interval: 123,       // setInterval ID
-    requestQueue: ReqQ,  // Request queue instance
-    etag: 'W/abc123'     // Last ETag from response
-}
-```
-
-### 3. Derived from Attributes (not stored)
-
-Everything else is read from `hx-*` attributes at trigger time:
-
-- `verb` / `url` → from `hx-get`, `hx-post`, etc.
-- `swap` config → from `hx-swap`, `hx-target`, etc.
-- `trigger` config → from `hx-trigger`
-- All other attribute values
-
-**No caching.** Parse when needed.
-
-### 4. Request Detail (transient, per-request)
-
-Active request state lives on the detail object:
-
-```javascript
-detail = {
-    request: {
-        element,
-        indicators: [...],  // for cleanup
-        disabled: [...],    // for cleanup
-        historyPush: '...',
-        // ...
-    },
-    // ...
-}
-```
-
----
-
-### Data Flow
-
-1. **Activation** → `element.toggleAttribute('data-htmx-activated', true)`, init `element._htmx`
-2. **Trigger fires** → Read `hx-*` attributes, build request detail
-3. **Request lifecycle** → Transient state on detail object
-4. **Cleanup** → Use `element._htmx.listeners` to remove handlers
-5. **Deactivation** → Remove `data-htmx-*` attributes, delete `element._htmx`
 
 ---
 
 ## Event Detail Structure
 
-### What features receive
-
 ```javascript
-// Feature handlers get `feature` injected + `element` is wrapped (powered-up)
-({ feature, element }) => {
-    element.attr('hx-target')  // works! element is wrapped
-    element.native             // access underlying DOM element
+// ═══════════════════════════════════════════════════════════════════════════════
+// WHAT FEATURES RECEIVE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Feature handlers get `feature` injected + `element` is wrapped
+({ feature, element, event, request, response, swap }) => {
+    element.attr('hx-target')    // powered-up method
+    element.native               // access underlying DOM element
+    feature.someConfig           // access feature's own config
 }
 
-({ feature, element, request, swap }) => { ... }
-({ feature, element, request, response, swap }) => { ... }
-```
+// ═══════════════════════════════════════════════════════════════════════════════
+// WHAT EXTERNAL LISTENERS RECEIVE
+// ═══════════════════════════════════════════════════════════════════════════════
 
-### What external listeners receive
-
-```javascript
-// DOM event listeners do NOT get `feature`, but `element` IS wrapped
-document.addEventListener('htmx:before:request', (e) => {
-    const { element, request, swap } = e.detail
-    element.attr('hx-swap')  // works
+// DOM event listeners get same detail, but no `feature` injected
+document.addEventListener('htmx:request', (e) => {
+    const { element, event, request, swap } = e.detail
+    element.attr('hx-swap')      // works - element is wrapped
     // no `feature` here
 })
-```
 
-### Detail objects
+// ═══════════════════════════════════════════════════════════════════════════════
+// DETAIL STRUCTURE BY EVENT
+// ═══════════════════════════════════════════════════════════════════════════════
 
-```javascript
-// Top-level element (wrapped with Proxy for powered-up access)
-element: HtmxElement  // element.attr(), element.native, etc.
+// htmx:init
+{}                               // No detail, global startup
 
-// request (from htmx:before:request)
-request: {
-    element: HTMLElement,  // Also available here (native, not wrapped)
+// htmx:activate / htmx:deactivate
+{
+    element: WrappedElement,     // The element being activated/deactivated
+}
+
+// htmx:request
+{
+    element: WrappedElement,     // Triggering element (wrapped)
+    event: Event,                // DOM event (click, submit, etc.)
+    request: {                   // Fetch API compatible - see Section 1.1
+        url: '/api/endpoint',
+        method: 'GET',
+        headers: { ... },
+        body: FormData | null,
+        signal: AbortSignal,
+        credentials: 'same-origin',
+        mode: 'same-origin',
+    },
+    response: null,              // Not yet available
+    swap: {                      // See Section 1.3
+        method: 'innerHTML',
+        target: '#results',      // Selector string, resolved JIT
+        modifiers: { ... },
+    },
+}
+
+// htmx:response
+{
+    element: WrappedElement,
     event: Event,
-    method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE',
-    url: '/api/endpoint',
-    headers: { ... },
-    body: FormData,
-    timeout: 60000,
-    credentials: 'same-origin',
-    mode: 'same-origin',
-    encoding: null,
-    form: HTMLFormElement,
-    submitter: HTMLElement,
-    validate: true,
-    anchor: 'section',
-    queue: { scope: HTMLElement, strategy: 'replace' },
-    signal: AbortSignal,
-    abort: Function
+    request: { ... },            // Same as above
+    response: {                  // Now available - see Section 1.2
+        status: 200,
+        url: 'https://...',
+        headers: { ... },        // Lowercase keys
+        text: '<div>...</div>',
+    },
+    swap: { ... },
 }
 
-// response (from htmx:after:request)
-response: {
-    status: 200,
-    headers: { ... },
-    body: '<div>...</div>',
-    url: 'https://...',
-    title: null
+// htmx:swap
+{
+    element: WrappedElement,
+    event: Event,
+    request: { ... },
+    response: { ... },
+    swap: {
+        method: 'innerHTML',
+        target: HTMLElement,     // NOW resolved to actual element
+        modifiers: { ... },
+        fragment: DocumentFragment,  // Parsed from response.text
+    },
 }
 
-// swap (from htmx:before:request, fully resolved by htmx:before:swap)
-swap: {
-    method: 'innerHTML',
-    target: HTMLElement,
-    select: null,
-    selectOOB: null,
-    fragment: DocumentFragment,
-    perform: null,
-    modifiers: {
-        swapDelay: 0,
-        settleDelay: 20,
-        transition: false,
-        ignoreTitle: false,
-        focus: null
-    }
+// htmx:done (finally - always fires, even on error)
+{
+    element: WrappedElement,
+    event: Event,
+    request: { ... },
+    response: { ... } | null,    // null if fetch failed
+    swap: { ... },
+    error: Error | null,         // If something went wrong
 }
 ```
 
@@ -1365,63 +1837,74 @@ htmx.isSameOrigin(url)               // Check if URL is same origin
 ### Events
 
 ```javascript
-// Lifecycle
-htmx:before:init
-htmx:after:init
-htmx:before:activate
-htmx:after:activate
-htmx:before:deactivate
-htmx:after:deactivate
+// ═══════════════════════════════════════════════════════════════════════════════
+// 7 CORE EVENTS - No before/after pairs. Order = feature definition order.
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// Request
-htmx:before:request
-htmx:after:request
-htmx:before:swap
-htmx:after:swap
-htmx:before:settle
-htmx:after:settle
-htmx:finally:request
+'htmx:init'         // Once on startup, no detail
+'htmx:activate'     // Element processed: { element }
+'htmx:deactivate'   // Element cleanup: { element }
+'htmx:request'      // Before fetch: { element, event, request, swap }
+'htmx:response'     // After fetch: { element, event, request, response, swap }
+'htmx:swap'         // DOM mutation: { element, event, request, response, swap }
+'htmx:done'         // Finally (cleanup): { element, event, request, response, swap, error }
 
-// Other
-htmx:confirm
-htmx:error
-htmx:after:history:push
-htmx:after:history:replace
+// ═══════════════════════════════════════════════════════════════════════════════
+// FEATURE-SPECIFIC EVENTS - Triggered by features, not kernel
+// ═══════════════════════════════════════════════════════════════════════════════
+
+'htmx:confirm'      // Triggered by hx-confirm feature
+'htmx:history:push' // Triggered by history feature
+'htmx:history:replace'
+'htmx:sse:message'  // Triggered by sse feature
+// ... features can define their own events
 ```
 
 ---
 
 ## Open Questions
 
-### Architecture Cleanup
-1. **`htmx.ajax()` / request flow** - Overlapping concepts, needs cleaner single entry point
-2. **Remove `htmx.resolveTarget()`** - Should be inlined, not a separate utility
-3. **Detail structure** - Centralize and document what's available at each event phase
+```javascript
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESOLVED
+// ═══════════════════════════════════════════════════════════════════════════════
 
-### Element State
-4. **`_htmx` storage location** - Store on `element.native._htmx` or inside the Proxy so we can do `element._htmx`?
-5. **`element.attr()` for data attributes** - Can we use `element.attr('data-htmx-activated')` instead of `element.hasAttribute(...)`?
+// ✓ request structure    → Fetch API compatible: { url, method, headers, body, signal, credentials, mode }
+// ✓ response structure   → Immutable: { status, url, headers, text }
+// ✓ swap structure       → { method, target (selector), modifiers (open object) }
+// ✓ element._htmx        → Replaced with WeakMap: htmx.state.get(element)
+// ✓ timeout              → Feature, not kernel (uses signal to abort)
+// ✓ select/selectOOB     → Features that modify swap.modifiers, not core swap fields
+// ✓ oob                  → Self-encapsulated feature
+// ✓ event model          → 7 events, no before/after pairs
+// ✓ detail structure     → { element, event, request, response, swap }
 
-### Request API
-6. **Element/event requirement** - Should `htmx.ajax()` require an element and event, or allow fully detached requests?
-7. **`htmx.fetch()` and `htmx.settle()`** - These are called but not defined. What do they do?
-8. **Custom fetch** - How to allow users to override fetch? `htmx.config.request.fetch = customFetch`?
 
-### Type Classes
-9. **HtmxElement, HtmxRequest, HtmxResponse, HtmxSwap** - Should we use classes instead of plain objects to:
-   - Provide cleaner API with methods
-   - Make detail structure self-documenting
-   - Enable IDE autocompletion
+// ═══════════════════════════════════════════════════════════════════════════════
+// TODO - NEEDS DISCUSSION
+// ═══════════════════════════════════════════════════════════════════════════════
 
-   ```javascript
-   // Instead of:
-   detail.request.headers['X-Custom'] = 'value'
+// 1. htmx.ajax() vs htmx.request()
+//    - Overlapping concepts, needs cleaner single entry point
+//    - Should htmx.ajax() require element/event, or allow detached requests?
 
-   // Could be:
-   request.setHeader('X-Custom', 'value')
-   ```
+// 2. Kernel methods not yet defined
+//    - htmx.fetch() - wrapper around fetch? or just use fetch directly?
+//    - How to allow custom fetch? htmx.config.request.fetch = customFetch?
 
-### Other
-10. **Scroll/show modifier structure** - nested vs flat, exact field names
-11. **XPath dependency** - hx-on uses XPath for efficiency; acceptable for all environments?
-12. **Async handler behavior** - should all handlers support async/await?
+// 3. Features need updating
+//    - Current features use htmx:before:request, htmx:after:request, etc.
+//    - Need to migrate to htmx:request, htmx:response, htmx:swap, htmx:done
+
+// 4. Wrapped element details
+//    - Should element.state give access to WeakMap? element.state.etag vs htmx.state.get(element).etag
+//    - element.attr() for data attributes? element.attr('data-htmx-activated')
+
+// 5. XPath dependency
+//    - hx-on uses XPath for efficiency
+//    - Acceptable for all environments?
+
+// 6. Async handlers
+//    - Should all feature handlers support async/await?
+//    - How does cancellation work with async handlers?
+```
