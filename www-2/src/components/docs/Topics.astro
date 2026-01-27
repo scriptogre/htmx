@@ -1,0 +1,54 @@
+---
+import {getFolder} from '../../lib/content';
+import type {ContentFile} from '../../lib/content.ts';
+
+interface Topic {
+    title: string;
+    files: ContentFile[];
+}
+
+const docsFolder = await getFolder('docs');
+const files = docsFolder.allFiles;
+
+// Define key topics with their associated files
+const topics: Topic[] = [
+    {
+        title: 'Essentials',
+        files: files.filter(f =>
+            f.slug.includes('installation') ||
+            f.slug.includes('mental-model') ||
+            f.slug.includes('requests') ||
+            f.slug.includes('triggers') ||
+            f.slug.includes('headers')
+        )
+    },
+    {
+        title: 'Features',
+        files: files.filter(f =>
+            f.slug.includes('history') ||
+            f.slug.includes('validation') ||
+            f.slug.includes('sse') ||
+            f.slug.includes('websockets')
+        )
+    }
+];
+---
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-10 not-prose">
+    {topics.map(topic => (
+            <div class="border border-neutral-200 dark:border-neutral-850 rounded-xl p-5 bg-neutral-10 dark:bg-neutral-910">
+                <p class="font-semibold text-neutral-900 dark:text-neutral-100 mb-3">{topic.title}</p>
+                <ul class="space-y-2">
+                    {topic.files.map(file => (
+                            <li class="flex items-start gap-2">
+                                <span class="text-neutral-400 dark:text-neutral-600 mt-0.5">•</span>
+                                <a href={file.url}
+                                   class="text-sm text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                                    {file.frontmatter.title}
+                                </a>
+                            </li>
+                    ))}
+                </ul>
+            </div>
+    ))}
+</div>

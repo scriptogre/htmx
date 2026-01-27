@@ -1,0 +1,120 @@
+---
+import type {ContentFolder, ContentFile} from '../lib/content.ts';
+
+interface Props {
+    folder: ContentFolder;
+    file?: ContentFile;
+}
+
+const {folder, file} = Astro.props;
+const currentUrl = Astro.url.pathname;
+
+// Check if this is the reference collection for monospace styling
+const isReference = folder.folder === 'reference';
+---
+
+<aside id="sidebar" class="fixed top-(--header-height) inset-x-0 isolate z-30 group/sidebar">
+
+    <nav id="sidebar-nav" aria-label="Sidebar Navigation" class="
+            bg-neutral-25 dark:bg-neutral-920 overflow-y-auto border-neutral-200 dark:border-neutral-850 transition
+            px-3 sm:px-5 lg:px-6
+            pb-10
+            max-lg:absolute max-lg:top-full max-lg:inset-x-0 max-lg:z-30
+            max-lg:h-[calc(100lvh-var(--header-height))]
+            max-lg:overscroll-contain
+            max-lg:opacity-0 max-lg:pointer-events-none max-lg:duration-200
+            [html:has(#sidebar-toggle-mobile:checked)_&]:opacity-100 [html:has(#sidebar-toggle-mobile:checked)_&]:pointer-events-auto
+            lg:fixed lg:top-(--header-height) lg:left-0 lg:bottom-0 lg:w-[320px] lg:border-r
+         ">
+
+        <div class="h-4 shrink-0"></div>
+
+        {/* Folder root link */}
+        <a href={folder.url}
+           class:list={[
+               "flex items-center gap-4 px-3 py-2 rounded-md mb-2 text-sm font-chicago truncate transition",
+               currentUrl === folder.url
+                   ? "bg-neutral-150 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-bold"
+                   : "text-neutral-500 dark:text-neutral-400 interact:bg-neutral-100 dark:interact:bg-neutral-800"
+           ]}>
+            {folder.frontmatter.iconClass && (
+                    <i class={`${folder.frontmatter.iconClass} size-4.5`}></i>
+            )}
+            {folder.frontmatter.title}
+        </a>
+
+        <div class="h-px w-full my-4 bg-neutral-200 dark:bg-neutral-900"></div>
+
+        {folder.subfolders.map((subFolder) => {
+            const files = subFolder.subfiles;
+            // Open section if it contains current, previous, or next page
+
+            const containsCurrentPage = files.some((f: ContentFile) => currentUrl === f.url);
+
+            return (
+                    <details class="group/section w-full not-first-of-type:mt-2 no-morph" open={containsCurrentPage}>
+                        <summary class="sticky top-0 z-40 py-2 rounded-md
+                                       bg-neutral-25 dark:bg-neutral-920
+                                       list-none select-none
+                                       flex items-center justify-between gap-2
+                                       [&::-webkit-details-marker]:hidden
+                                       transition cursor-pointer
+                                       interact:bg-neutral-100 dark:interact:bg-neutral-800
+                                       px-2">
+
+                            <div class="flex items-center gap-4 min-w-0">
+                                {subFolder.frontmatter.iconClass && (
+                                        <i class:list={[
+                                            subFolder.frontmatter.iconClass,
+                                            "size-4 shrink-0 transition",
+                                            containsCurrentPage
+                                                ? "text-neutral-700 dark:text-neutral-300"
+                                                : "text-neutral-400 dark:text-neutral-500"
+                                        ]}></i>
+                                )}
+                                <h2 class:list={[
+                                    "font-sans text-xs uppercase tracking-wider truncate transition",
+                                    containsCurrentPage
+                                        ? "font-bold text-neutral-900 dark:text-neutral-100"
+                                        : "font-medium text-neutral-500 dark:text-neutral-400"
+                                ]}
+                                    set:html={subFolder.frontmatter.title}/>
+                            </div>
+
+                            <i class="icon-[mdi--chevron-down] size-4.5 transition group-open/section:rotate-180 text-neutral-400 dark:text-neutral-500 shrink-0"></i>
+                        </summary>
+
+                        <div class="pl-2 pt-1 pb-4">
+                            {files.length > 0 && (
+                                    <ul class="space-y-0.5 border-l border-neutral-200 dark:border-neutral-800 ml-1.5 pl-2.5">
+                                        {files.map((file: ContentFile) => {
+                                            const isActive = currentUrl === file.url;
+                                            return (
+                                                    <li>
+                                                        <a href={file.url}
+                                                           title={file.frontmatter.description}
+                                                           aria-current={isActive ? 'page' : undefined}
+                                                           class:list={[
+                                                               "block px-3 py-2 text-sm rounded-md transition truncate",
+                                                               // Conditional styling based on collection
+
+                                                               isReference && "font-mono",
+                                                               isActive
+                                                                   ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-semibold"
+                                                                   : "text-neutral-600 dark:text-neutral-400 interact:bg-neutral-100/75 dark:interact:bg-neutral-850 interact:text-neutral-800 dark:interact:text-neutral-200"
+                                                           ]}>
+                                                            <span set:html={file.frontmatter.title}/>
+                                                        </a>
+                                                    </li>
+                                            );
+                                        })}
+                                    </ul>
+                            )}
+                        </div>
+                    </details>
+            );
+        })}
+    </nav>
+
+    <input id="sidebar-toggle-mobile" type="checkbox" class="sr-only" _="on click from <a/> set my.checked to false">
+</aside>

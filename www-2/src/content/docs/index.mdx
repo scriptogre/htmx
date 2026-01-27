@@ -1,0 +1,15 @@
+---
+title: "Documentation"
+description: "Build modern web applications using HTML attributes instead of JavaScript"
+iconClass: "icon-[mdi--book-open-page-variant]"
+---
+
+import DocumentationCategories from '../../components/docs/DocumentationCategories.astro';
+
+# <i class:list={[frontmatter.iconClass, "translate-y-[3px] me-3"]}></i> {frontmatter.title}
+
+<p class="lead">
+    Learn how htmx works, from first principles to advanced patterns. Press <kbd class="not-prose font-chicago mx-1 text-[0.8em]" _="init if navigator.platform.toLowerCase() contains 'mac' put '⌘ K' into me">Ctrl+K</kbd> to search.
+</p>
+
+<DocumentationCategories />

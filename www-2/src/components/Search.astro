@@ -1,0 +1,222 @@
+<script>
+    import '../assets/js/search-index.js';
+</script>
+
+<search-index id="global-search" src="/search-index.json"
+              highlight="<mark class='bg-yellow-200 dark:bg-amber-500/20 dark:text-amber-200'>$1</mark>"
+              class="group/search">
+    <dialog id="search-modal"
+            class="fixed top-4 bottom-4 inset-x-4 sm:top-[12vh] sm:bottom-[12vh] bg-transparent open:flex items-start justify-center w-full h-auto
+            backdrop:bg-black/50 backdrop:backdrop-blur-sm
+            backdrop:transition backdrop:opacity-0 open:backdrop:opacity-100
+            transition-discrete transition open:starting:opacity-0 opacity-0 open:opacity-100 z-50 starting:open:scale-95 scale-95 open:scale-100 origin-top"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="Search documentation"
+            _="on click
+                  if target is me then close() me end
+               end
+               on close
+                   reset() the #search-form
+                   put '' into #search-results
+                   blur() the document.activeElement"
+    >
+        <form id="search-form"
+              role="search"
+              class="not-has-placeholder-shown:absolute inset-0 mx-auto w-full max-w-3xl overflow-hidden rounded-md sm:rounded-lg bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-200 dark:border-neutral-800 ring-1 ring-black/5 flex flex-col min-h-0"
+              _="on submit
+                     halt the event
+                     get the first <.result:checked/>
+                     if it exists
+                         set window.location.href to it.value
+                     end
+                 end">
+
+            <header class="relative border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+                <i class="icon-[pixel--search] pointer-events-none absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 text-base sm:text-lg text-neutral-400 group-data-searching/search:opacity-0 transition"
+                   aria-hidden="true"></i>
+                <i class="icon-[svg-spinners--90-ring-with-bg] pointer-events-none absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 text-base sm:text-lg text-neutral-400 opacity-0 group-data-searching/search:opacity-100 transition"
+                   aria-hidden="true" aria-live="polite" aria-label="Searching"></i>
+                <label for="search-input" class="sr-only">Search documentation</label>
+                <input
+                        type="text"
+                        id="search-input"
+                        name="search"
+                        role="combobox"
+                        aria-controls="search-results"
+                        aria-autocomplete="list"
+                        autofocus
+                        class="peer/search-input h-12 sm:h-16 w-full border-0 bg-transparent pl-10 sm:pl-14 pr-10 sm:pr-12 text-base sm:text-lg text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:ring-0 font-sans outline-none"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        autocorrect="off"
+                        enterkeyhint="search"
+                        spellcheck="false"
+                        placeholder="Search documentation..."
+                        _="
+                        on input
+                            set value to event.target.value
+                            if value.trim() is empty
+                                put '' into #search-results
+                            else
+                                search(value) the closest <search-index/>
+                                set searchResults to it
+                                js(searchResults)
+                                    // Add subcategory for display prefix
+                                    return searchResults.map(result => {
+                                        const coll = result.collection || '';
+                                        result.subcategory = result.breadcrumb?.[0] || '';
+                                        result.collectionId = coll.toLowerCase();
+                                        return result;
+                                    });
+                                end
+                                set flatResults to it
+                                render #search-template with (results: flatResults, query: value)
+                                put it into #search-results
+                                wait 10ms
+                                if <.result/> exists
+                                    add @checked to the first <.result/>
+                                end
+                            end
+                        end
+                        on keydown[(key is 'ArrowDown' or key is 'ArrowUp') and .result exists]
+                            halt the event
+                            get the first <.result:checked/> in #search-results
+                            if it exists and it.isConnected
+                                if event.key is 'ArrowDown'
+                                    set target to next .result from it
+                                    if no target then set target to the first .result end
+                                else
+                                    set target to previous .result from it
+                                    if no target then set target to the last .result end
+                                end
+                            else
+                                if event.key is 'ArrowDown'
+                                    set target to the first .result
+                                else
+                                    set target to the last .result
+                                end
+                            end
+                            if target exists
+                                --- This triggers browsers' native behaviour of removing checked from all other radios
+                                --- But annoyingly does not also set the 'checked' attribute
+                                set target.checked to true
+                                --- So we do it manually with setAttribute
+                                call target.setAttribute('checked', '')
+                                call target.scrollIntoView({block: 'nearest'})
+                            end
+                        end"
+                />
+                <kbd class="z-10 absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 flex items-center justify-center h-5 px-1.5 min-w-5 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-sans text-[10px] text-neutral-600 dark:text-neutral-400 pointer-events-none"
+                     aria-label="Press Escape to close">
+                    esc
+                </kbd>
+            </header>
+
+            <main id="search-container" class="peer h-[400px] sm:h-[500px] scroll-pt-10 overflow-y-auto flex-1">
+
+                <div class="hidden group-not-has-placeholder-shown/search:group-data-searched/search:group-data-empty/search:flex flex-col items-center justify-center h-full px-4 sm:px-6"
+                     role="status" aria-live="polite">
+                    <i class="icon-[mdi--magnify-close] text-6xl sm:text-7xl text-neutral-300 dark:text-neutral-700 mb-4"
+                       aria-hidden="true"></i>
+                    <p class="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 font-medium">No results
+                        found</p>
+                    <p class="text-xs sm:text-sm text-neutral-400 dark:text-neutral-500 mt-1">Try a different search
+                        term</p>
+                </div>
+
+                <template id="search-template" is:raw>
+                    <ul class="empty:hidden" role="listbox" aria-label="Search results">
+                        @repeat for item in results
+                        @if not item.parent
+                        <li class="relative group/result px-3 sm:px-4">
+                            <input type="radio"
+                                   name="search_result"
+                                   value="${item.url}"
+                                   role="option"
+                                   class="result peer absolute inset-0 z-10 w-full h-full opacity-0 cursor-pointer touch-manipulation"
+                                   _="on click set window.location.href to my.value end
+                                              on mousemove set my.checked to true then call me.setAttribute('checked', '') end">
+
+                            <article
+                                    class="flex items-start gap-2 sm:gap-3 px-3 py-2 rounded-sm border border-transparent peer-checked:bg-blue-600 peer-checked:ring-2 peer-checked:ring-blue-500 peer-checked:z-20 sm:transition"
+                                    aria-hidden="true">
+                                <div class="flex flex-col gap-1.5 flex-1 min-w-0">
+                                    <nav class="group flex items-center gap-2 text-xs font-chicago"
+                                         data-collection="${item.collectionId}">
+                                        <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded
+                                                     group-data-[collection=docs]:bg-blue-100/50 dark:group-data-[collection=docs]:bg-blue-900/20
+                                                     group-data-[collection=reference]:bg-violet-100/50 dark:group-data-[collection=reference]:bg-violet-900/20
+                                                     group-data-[collection=examples]:bg-emerald-100/50 dark:group-data-[collection=examples]:bg-emerald-900/20
+                                                     group-has-checked/result:bg-blue-500/30">
+                                            <i class="text-sm
+                                                      group-data-[collection=docs]:icon-[mdi--book-open-page-variant]
+                                                      group-data-[collection=reference]:icon-[mdi--code-braces]
+                                                      group-data-[collection=examples]:icon-[mdi--flask-outline]
+                                                      group-data-[collection=docs]:text-blue-600 dark:group-data-[collection=docs]:text-blue-400
+                                                      group-data-[collection=reference]:text-violet-600 dark:group-data-[collection=reference]:text-violet-400
+                                                      group-data-[collection=examples]:text-emerald-600 dark:group-data-[collection=examples]:text-emerald-400
+                                                      group-has-checked/result:text-blue-200"></i>
+                                            <span class="leading-none
+                                                         group-data-[collection=docs]:text-blue-600 dark:group-data-[collection=docs]:text-blue-400
+                                                         group-data-[collection=reference]:text-violet-600 dark:group-data-[collection=reference]:text-violet-400
+                                                         group-data-[collection=examples]:text-emerald-600 dark:group-data-[collection=examples]:text-emerald-400
+                                                         group-has-checked/result:text-blue-200">${item.collection}</span>
+                                        </span>
+                                        @if item.subcategory
+                                        <span class="text-neutral-400 dark:text-neutral-600 group-has-checked/result:text-blue-300">/</span>
+                                        <span class="text-neutral-500 dark:text-neutral-400 group-has-checked/result:text-blue-200">${item.subcategory}</span>
+                                        @end
+                                    </nav>
+
+                                    <div class="font-medium text-sm text-neutral-900 dark:text-neutral-100 group-has-checked/result:text-white data-[collection=reference]:font-mono truncate"
+                                         data-collection="${item.collectionId}">
+                                        ${unescaped item.title}
+                                    </div>
+
+                                    @if item.description
+                                    <div class="text-xs text-neutral-600 dark:text-neutral-400 group-has-checked/result:text-blue-100 leading-relaxed line-clamp-2">
+                                        ${unescaped item.description}
+                                    </div>
+                                    @end
+                                </div>
+                            </article>
+                        </li>
+                        @end
+                        @end
+                    </ul>
+                </template>
+
+                <output id="search-results" role="region" aria-live="polite" aria-atomic="true"></output>
+            </main>
+
+            <footer class="flex flex-wrap items-center font-mono border-t border-neutral-200 dark:border-neutral-800 peer-has-[#search-results:empty]:border-transparent bg-neutral-50 dark:bg-neutral-920 px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400 shrink-0"
+                    aria-label="Keyboard shortcuts">
+                <div class="flex items-center gap-6">
+                    <span class="hidden sm:flex items-center gap-1.5">
+                        <kbd class="flex items-center justify-center size-5 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-sans text-[10px] text-neutral-600 dark:text-neutral-400"
+                             aria-label="Up arrow">
+                            ↑
+                        </kbd>
+                        <kbd class="flex items-center justify-center size-5 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-sans text-[10px] text-neutral-600 dark:text-neutral-400"
+                             aria-label="Down arrow">
+                            ↓
+                        </kbd>
+                        <span>to navigate</span>
+                    </span>
+                    <span class="flex items-center gap-1.5">
+                        <kbd class="flex items-center justify-center h-5 px-1.5 min-w-5 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-sans text-[10px] text-neutral-600 dark:text-neutral-400"
+                             aria-label="Enter">
+                            <i class="icon-[uil--enter] text-xs"></i>
+                        </kbd>
+                        <span>to select</span>
+                    </span>
+                    <span class="sm:hidden flex items-center gap-1.5">
+                        <i class="icon-[mdi--gesture-tap] text-sm -translate-y-px"></i>
+                        <span>outside to close</span>
+                    </span>
+                </div>
+            </footer>
+        </form>
+    </dialog>
+</search-index>

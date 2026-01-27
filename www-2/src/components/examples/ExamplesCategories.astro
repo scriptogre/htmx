@@ -1,0 +1,26 @@
+---
+import {getFolder} from '../../lib/content';
+import CategoryCard from '../CategoryCard.astro';
+
+const examplesFolder = await getFolder('examples');
+const categories = examplesFolder.subfolders.sort((a, b) => a.id.localeCompare(b.id));
+---
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 my-10 not-prose">
+    {categories.map((category) => {
+        const iconClass = category.frontmatter.iconClass || "icon-[mdi--file-document-outline]";
+
+        return (
+            <CategoryCard
+                url={category.url}
+                title={category.frontmatter.title}
+                description={category.frontmatter.description}
+            >
+                <span class:list={[
+                    `text-7xl transition ${iconClass}`,
+                    "text-neutral-400 dark:text-neutral-600 group-interact:text-neutral-900 dark:group-interact:text-neutral-100"
+                ]}></span>
+            </CategoryCard>
+        );
+    })}
+</div>
