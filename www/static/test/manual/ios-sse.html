@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>iOS SSE Reconnect Test - htmx 4.0</title>
+    <script src="/htmx.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="p-6 max-w-xl mx-auto">
+    <h1 class="text-xl font-bold mb-2">iOS SSE Reconnect Test</h1>
+    <p class="text-sm text-neutral-500 mb-4">
+        <a href="https://github.com/bigskysoftware/htmx/issues/3634" class="underline">#3634</a>
+        &middot; Requires server: <code>npm run test:manual</code>
+    </p>
+
+    <div class="bg-amber-50 border border-amber-200 rounded p-3 mb-6 text-sm">
+        <strong>To reproduce:</strong>
+        <ol class="list-decimal ml-4 mt-1 space-y-1">
+            <li>Tap Connect - timestamps appear every 2s</li>
+            <li>Switch to another app for ~10s</li>
+            <li>Return to Safari</li>
+            <li><strong>Bug:</strong> Stream is dead, no new timestamps</li>
+        </ol>
+    </div>
+
+    <button
+        id="btn"
+        hx-get="/heartbeat"
+        hx-target="#log"
+        hx-swap="beforeend"
+        hx-config="sse.reconnect:true sse.reconnectMaxAttempts:100 sse.closeOnHide:true"
+        hx-on:htmx:before:sse:reconnect="document.getElementById('log').innerHTML += '<div class=text-orange-600>[RECONNECTING...]</div>'"
+        class="px-4 py-2 bg-blue-600 text-white rounded mb-4">
+        Connect
+    </button>
+
+    <div id="log" class="font-mono text-sm bg-neutral-100 rounded p-3 min-h-40 max-h-80 overflow-y-auto"></div>
+
+    <script>
+        document.addEventListener('visibilitychange', () => {
+            const state = document.hidden ? 'HIDDEN' : 'VISIBLE';
+            const log = document.getElementById('log');
+            if (log.children.length > 0) {
+                log.innerHTML += '<div class="text-purple-600">[' + new Date().toLocaleTimeString() + ' ' + state + ']</div>';
+            }
+        });
+    </script>
+</body>
+</html>
