@@ -1,269 +1,562 @@
-// htmx 4.0 — Minimal kernel + generalized hypermedia controls.
+// htmx 4.0 — Kernel
+//
+// Pipeline: boot → init → trigger → fetch → swap → settle → done
+//
+// The kernel provides:
+//   - Config (values: static or functions)
+//   - Registry (implementations: always functions)
+//   - Extension system (register, emit)
+//   - Element wrapper with convenience methods
+//   - The init/trigger/fetch/swap pipeline
+//
+// The kernel does nothing alone — extensions populate the registries.
 
 var htmx = (function () {
     'use strict'
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // KERNEL — config, state, emit, register, DOM observation
-    // ═════════════════════════════════════════════════════════════════════════
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ CONFIG (values: static or functions)                                   ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
 
-    const config = { debug: false }
-
-    const _state = new WeakMap()
-    const state = {
-        get(el) {
-            let s = _state.get(el)
-            if (!s) { s = {}; _state.set(el, s) }
-            return s
+    const config = {
+        // Trigger
+        triggerEvent: node => {
+            if (node.matches('form')) return 'submit'
+            if (node.matches('input:not([type=button]), select, textarea')) return 'change'
+            return 'click'
         },
-        has(el) { return _state.has(el) },
-        delete(el) { _state.delete(el) },
+
+        // Swap
+        swapMethod: 'innerHTML',
+        swapTarget: 'this',
+
+        // Request
+        requestTimeout: 60000,
+        requestCredentials: 'same-origin',
+        requestMode: 'same-origin',
+        requestHeaders: {
+            'HX-Request': 'true',
+            'HX-Current-URL': () => location.href,
+        },
+
+        // Syntax
+        syntaxPrefix: 'hx-',
+        syntaxDelimiter: ':',
+
+        // Init
+        selectors: [],
     }
 
-    const features = {}
-    const kernel = {}
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ REGISTRY (implementations: always functions)                           ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
 
-    function emit(element, eventName, detail = {}) {
-        for (const [name, feature] of Object.entries(features)) {
-            if (feature.enable === false) continue
-            const handler = feature.on?.[eventName]
-            if (!handler) continue
-            const result = handler(detail)
-            if (config.debug) console.log(`[${eventName}] [${name}]`, result === false ? 'CANCEL' : 'ok')
-            if (result === false) return false
+    const registry = {
+        triggers: {},       // synthetic triggers: fn(element, eventName, modifiers, handler) → cleanup?
+        swaps: {},          // swap methods: fn(target, content) → void
+        modifiers: {
+            trigger: {},    // handler wrappers: fn(handler, value, element) → handler
+            swap: {},       // option mutators: fn(options, value, element) → options
+        },
+    }
+
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ RESOLVE (helper for config values)                                     ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
+
+    function resolve(value, context) {
+        return typeof value === 'function' ? value(context) : value
+    }
+
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ EXTENSIONS                                                             ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
+
+    const extensions = []
+    let booted = false
+
+    function register(name, extension) {
+        const exists = extensions.some(e => e.name === name)
+        if (exists) throw new Error(`htmx: extension "${name}" already registered`)
+
+        for (const dependency of extension.requires || []) {
+            const satisfied = extensions.some(e => e.name === dependency)
+            if (!satisfied) throw new Error(`htmx: extension "${name}" requires "${dependency}"`)
         }
 
-        const target = element.isConnected !== false ? element : document
-        return target.dispatchEvent(new CustomEvent(eventName, {
-            detail, bubbles: true, cancelable: true, composed: true,
-        }))
+        extensions.push({name, ...extension})
+
+        // Late registration: fire ready handler immediately
+        if (booted && extension.on?.['htmx:ready']) {
+            extension.on['htmx:ready']({})
+        }
     }
 
-    function activate(root) {}
-    function deactivate(node) {}
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ BOOT                                                                   ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
+
+    function boot() {
+        booted = true
+        emit(document, 'htmx:ready')
+        init(document.body)
+        observeDOM()
+    }
 
     function observeDOM() {
-        new MutationObserver((mutations) => {
-            for (const m of mutations) {
-                for (const node of m.addedNodes) {
-                    if (node.nodeType === 1) kernel.activate(node)
+        const observer = new MutationObserver(mutations => {
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType === 1) init(node)
                 }
-                for (const node of m.removedNodes) {
-                    if (node.nodeType === 1) kernel.deactivate(node)
+                for (const node of mutation.removedNodes) {
+                    if (node.nodeType === 1) cleanupTree(node)
                 }
             }
-        }).observe(document.body, { childList: true, subtree: true })
+        })
+        observer.observe(document.body, {childList: true, subtree: true})
     }
 
-    Object.assign(kernel, { emit, activate, deactivate, observeDOM })
+    function cleanupTree(root) {
+        cleanup(root)
+        for (const element of root.querySelectorAll('*')) {
+            if (_state.has(element)) cleanup(element)
+        }
+    }
 
-    function register(name, feature) {
-        features[name] = feature
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ INIT                                                                   ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
 
-        for (const dep of feature.requires || []) {
-            if (!features[dep]) console.warn(`htmx: feature "${name}" requires "${dep}" which is not registered`)
+    function init(root = document.body) {
+        const selector = config.selectors?.join(',')
+        if (!selector) return
+
+        const nodes = findMatchingNodes(root, selector)
+        for (const node of nodes) {
+            if (_state.has(node)) continue
+            initElement(node, root)
+        }
+    }
+
+    function findMatchingNodes(root, selector) {
+        const descendants = root.querySelectorAll(selector)
+        const rootMatches = root.matches?.(selector)
+        return rootMatches ? [root, ...descendants] : [...descendants]
+    }
+
+    function initElement(node, root) {
+        const element = wrap(node)
+        const detail = {element, root: wrap(root)}
+
+        emit(element, 'htmx:before:init', detail)
+        setupTriggers(element)
+        emit(element, 'htmx:after:init', detail)
+    }
+
+    function cleanup(node) {
+        if (!_state.has(node)) return
+
+        const element = wrap(node)
+        emit(element, 'htmx:before:cleanup', {element})
+
+        const cleanupFns = state(node)["cleanup"] || []
+        for (const fn of cleanupFns) fn()
+        _state.delete(node)
+
+        emit(element, 'htmx:after:cleanup', {element})
+    }
+
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ TRIGGER                                                                ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
+
+    function setupTriggers(element) {
+        const node = element.native
+        const defaultEvent = resolve(config.triggerEvent, node)
+        const triggers = parseTriggerAttr(element.attr('hx-trigger'), defaultEvent)
+
+        for (const trigger of triggers) {
+            const {event: eventName, modifiers} = parseTrigger(trigger)
+            const handler = buildHandler(element, modifiers)
+
+            // Synthetic trigger (load, revealed, every, etc.)
+            const synthetic = registry.triggers[eventName]
+            if (synthetic) {
+                const off = synthetic(element, eventName, modifiers, handler)
+                if (off) addCleanup(node, off)
+                continue
+            }
+
+            // DOM event
+            bindEvent(node, eventName || defaultEvent, handler, modifiers)
+        }
+    }
+
+    function parseTriggerAttr(raw, defaultEvent) {
+        if (!raw) return [defaultEvent]
+        // Split on commas, but not commas inside brackets
+        return raw.split(/,(?![^\[]*\])/).map(s => s.trim())
+    }
+
+    function buildHandler(element, modifiers) {
+        // Base handler: emit trigger events
+        let handler = event => {
+            event.preventDefault?.()
+            const source = {element, event}
+            if (emit(element, 'htmx:before:trigger', {source}) === false) return
+            emit(element, 'htmx:after:trigger', {source})
         }
 
-        if (feature.init) feature.init({ config, state, kernel })
-
-        if (feature.override) {
-            for (const [fn, wrapper] of Object.entries(feature.override)) {
-                if (!kernel[fn]) {
-                    console.warn(`htmx: feature "${name}" overrides unknown function "${fn}"`)
-                    continue
-                }
-                const original = kernel[fn]
-                kernel[fn] = (...args) => wrapper(original, ...args)
+        // Wrap with modifiers
+        for (const [name, fn] of Object.entries(registry.modifiers.trigger)) {
+            if (modifiers[name] !== undefined && fn) {
+                handler = fn(handler, modifiers[name], element)
             }
         }
 
-        const sorted = [], visited = new Set(), visiting = new Set()
-        const visit = (n) => {
-            if (visited.has(n)) return
-            if (visiting.has(n)) { console.error(`htmx: circular dependency: "${n}"`); return }
-            visiting.add(n)
-            for (const dep of features[n]?.requires || []) { if (features[dep]) visit(dep) }
-            visiting.delete(n)
-            visited.add(n)
-            sorted.push(n)
-        }
-        for (const n of Object.keys(features)) visit(n)
-
-        const reordered = {}
-        for (const n of sorted) reordered[n] = features[n]
-        for (const k of Object.keys(features)) delete features[k]
-        Object.assign(features, reordered)
+        return handler
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // LIFECYCLE — generalized hypermedia controls
-    // Attributes: hx-action, hx-method, hx-trigger, hx-target, hx-swap,
-    //             hx-ignore
-    // ═════════════════════════════════════════════════════════════════════════
+    function bindEvent(node, eventName, handler, modifiers) {
+        const targets = modifiers.from
+            ? document.querySelectorAll(modifiers.from)
+            : [node]
 
-    Object.assign(config, {
-        prefix: 'hx-',
-        defaultSwap: 'innerHTML',
-        fetch: window.fetch.bind(window),
-    })
-
-    function attr(el, name) {
-        return el.getAttribute(config.prefix + name)
-    }
-
-    function makeFragment(html) {
-        const tpl = document.createElement('template')
-        tpl.innerHTML = html
-        return tpl.content
-    }
-
-    function swap(target, method, content) {
-        const fragment = typeof content === 'string' ? kernel.makeFragment(content) : content
-        switch (method) {
-            case 'innerHTML': target.replaceChildren(fragment); break
-            case 'outerHTML': target.replaceWith(fragment); break
-            case 'beforebegin': target.before(fragment); break
-            case 'afterbegin': target.prepend(fragment); break
-            case 'beforeend': target.append(fragment); break
-            case 'afterend': target.after(fragment); break
-            case 'delete': target.remove(); break
-            case 'none': break
-            default: target[method] = typeof content === 'string' ? content : fragment.textContent
+        for (const target of targets) {
+            target.addEventListener(eventName, handler, {once: modifiers.once})
+            addCleanup(node, () => target.removeEventListener(eventName, handler))
         }
     }
 
-    function defaultTrigger(el) {
-        if (el.tagName === 'FORM') return 'submit'
-        if (el.matches('input, select, textarea')) return 'change'
-        return 'click'
+    function addCleanup(node, fn) {
+        state(node)["cleanup"] ||= []
+        state(node)["cleanup"].push(fn)
     }
 
-    async function fetch(el, overrides = {}) {
-        const url = overrides.url || kernel.attr(el, 'action')
-        if (!url) return
+    function parseTrigger(raw) {
+        // Normalize "every 2s" → "every interval:2s"
+        const normalized = raw.replace(/^every\s+(\d+(?:ms|s|m)?)/, 'every interval:$1')
+        const {value: eventAndFilter, ...modifiers} = parse(normalized) || {}
 
-        const isForm = el.tagName === 'FORM'
-        const method = (overrides.method || kernel.attr(el, 'method') || (isForm ? 'POST' : 'GET')).toUpperCase()
-        const targetSel = overrides.target || kernel.attr(el, 'target')
-        const target = targetSel ? document.querySelector(targetSel) : el
-        const swapMethod = overrides.swap || kernel.attr(el, 'swap') || config.defaultSwap
+        // Extract filter: "click[key=='Enter']" → event="click", filter="key=='Enter'"
+        const match = eventAndFilter?.match(/^([^\[]+?)(?:\[(.+)])?$/)
+        const [, event, filter] = match || []
+        if (filter) modifiers.filter = filter
 
-        const detail = { element: el, url, method, target, swap: swapMethod, headers: {}, body: null }
+        return {event, modifiers}
+    }
 
-        const form = isForm ? el : el.closest('form')
-        if (form) detail.body = new FormData(form)
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ FETCH                                                                  ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
 
-        if (method === 'GET' && detail.body) {
-            detail.url += (url.includes('?') ? '&' : '?') + new URLSearchParams(detail.body)
-            detail.body = null
+    async function fetch(url, options = {}) {
+        const method = options.method || 'GET'
+        const source = {
+            element: options.source?.element || wrap(document.body),
+            event: options.source?.event ?? null,
+        }
+
+        const detail = {
+            source,
+            request: {url, method, body: options.body ?? null, headers: {}},
+            response: null,
+            swap: null,
+            error: null,
+        }
+
+        // Build headers (static values + functions)
+        detail.request.headers = {
+            ...resolveHeaders(config.requestHeaders, {source, url, method}),
+            ...options.headers,
         }
 
         try {
-            if (!kernel.emit(el, 'htmx:config', detail)) return
-            if (!kernel.emit(el, 'htmx:before', detail)) return
+            // ── Request ──
+            if (emit(source.element, 'htmx:before:request', detail) === false) return
 
-            detail.response = await config.fetch(detail.url, {
-                method: detail.method,
-                headers: detail.headers,
-                body: detail.body,
+            const response = await window.fetch(url, {
+                method: detail.request.method,
+                headers: detail.request.headers,
+                body: detail.request.body,
+                credentials: resolve(config.requestCredentials, {source, url, method}),
+                mode: resolve(config.requestMode, {source, url, method}),
             })
-            detail.text = await detail.response.text()
 
-            if (!kernel.emit(el, 'htmx:after', detail)) return
+            emit(source.element, 'htmx:after:request', detail)
 
-            kernel.swap(detail.target, detail.swap, detail.text)
-            kernel.emit(el, 'htmx:swapped', detail)
+            // ── Response ──
+            detail.response = {
+                status: response.status,
+                url: response.url,
+                headers: Object.fromEntries(response.headers),
+                text: null,
+            }
+
+            if (emit(source.element, 'htmx:before:response', detail) === false) return
+            detail.response.text = await response.text()
+            if (emit(source.element, 'htmx:after:response', detail) === false) return
+
+            // ── Swap ──
+            const targetSelector = options.swap?.target || resolve(config.swapTarget, source.element.native)
+            const targetElement = resolveTarget(source.element.native || source.element, targetSelector)
+
+            if (!targetElement) {
+                detail.error = {type: 'target', message: `Target not found: ${targetSelector}`}
+                emit(source.element, 'htmx:error', detail)
+                return
+            }
+
+            detail.swap = {
+                ...options.swap,
+                content: makeFragment(detail.response.text),
+                target: wrap(targetElement),
+                method: options.swap?.method || resolve(config.swapMethod, source.element.native),
+            }
+
+            if (emit(source.element, 'htmx:before:swap', detail) === false) return
+            swap(targetElement, detail.swap.method, detail.swap.content)
+            init(targetElement)
+            emit(source.element, 'htmx:after:swap', detail)
+
+            // ── Settle ──
+            if (emit(source.element, 'htmx:before:settle', detail) === false) return
+            emit(source.element, 'htmx:after:settle', detail)
+
+            return detail.response
 
         } catch (error) {
-            detail.error = error
-            kernel.emit(el, 'htmx:error', detail)
+            detail.error = {
+                type: error.name === 'AbortError' ? 'abort' : 'network',
+                message: error.message,
+                cause: error,
+            }
+            emit(source.element, 'htmx:error', detail)
+
         } finally {
-            kernel.emit(el, 'htmx:finally', detail)
+            emit(source.element, 'htmx:done', detail)
         }
     }
 
-    Object.assign(kernel, { attr, makeFragment, swap, fetch })
-
-    register('lifecycle', {
-        override: {
-            activate(original, root) {
-                const selector = `[${config.prefix}action]`
-                const ignore = `[${config.prefix}ignore]`
-
-                const elements = root.matches?.(selector)
-                    ? [root, ...root.querySelectorAll(selector)]
-                    : [...root.querySelectorAll(selector)]
-
-                for (const el of elements) {
-                    if (el.closest(ignore)) continue
-                    if (state.get(el).activated) continue
-
-                    const trigger = kernel.attr(el, 'trigger') || defaultTrigger(el)
-
-                    const handler = (event) => {
-                        if (el.tagName === 'FORM' || el.tagName === 'A') event.preventDefault()
-                        kernel.fetch(el)
-                    }
-
-                    el.addEventListener(trigger, handler)
-                    Object.assign(state.get(el), {
-                        activated: true,
-                        listener: { event: trigger, handler },
-                    })
-                    kernel.emit(el, 'htmx:process', { element: el })
-                }
-
-                original(root)
-            },
-
-            deactivate(original, node) {
-                if (state.has(node)) {
-                    const s = state.get(node)
-                    if (s.listener) node.removeEventListener(s.listener.event, s.listener.handler)
-                    state.delete(node)
-                }
-                for (const el of node.querySelectorAll?.(`[${config.prefix}action]`) || []) {
-                    kernel.deactivate(el)
-                }
-                original(node)
-            },
-        },
-    })
-
-    // ═════════════════════════════════════════════════════════════════════════
-    // BOOT
-    // ═════════════════════════════════════════════════════════════════════════
-
-    function init() {
-        kernel.emit(document.body, 'htmx:init')
-        kernel.activate(document.body)
-        kernel.observeDOM()
+    function swap(target, method, content) {
+        const fn = registry.swaps[method]
+        if (fn) {
+            fn(target, content)
+        } else {
+            console.warn(`htmx: unknown swap method "${method}"`)
+        }
     }
+
+    function resolveHeaders(headers, context) {
+        const result = {}
+        for (const [key, value] of Object.entries(headers)) {
+            result[key] = resolve(value, context)
+        }
+        return result
+    }
+
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ PRIMITIVES                                                             ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
+
+    // ─── State ───────────────────────────────────────────────────────────────
+
+    const _state = new WeakMap()
+
+    function state(element) {
+        let s = _state.get(element)
+        if (!s) {
+            s = {}
+            _state.set(element, s)
+        }
+        return s
+    }
+
+    // ─── Element wrapper ─────────────────────────────────────────────────────
+
+    const WRAPPED = Symbol('htmx.wrapped')
+
+    const wrapMethods = {
+        native: element => element,
+        attr: element => (name, opts) => attr(element, name, opts),
+        find: element => selector => wrap(element.querySelector(selector)),
+        findAll: element => selector => [...element.querySelectorAll(selector)].map(wrap),
+        emit: element => (name, detail) => emit(element, name, detail),
+        on: element => (event, handler, opts) => on(element, event, handler, opts),
+        state: element => state(element),
+    }
+
+    function wrap(element) {
+        if (!element) return null
+        if (element[WRAPPED]) return element
+
+        return new Proxy(element, {
+            get(target, prop) {
+                if (prop === WRAPPED) return true
+                if (prop in wrapMethods) return wrapMethods[prop](target)
+
+                const value = target[prop]
+                return typeof value === 'function' ? value.bind(target) : value
+            }
+        })
+    }
+
+    function attr(element, name, {inherit = true} = {}) {
+        const prefix = config.syntaxPrefix
+        const delimiter = config.syntaxDelimiter
+        const attrName = name.replace(/^hx-/, prefix).replace(/:/g, delimiter)
+
+        // Check element directly
+        const direct = element.getAttribute(attrName)
+        if (direct !== null) return direct
+        if (!inherit) return null
+
+        // Walk up the tree
+        let current = element.parentElement
+        while (current) {
+            const value = current.getAttribute(attrName)
+            if (value !== null) return value
+            current = current.parentElement
+        }
+
+        return null
+    }
+
+    // ─── Events ──────────────────────────────────────────────────────────────
+
+    function emit(element, name, detail = {}) {
+        // First: call extension handlers (can cancel by returning false)
+        for (const ext of extensions) {
+            const handler = ext.on?.[name]
+            if (handler && handler(detail) === false) return false
+        }
+
+        // Then: dispatch DOM event
+        const target = getEventTarget(element)
+        return target.dispatchEvent(new CustomEvent(name, {
+            detail: unwrap(detail),
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+        }))
+    }
+
+    function getEventTarget(element) {
+        const node = element?.native || element
+        const connected = node?.isConnected !== false
+        return connected ? node : document
+    }
+
+    function on(element, event, handler, options) {
+        const target = element.native || element
+        target.addEventListener(event, handler, options)
+
+        const off = () => target.removeEventListener(event, handler, options)
+        addCleanup(target, off)
+
+        return off
+    }
+
+    function unwrap(obj) {
+        if (!obj || typeof obj !== 'object') return obj
+        if (obj[WRAPPED]) return obj.native
+        if (Array.isArray(obj)) return obj.map(unwrap)
+
+        const result = {}
+        for (const [k, v] of Object.entries(obj)) {
+            result[k] = unwrap(v)
+        }
+        return result
+    }
+
+    // ─── Parsing ─────────────────────────────────────────────────────────────
+
+    function parse(raw) {
+        if (!raw) return {value: null}
+
+        const parts = raw.trim().split(/\s+/)
+        const result = {value: parts[0]}
+
+        for (const part of parts.slice(1)) {
+            const colonIndex = part.indexOf(':')
+            if (colonIndex > 0) {
+                const key = part.slice(0, colonIndex)
+                const val = part.slice(colonIndex + 1)
+                result[key] = parseDuration(val) ?? val
+            } else {
+                result[part] = true
+            }
+        }
+
+        return result
+    }
+
+    function parseDuration(str) {
+        const match = str?.match(/^(\d+)(ms|s|m)?$/)
+        if (!match) return null
+
+        const [, num, unit] = match
+        if (unit === 's') return num * 1000
+        if (unit === 'm') return num * 60000
+        return +num
+    }
+
+    // ─── DOM helpers ─────────────────────────────────────────────────────────
+
+    function resolveTarget(element, selector) {
+        if (!selector || selector === 'this') return element
+        if (selector === 'body') return document.body
+        if (selector.startsWith('closest ')) return element.closest(selector.slice(8))
+        if (selector.startsWith('find ')) return element.querySelector(selector.slice(5))
+        return document.querySelector(selector)
+    }
+
+    function makeFragment(html) {
+        const template = document.createElement('template')
+        template.innerHTML = html
+        return template.content
+    }
+
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ START                                                                  ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init)
+        document.addEventListener('DOMContentLoaded', boot)
     } else {
-        queueMicrotask(init)
+        queueMicrotask(boot)
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    // PUBLIC API — Proxy delegates to kernel, so features that add kernel
-    // functions automatically extend the public API.
-    // ═════════════════════════════════════════════════════════════════════════
+    // ╔═══════════════════════════════════════════════════════════════════════╗
+    // ║ PUBLIC API                                                             ║
+    // ╚═══════════════════════════════════════════════════════════════════════╝
 
-    const api = {
-        version: '4.0.0-alpha',
-        config, state, features,
-        init, register,
+    return {
+        version: '4.0.0-kernel',
+
+        // Config & Registry
+        config,
+        registry,
+
+        // Core
+        register,
+        init,
+        fetch,
+
+        // Events
+        emit,
+        on,
+
+        // Elements
+        wrap,
+        attr,
+        state,
+
+        // Utilities
+        resolve,
+        parse,
+        resolveTarget,
+        makeFragment,
     }
-
-    return new Proxy(api, {
-        get(target, prop) {
-            if (prop in target) return target[prop]
-            if (prop in kernel) return kernel[prop]
-        },
-        has(target, prop) {
-            return prop in target || prop in kernel
-        },
-    })
 })()

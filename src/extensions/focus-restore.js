@@ -6,21 +6,10 @@
  *
  * Config:
  *   htmx.config.focusRestore.scroll = false  // whether focus() should scroll (default: no scroll)
- *
- * This is a "try hard but imperfect" solution for non-morph swaps. Morph swaps
- * naturally preserve focus since they mutate rather than replace the DOM.
  */
 htmx.register('focusRestore', {
     on: {
-        'htmx:ready': () => {
-            htmx.config.focusRestore = {
-                scroll: false,
-                ...htmx.config.focusRestore,
-            }
-        },
-
-        'htmx:swap': ({ trigger, swap }) => {
-            // Only handle innerHTML/outerHTML - morph preserves focus naturally
+        'htmx:swap': ({trigger, swap}) => {
             if (swap.method !== 'innerHTML' && swap.method !== 'outerHTML') return
 
             const active = document.activeElement
@@ -34,7 +23,7 @@ htmx.register('focusRestore', {
             }
         },
 
-        'htmx:settle': ({ trigger }) => {
+        'htmx:settle': ({trigger}) => {
             const saved = trigger.element.state.focusRestore
             if (!saved) return
 
@@ -52,7 +41,7 @@ htmx.register('focusRestore', {
             // Restore focus
             try {
                 const preventScroll = !htmx.config.focusRestore.scroll
-                newElement.focus({ preventScroll })
+                newElement.focus({preventScroll})
 
                 // Restore cursor position if applicable
                 if (saved.selectionStart != null && newElement.setSelectionRange) {

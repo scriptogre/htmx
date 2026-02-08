@@ -59,19 +59,19 @@ Special triggers: `load`, `revealed`, `intersect`, `every Xs`
 
 ### Swap Styles
 
-| Style         | Description               |
-|---------------|---------------------------|
-| `innerHTML`   | Replace children (default)|
-| `outerHTML`   | Replace entire element    |
-| `beforebegin` | Insert before element     |
-| `afterbegin`  | Insert as first child     |
-| `beforeend`   | Insert as last child      |
-| `afterend`    | Insert after element      |
-| `delete`      | Remove target element     |
-| `none`        | No swap                   |
-| `textContent` | Replace text content      |
-| `innerMorph`  | Morph children            |
-| `outerMorph`  | Morph entire element      |
+| Style         | Description                |
+|---------------|----------------------------|
+| `innerHTML`   | Replace children (default) |
+| `outerHTML`   | Replace entire element     |
+| `beforebegin` | Insert before element      |
+| `afterbegin`  | Insert as first child      |
+| `beforeend`   | Insert as last child       |
+| `afterend`    | Insert after element       |
+| `delete`      | Remove target element      |
+| `none`        | No swap                    |
+| `textContent` | Replace text content       |
+| `innerMorph`  | Morph children             |
+| `outerMorph`  | Morph entire element       |
 
 Swap modifiers: `swap:Xms`, `settle:Xms`, `scroll:top/bottom`, `show:top/bottom`, `transition`, `ignoreTitle`
 
@@ -79,60 +79,60 @@ Swap modifiers: `swap:Xms`, `settle:Xms`, `scroll:top/bottom`, `show:top/bottom`
 
 > Note: The proposed architecture uses a simplified event model (see "Simplified Event Model" below).
 
-| Event                       | When                                   |
-|-----------------------------|----------------------------------------|
-| `htmx:before:init`          | Before element initialization          |
-| `htmx:after:init`           | After element initialization           |
-| `htmx:before:process`       | Before processing DOM tree             |
-| `htmx:after:process`        | After processing DOM tree              |
-| `htmx:before:request`       | Before request sent                    |
-| `htmx:after:request`        | After response received                |
-| `htmx:config:request`       | Configure request (modify headers)     |
-| `htmx:before:swap`          | Before DOM swap                        |
-| `htmx:after:swap`           | After DOM swap                         |
-| `htmx:before:settle`        | Before settle phase                    |
-| `htmx:after:settle`         | After settle phase                     |
-| `htmx:before:cleanup`       | Before element cleanup                 |
-| `htmx:after:cleanup`        | After element cleanup                  |
-| `htmx:before:history:update`| Before history update                  |
-| `htmx:after:history:update` | After history update                   |
-| `htmx:before:sse:stream`    | Before SSE stream starts               |
-| `htmx:after:sse:stream`     | After SSE stream ends                  |
-| `htmx:before:sse:message`   | Before SSE message processed           |
-| `htmx:after:sse:message`    | After SSE message processed            |
-| `htmx:before:sse:reconnect` | Before SSE reconnect                   |
-| `htmx:confirm`              | Confirmation (can override)            |
-| `htmx:error`                | Request error                          |
-| `htmx:finally:request`      | Always fires after request             |
-| `htmx:abort`                | Request aborted                        |
+| Event                        | When                               |
+|------------------------------|------------------------------------|
+| `htmx:before:init`           | Before element initialization      |
+| `htmx:after:init`            | After element initialization       |
+| `htmx:before:process`        | Before processing DOM tree         |
+| `htmx:after:process`         | After processing DOM tree          |
+| `htmx:before:request`        | Before request sent                |
+| `htmx:after:request`         | After response received            |
+| `htmx:config:request`        | Configure request (modify headers) |
+| `htmx:before:swap`           | Before DOM swap                    |
+| `htmx:after:swap`            | After DOM swap                     |
+| `htmx:before:settle`         | Before settle phase                |
+| `htmx:after:settle`          | After settle phase                 |
+| `htmx:before:cleanup`        | Before element cleanup             |
+| `htmx:after:cleanup`         | After element cleanup              |
+| `htmx:before:history:update` | Before history update              |
+| `htmx:after:history:update`  | After history update               |
+| `htmx:before:sse:stream`     | Before SSE stream starts           |
+| `htmx:after:sse:stream`      | After SSE stream ends              |
+| `htmx:before:sse:message`    | Before SSE message processed       |
+| `htmx:after:sse:message`     | After SSE message processed        |
+| `htmx:before:sse:reconnect`  | Before SSE reconnect               |
+| `htmx:confirm`               | Confirmation (can override)        |
+| `htmx:error`                 | Request error                      |
+| `htmx:finally:request`       | Always fires after request         |
+| `htmx:abort`                 | Request aborted                    |
 
 ### Response Headers
 
-| Header                  | Purpose                    |
-|-------------------------|----------------------------|
-| `HX-Trigger`            | Trigger event(s) on client |
-| `HX-Trigger-After-Swap` | Trigger after swap         |
-| `HX-Trigger-After-Settle`| Trigger after settle      |
-| `HX-Redirect`           | Client-side redirect       |
-| `HX-Refresh`            | Full page refresh          |
-| `HX-Location`           | Navigate with htmx         |
-| `HX-Push-Url`           | Push URL to history        |
-| `HX-Replace-Url`        | Replace URL in history     |
-| `HX-Reswap`             | Override swap method       |
-| `HX-Retarget`           | Override target            |
-| `HX-Reselect`           | Override select            |
+| Header                    | Purpose                    |
+|---------------------------|----------------------------|
+| `HX-Trigger`              | Trigger event(s) on client |
+| `HX-Trigger-After-Swap`   | Trigger after swap         |
+| `HX-Trigger-After-Settle` | Trigger after settle       |
+| `HX-Redirect`             | Client-side redirect       |
+| `HX-Refresh`              | Full page refresh          |
+| `HX-Location`             | Navigate with htmx         |
+| `HX-Push-Url`             | Push URL to history        |
+| `HX-Replace-Url`          | Replace URL in history     |
+| `HX-Reswap`               | Override swap method       |
+| `HX-Retarget`             | Override target            |
+| `HX-Reselect`             | Override select            |
 
 ### Request Headers
 
-| Header                      | Value                      |
-|-----------------------------|----------------------------|
-| `HX-Request`                | "true"                     |
-| `HX-Boosted`                | "true" if boosted          |
-| `HX-Source`                 | Source element identifier  |
-| `HX-Target`                 | Target element identifier  |
-| `HX-Current-URL`            | Current page URL           |
-| `HX-Request-Type`           | "full" or "partial"        |
-| `HX-History-Restore-Request`| "true" on history restore  |
+| Header                       | Value                     |
+|------------------------------|---------------------------|
+| `HX-Request`                 | "true"                    |
+| `HX-Boosted`                 | "true" if boosted         |
+| `HX-Source`                  | Source element identifier |
+| `HX-Target`                  | Target element identifier |
+| `HX-Current-URL`             | Current page URL          |
+| `HX-Request-Type`            | "full" or "partial"       |
+| `HX-History-Restore-Request` | "true" on history restore |
 
 ### Config Options
 
@@ -175,7 +175,7 @@ htmx.register(name, extension)   // Register extension
 **Removed:**
 - `htmx.find()` / `htmx.findAll()` — use `document.querySelector`
 - `htmx.takeClass()` — too niche
-- `htmx.onLoad()` — use `htmx.on('htmx:init', ...)`
+- `htmx.onLoad()` — use `htmx.on('htmx:after:init', ...)`
 - `htmx.parseInterval()` — extensions can implement
 - `htmx.timeout()` — use `new Promise(r => setTimeout(r, ms))`
 - `htmx.forEvent()` — extensions can implement
@@ -188,36 +188,36 @@ htmx.register(name, extension)   // Register extension
 
 ### Internal Methods
 
-| Method | Signature | Purpose |
-|--------|-----------|---------|
-| `__initHtmxConfig` | `()` | Parse `<meta>` config, set defaults |
-| `__initRequestIndicatorCss` | `()` | Inject indicator stylesheet |
-| `__attributeValue` | `(el, name, default, collector)` | Read attribute with inheritance |
-| `__parseConfig` | `(str)` | Parse config string to object |
-| `__mergeConfig` | `(str, target)` | Merge config string into target |
-| `__parseTriggerSpecs` | `(spec)` | Parse `hx-trigger` value to spec array |
-| `__determineMethodAndAction` | `(el, evt)` | Resolve HTTP method + URL from element |
-| `__createRequestContext` | `(el, evt)` | Build request context object |
-| `__handleTriggerEvent` | `(ctx)` | Process trigger → issue request |
-| `__issueRequest` | `(ctx)` | Execute fetch, handle response |
-| `__handleSSE` | `(ctx, el, response)` | Handle SSE streaming response |
-| `__parseSSE` | `(response)` | Parse SSE event stream |
-| `__makeFragment` | `(text)` | Parse HTML string to DocumentFragment |
-| `__parseSwapSpec` | `(str)` | Parse `hx-swap` value to spec |
-| `__insertContent` | `(task, cssTransition)` | Execute single swap task |
-| `__processOOB` | `(fragment, sourceEl, selectOOB)` | Process out-of-band swaps |
-| `__morph` | `(oldNode, fragment, innerHTML)` | DOM diffing entry point |
-| `__morphChildren` | `(ctx, oldParent, newParent, insertionPoint, endPoint)` | Recursive child morphing |
-| `__findBestMatch` | `(ctx, node, startPoint, endPoint)` | Find best morph match |
-| `__handleHistoryUpdate` | `(ctx)` | Push/replace history state |
-| `__showIndicators` | `(el)` | Show request indicators |
-| `__hideIndicators` | `(indicators)` | Hide request indicators |
-| `__disableElements` | `(el)` | Disable elements during request |
-| `__enableElements` | `(elements)` | Re-enable elements after request |
-| `__collectFormData` | `(el, form, submitter, validate)` | Collect form inputs for request |
-| `__findExt` | `(el, selector, thisAttr)` | Find element with extended selectors |
-| `__findAllExt` | `(el, selector, thisAttr, global)` | Find all with extended selectors |
-| `__cleanup` | `(el)` | Remove listeners, state, abort requests |
+| Method                       | Signature                                               | Purpose                                 |
+|------------------------------|---------------------------------------------------------|-----------------------------------------|
+| `__initHtmxConfig`           | `()`                                                    | Parse `<meta>` config, set defaults     |
+| `__initRequestIndicatorCss`  | `()`                                                    | Inject indicator stylesheet             |
+| `__attributeValue`           | `(el, name, default, collector)`                        | Read attribute with inheritance         |
+| `__parseConfig`              | `(str)`                                                 | Parse config string to object           |
+| `__mergeConfig`              | `(str, target)`                                         | Merge config string into target         |
+| `__parseTriggerSpecs`        | `(spec)`                                                | Parse `hx-trigger` value to spec array  |
+| `__determineMethodAndAction` | `(el, evt)`                                             | Resolve HTTP method + URL from element  |
+| `__createRequestContext`     | `(el, evt)`                                             | Build request context object            |
+| `__handleTriggerEvent`       | `(ctx)`                                                 | Process trigger → issue request         |
+| `__issueRequest`             | `(ctx)`                                                 | Execute fetch, handle response          |
+| `__handleSSE`                | `(ctx, el, response)`                                   | Handle SSE streaming response           |
+| `__parseSSE`                 | `(response)`                                            | Parse SSE event stream                  |
+| `__makeFragment`             | `(text)`                                                | Parse HTML string to DocumentFragment   |
+| `__parseSwapSpec`            | `(str)`                                                 | Parse `hx-swap` value to spec           |
+| `__insertContent`            | `(task, cssTransition)`                                 | Execute single swap task                |
+| `__processOOB`               | `(fragment, sourceEl, selectOOB)`                       | Process out-of-band swaps               |
+| `__morph`                    | `(oldNode, fragment, innerHTML)`                        | DOM diffing entry point                 |
+| `__morphChildren`            | `(ctx, oldParent, newParent, insertionPoint, endPoint)` | Recursive child morphing                |
+| `__findBestMatch`            | `(ctx, node, startPoint, endPoint)`                     | Find best morph match                   |
+| `__handleHistoryUpdate`      | `(ctx)`                                                 | Push/replace history state              |
+| `__showIndicators`           | `(el)`                                                  | Show request indicators                 |
+| `__hideIndicators`           | `(indicators)`                                          | Hide request indicators                 |
+| `__disableElements`          | `(el)`                                                  | Disable elements during request         |
+| `__enableElements`           | `(elements)`                                            | Re-enable elements after request        |
+| `__collectFormData`          | `(el, form, submitter, validate)`                       | Collect form inputs for request         |
+| `__findExt`                  | `(el, selector, thisAttr)`                              | Find element with extended selectors    |
+| `__findAllExt`               | `(el, selector, thisAttr, global)`                      | Find all with extended selectors        |
+| `__cleanup`                  | `(el)`                                                  | Remove listeners, state, abort requests |
 
 ---
 
@@ -229,47 +229,62 @@ htmx.register(name, extension)   // Register extension
 - **Layer 2 — Behaviors:** Orchestration, parsing, queue management. TBD.
 - **Layer 1 — Kernel:** `emit()`, `register()`, `wrap()`, `state`, `config`. Minimal core.
 
-### Event Model (22 events)
+### Event Model (before/after pairs)
 
-| Event | When | Can Do | Fires On | Detail |
-|---|---|---|---|---|
-| **System** |
-| `htmx:ready` | Library boots | — | `document` | `{}` |
-| **Element lifecycle** |
-| `htmx:init` | After element gets htmx behaviors | Observe | initialized element | `{ element, root }` |
-| `htmx:cleanup` | Before element loses htmx behavior | Cancel | cleaned-up element | `{ element }` |
-| **Request lifecycle** — detail accumulates as one object through the pipeline |
-| `htmx:trigger` | After trigger condition met | Observe | trigger element | `{ trigger }` |
-| `htmx:request` | Before fetch | Cancel, Modify | trigger element | `{ trigger, request }` |
-| `htmx:response` | After fetch, before swap | Cancel, Modify | trigger element | `{ trigger, request, response }` |
-| `htmx:swap` | Before each DOM mutation (×N) | Cancel, Modify | trigger element | `{ trigger, request, response, swap }` |
-| `htmx:settle` | After DOM + process + CSS settle (×N) | Observe | trigger element | `{ trigger, request, response, swap }` |
-| `htmx:error` | On error during request lifecycle | Cancel | trigger element | `{ trigger, request?, response?, error }` |
-| `htmx:done` | After all swaps (finally) | Observe | trigger element | `{ trigger, request, response, error? }` |
-| `htmx:abort` | Cancel in-flight request | — | trigger element | — |
-| **History** (extension-owned) |
-| `htmx:history:push` | After URL pushed | Observe | trigger element | — |
-| `htmx:history:replace` | After URL replaced | Observe | trigger element | — |
-| `htmx:history:restore` | Before restoring state | Cancel | trigger element | — |
-| **SSE** (extension-owned) |
-| `htmx:sse:open` | Connection established | Observe | trigger element | — |
-| `htmx:sse:message` | Message received | Cancel, Modify | trigger element | — |
-| `htmx:sse:close` | Connection closed | Observe | trigger element | — |
-| `htmx:sse:error` | Connection error | Cancel | trigger element | — |
-| **WebSocket** (extension-owned) |
-| `htmx:ws:open` | Connection established | Observe | trigger element | — |
-| `htmx:ws:message` | Message received | Cancel, Modify | trigger element | — |
-| `htmx:ws:close` | Connection closed | Observe | trigger element | — |
-| `htmx:ws:send` | Before sending message | Cancel, Modify | trigger element | — |
-| `htmx:ws:error` | Connection error | Cancel | trigger element | — |
+The kernel emits explicit `htmx:before:X` and `htmx:after:X` pairs. Extensions always use the explicit form. DOM users get shorthands via `hx-on` (see ADR-017).
 
-`htmx:error` defaults to `console.error`; cancelling suppresses the log. `htmx:done` always fires (finally block). `htmx:swap`/`htmx:settle` fire ×N for OOB/partial responses — each with a different `swap` object but the same `trigger`/`request`/`response`.
+| Event                         | When                               | Can Do         | Fires On       | Detail                                   |
+|-------------------------------|------------------------------------|----------------|----------------|------------------------------------------|
+| **System**                    |                                    |                |                |                                          |
+| `htmx:ready`                  | Library boots                      | —              | `document`     | `{}`                                     |
+| **Element lifecycle**         |                                    |                |                |                                          |
+| `htmx:before:init`            | Before parsing/binding             | Cancel, Modify | element        | `{ element, root }`                      |
+| `htmx:after:init`             | After element fully initialized    | Observe        | element        | `{ element, root }`                      |
+| `htmx:before:cleanup`         | Before element loses htmx behavior | Cancel         | element        | `{ element }`                            |
+| `htmx:after:cleanup`          | After cleanup complete             | Observe        | element        | `{ element }`                            |
+| **Request lifecycle**         |                                    |                |                |                                          |
+| `htmx:before:trigger`         | Before trigger fires               | Cancel         | source element | `{ source }`                             |
+| `htmx:after:trigger`          | After trigger fired                | Observe        | source element | `{ source }`                             |
+| `htmx:before:request`         | Before fetch                       | Cancel, Modify | source element | `{ source, request }`                    |
+| `htmx:after:request`          | After fetch completes              | Observe        | source element | `{ source, request }`                    |
+| `htmx:before:response`        | Before reading response body       | Cancel         | source element | `{ source, request, response }`          |
+| `htmx:after:response`         | After response body read           | Modify         | source element | `{ source, request, response }`          |
+| `htmx:before:swap`            | Before DOM mutation                | Cancel, Modify | source element | `{ source, request, response, swap }`    |
+| `htmx:after:swap`             | After DOM mutation                 | Observe        | source element | `{ source, request, response, swap }`    |
+| `htmx:before:settle`          | Before CSS settle phase            | Cancel         | source element | `{ source, request, response, swap }`    |
+| `htmx:after:settle`           | After CSS settle complete          | Observe        | source element | `{ source, request, response, swap }`    |
+| `htmx:error`                  | On error (no pair needed)          | Cancel         | source element | `{ source, request?, response?, error }` |
+| `htmx:done`                   | Finally block (no pair needed)     | Observe        | source element | `{ source, request, response, error? }`  |
+| **History**                   |                                    |                |                     |                                           |
+| `htmx:before:history:push`    | Before URL push                    | Cancel         | trigger element     | —                                         |
+| `htmx:after:history:push`     | After URL pushed                   | Observe        | trigger element     | —                                         |
+| `htmx:before:history:replace` | Before URL replace                 | Cancel         | trigger element     | —                                         |
+| `htmx:after:history:replace`  | After URL replaced                 | Observe        | trigger element     | —                                         |
+| `htmx:before:history:restore` | Before state restore               | Cancel         | trigger element     | —                                         |
+| `htmx:after:history:restore`  | After state restored               | Observe        | trigger element     | —                                         |
+| **SSE**                       |                                    |                |                     |                                           |
+| `htmx:sse:open`               | Connection established             | Observe        | trigger element     | —                                         |
+| `htmx:sse:message`            | Message received                   | Cancel, Modify | trigger element     | —                                         |
+| `htmx:sse:close`              | Connection closed                  | Observe        | trigger element     | —                                         |
+| `htmx:sse:error`              | Connection error                   | Cancel         | trigger element     | —                                         |
+| **WebSocket**                 |                                    |                |                     |                                           |
+| `htmx:ws:open`                | Connection established             | Observe        | trigger element     | —                                         |
+| `htmx:ws:message`             | Message received                   | Cancel, Modify | trigger element     | —                                         |
+| `htmx:ws:close`               | Connection closed                  | Observe        | trigger element     | —                                         |
+| `htmx:ws:send`                | Before sending message             | Cancel, Modify | trigger element     | —                                         |
+| `htmx:ws:error`               | Connection error                   | Cancel         | trigger element     | —                                         |
+
+**Notes:**
+- `htmx:error` and `htmx:done` have no pairs — they're terminal events
+- SSE/WebSocket events don't use before/after — they're already named by state
+- Detail accumulates through request lifecycle: `source` → `+request` → `+response` → `+swap`
+- `source` = `{ element, event }` — what initiated the request. See ADR-022 for naming rationale.
 
 ### Detail Fields
 
-- `element` = wrapped element
+- `element` = wrapped element (used in init/cleanup events)
 - `root` = element passed to `htmx.init()` (check `e.target === e.detail.root` for subtree completion)
-- `trigger` = `{ element, event }` — what initiated the request (element is wrapped)
+- `source` = `{ element, event }` — what initiated the request (element is wrapped). See ADR-022.
 - `request` = `{ url, method, headers, body }` — outgoing request
 - `response` = `{ status, url, headers, text }` — server response
 - `swap` = `{ content, target, method }` — the DOM mutation: what content, where, how (target is wrapped)
@@ -281,14 +296,14 @@ Extensions can attach fields to the detail for cross-phase state. Per-element st
 
 Elements in event detail are wrapped Proxies. Methods:
 
-| Method | Returns | Purpose |
-|--------|---------|---------|
-| `.attr(name)` | `string\|null` | Read attribute (with inheritance) |
-| `.find(selector)` | `wrapped\|null` | `querySelector`, wrapped |
-| `.findAll(selector)` | `wrapped[]` | `querySelectorAll`, wrapped |
-| `.emit(event, detail)` | `boolean` | Dispatch event on element |
-| `.state` | `object` | Auto-vivifying per-element state (namespaced by extension) |
-| `.native` | `Element` | Unwrap to raw DOM element |
+| Method                 | Returns         | Purpose                                                    |
+|------------------------|-----------------|------------------------------------------------------------|
+| `.attr(name)`          | `string\|null`  | Read attribute (with inheritance)                          |
+| `.find(selector)`      | `wrapped\|null` | `querySelector`, wrapped                                   |
+| `.findAll(selector)`   | `wrapped[]`     | `querySelectorAll`, wrapped                                |
+| `.emit(event, detail)` | `boolean`       | Dispatch event on element                                  |
+| `.state`               | `object`        | Auto-vivifying per-element state (namespaced by extension) |
+| `.native`              | `Element`       | Unwrap to raw DOM element                                  |
 
 Static equivalents: `htmx.attr(el, name)`, `htmx.find(el, sel)`, `htmx.findAll(el, sel)`, `htmx.emit(el, evt, detail)`, `htmx.state(el)`.
 
@@ -298,29 +313,37 @@ TBD. See Parking Lot for chainable API concept.
 
 ### Layer 1: Kernel
 
-**Config shape:**
+**Config shape:** (See ADR-023 for full rationale)
 
-| Path | Default | Purpose |
-|------|---------|---------|
-| `request.credentials` | `'same-origin'` | Fetch credentials mode |
-| `request.mode` | `'same-origin'` | Fetch mode |
-| `request.timeout` | `60000` | Request timeout (ms) |
-| `request.headers` | `{ 'HX-Request': 'true' }` | Default headers |
-| `swap.method` | `'innerHTML'` | Default swap style |
-| `swap.target` | `'this'` | Default target |
-| `syntax.prefix` | `'hx-'` | Attribute prefix |
-| `syntax.delimiter` | `':'` | Modifier delimiter |
+| Path                  | Default                    | Purpose                                        |
+|-----------------------|----------------------------|------------------------------------------------|
+| `trigger.event`       | `'click'`                  | Default trigger event                          |
+| `trigger.delay`       | `0`                        | Default delay (ms)                             |
+| `trigger.throttle`    | `0`                        | Default throttle (ms)                          |
+| `trigger.registry`    | `{ load, revealed, ... }`  | Non-DOM trigger handlers                       |
+| `request.timeout`     | `60000`                    | Request timeout (ms)                           |
+| `request.credentials` | `'same-origin'`            | Fetch credentials mode                         |
+| `request.mode`        | `'same-origin'`            | Fetch mode                                     |
+| `request.headers`     | `{ 'HX-Request': ... }`    | Static strings or functions (dynamic headers)  |
+| `swap.method`         | `'innerHTML'`              | Default swap style                             |
+| `swap.target`         | `'this'`                   | Default target                                 |
+| `swap.settle`         | `20`                       | Default settle delay (ms)                      |
+| `swap.transition`     | `false`                    | Default view transition                        |
+| `swap.registry`       | `{ innerHTML, ... }`       | Swap method implementations                    |
+| `syntax.prefix`       | `'hx-'`                    | Attribute prefix                               |
+| `syntax.delimiter`    | `':'`                      | Modifier delimiter                             |
+| `syntax.format`       | `RelaxedJSON`              | Attribute value parser                         |
 
-Extensions own their config namespaces via `htmx:init` convention (see ADR-010).
+Extensions own their config namespaces via `htmx:ready` convention (see ADR-010).
 
 **Kernel API:**
 
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `emit` | `(element, eventName, detail?) → boolean` | Call extension handlers, dispatch DOM event. Returns false if cancelled. |
-| `register` | `(name, { requires?, on }) → void` | Register extension. Throws on duplicate or missing dependency. |
-| `wrap` | `(element) → Proxy` | Wrap element with convenience methods. |
-| `state` | WeakMap-backed | Per-element state. Auto-vivifying namespaces via Proxy. |
+| Function   | Signature                                 | Purpose                                                                  |
+|------------|-------------------------------------------|--------------------------------------------------------------------------|
+| `emit`     | `(element, eventName, detail?) → boolean` | Call extension handlers, dispatch DOM event. Returns false if cancelled. |
+| `register` | `(name, { requires?, on }) → void`        | Register extension. Throws on duplicate or missing dependency.           |
+| `wrap`     | `(element) → Proxy`                       | Wrap element with convenience methods.                                   |
+| `state`    | WeakMap-backed                            | Per-element state. Auto-vivifying namespaces via Proxy.                  |
 
 **Target resolution:** `this`, `body`, `closest <sel>`, `find <sel>`, or CSS selector.
 
@@ -463,37 +486,62 @@ htmx.register('offline-guard', {
 
 - Extensions stored in array, called in registration order
 - `requires` array enforces dependencies (must be registered first)
-- Late registration: if `htmx:ready` already fired, extension's `htmx:init` called immediately
+- Late registration: if `htmx:ready` already fired, extension's `htmx:before:init` called immediately for existing elements
 - Duplicate names throw
 
 ### Built-in Extensions
 
 Core htmx behaviors are implemented as extensions. This dogfoods the extension system, lets users disable/replace core behaviors, and ensures core and external extensions use identical APIs.
 
-| Extension | Events | Purpose |
-|-----------|--------|---------|
-| `defaultTriggers` | `ready`, `init` | Assign default trigger events (click/change/submit) |
-| `hx-boost` | `init` | Intercept links/forms, add htmx behavior |
-| `hx-on` | `init` | Bind `hx-on:*` event handlers |
-| `hx-confirm` | `request` | Show confirmation dialog, cancel if declined |
-| `hx-headers` | `request` | Add headers from `hx-headers` attribute |
-| `hx-vals` | `request` | Add values from `hx-vals` to request body |
-| `hx-include` | `request` | Include additional inputs in request |
-| `hx-indicator` | `request`, `done` | Show/hide loading indicators |
-| `hx-disable` | `request`, `done` | Disable/re-enable elements during request |
-| `hx-sync` | `request` | Request queue strategy |
-| `timeout` | `ready`, `request`, `done` | Abort requests exceeding timeout |
-| `etag` | `request`, `response` | ETag caching (If-None-Match) |
-| `noSwap` | `ready`, `response` | Skip swap for 204/304 responses |
-| `responseHeaders` | `response`, `swap` | Handle HX-Trigger, HX-Redirect, HX-Retarget, etc. |
-| `hx-status` | `swap` | Route to alternate targets by status code |
-| `sse` | `ready`, `response` | Handle text/event-stream responses |
-| `select` | `swap` | Filter response by `hx-select` |
-| `oob` | `swap` | Process `hx-select-oob` and `hx-swap-oob` (requires: select) |
-| `title` | `done` | Update document.title from response |
-| `history` | `ready`, `request`, `done` | Push/replace history state |
-| `injectStyles` | `ready` | Inject indicator CSS |
-| `compat` | `ready` | Backwards-compat aliases (ajax→fetch, etc.)
+| Extension          | Events                                                    | Purpose                                                      |
+|--------------------|-----------------------------------------------------------|--------------------------------------------------------------|
+| **Init phase**     |                                                           |                                                              |
+| `defaultTriggers`  | `ready`, `before:init`                                    | Assign default trigger events (click/change/submit)          |
+| `hx-boost`         | `before:init`                                             | Intercept links/forms, add htmx behavior                     |
+| `hx-on`            | `after:init`, `before:cleanup`                            | Bind/unbind `hx-on:*` event handlers, map DOM shorthands     |
+| **Trigger phase**  |                                                           |                                                              |
+| `intersect`        | `before:init`, `before:cleanup`                           | Normalize + setup IntersectionObserver (revealed, intersect) |
+| `polling`          | `before:init`, `before:cleanup`                           | Normalize `every Xs` → standard syntax, setup interval       |
+| `load`             | `before:init`                                             | Normalize `load` trigger, fire immediately                   |
+| **Request phase**  |                                                           |                                                              |
+| `hx-confirm`       | `before:request`                                          | Show confirmation dialog, cancel if declined                 |
+| `hx-headers`       | `before:request`                                          | Add headers from `hx-headers` attribute                      |
+| `hx-validate`      | `before:request`                                          | Form validation via `reportValidity()`                       |
+| `hx-encoding`      | `before:request`                                          | Multipart/form-data encoding                                 |
+| `formData`         | `before:request`                                          | Collect form data from trigger element or enclosing form     |
+| `dynamicHeaders`   | `before:request`                                          | Add HX-Current-URL, HX-Target, HX-Source, etc.               |
+| `jsEval`           | `ready`, `before:request`                                 | Evaluate `js:`/`javascript:` prefixes in hx-vals, hx-headers |
+| `hx-vals`          | `before:request`                                          | Add values from `hx-vals` to request body                    |
+| `hx-include`       | `before:request`                                          | Include additional inputs in request                         |
+| `hx-indicator`     | `before:request`, `done`                                  | Show/hide loading indicators                                 |
+| `hx-disable`       | `before:request`, `done`                                  | Disable/re-enable elements during request                    |
+| `hx-sync`          | `before:init`, `before:request`, `done`, `before:cleanup` | Request queue strategies (drop, abort, replace, queue)       |
+| `timeout`          | `ready`, `before:request`, `done`                         | Abort requests exceeding timeout                             |
+| `etag`             | `before:request`, `after:request`                         | ETag caching (If-None-Match)                                 |
+| **Response phase** |                                                           |                                                              |
+| `noSwap`           | `ready`, `after:request`                                  | Skip swap for 204/304 responses                              |
+| `responseHeaders`  | `after:request`, `before:swap`                            | Handle HX-Trigger, HX-Redirect, HX-Retarget, etc.            |
+| `hx-status`        | `before:swap`                                             | Route to alternate targets by status code                    |
+| `sse`              | `ready`, `after:request`                                  | Handle text/event-stream responses                           |
+| `fullDocParsing`   | `after:request`                                           | Extract body/head from full HTML documents                   |
+| **Swap phase**     |                                                           |                                                              |
+| `select`           | `before:swap`                                             | Filter response by `hx-select`                               |
+| `oob`              | `before:swap`                                             | Process `hx-select-oob` and `hx-swap-oob` (requires: select) |
+| `hx-preserve`      | `before:swap`                                             | Preserve elements across swaps (moveBefore/pantry)           |
+| `morph`            | `ready`, `before:swap`                                    | DOM diffing for innerMorph/outerMorph swap styles            |
+| `partials`         | `before:swap`                                             | Process `<template hx-type="partial">` in response           |
+| **Settle phase**   |                                                           |                                                              |
+| `executeScripts`   | `after:settle`                                            | Execute `<script>` tags in swapped content                   |
+| `autofocus`        | `after:settle`                                            | Focus first `[autofocus]` in swapped content                 |
+| `anchorScroll`     | `after:settle`                                            | Scroll to hash fragment from response URL                    |
+| `cssTransitions`   | `ready`, `swap`, `settle`                                 | htmx-swapping/htmx-settling/htmx-added CSS classes           |
+| `viewTransitions`  | `ready`, `before:swap`                                    | View Transitions API integration                             |
+| **Done phase**     |                                                           |                                                              |
+| `title`            | `done`                                                    | Update document.title from response                          |
+| `history`          | `ready`, `before:request`, `done`                         | Push/replace history state                                   |
+| **Ready phase**    |                                                           |                                                              |
+| `injectStyles`     | `ready`                                                   | Inject indicator CSS                                         |
+| `compat`           | `ready`                                                   | Backwards-compat aliases (ajax→fetch, etc.)                  |
 
 ---
 
@@ -504,6 +552,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 002: No Abbreviated Parameter Names
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Codebase littered with `el`, `evt`, `ctx`, `s`. Hard to read, inconsistent, requires mental translation.
 
@@ -514,6 +563,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 003: No Context Object
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** The `ctx` pattern passes one big mutable object through every function. Unclear what's available at each phase, easy to accidentally mutate, hard to trace data flow.
 
@@ -524,6 +574,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 004: Incremental Event Detail
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Event handlers need access to request/response/swap data, but not all data exists at all phases.
 
@@ -538,6 +589,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 005: WeakMap for Element State
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Current htmx stores state on `element._htmx`. Pollutes DOM elements, can leak if elements removed without cleanup.
 
@@ -548,6 +600,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 006: Wrapped Elements in Event Handlers
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Event handlers often need to read attributes, query children, emit events. Raw DOM API is verbose.
 
@@ -558,6 +611,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 007: JIT Attribute Reading
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Should attributes be read at activation time or trigger time? Reading at activation time means dynamic changes don't take effect.
 
@@ -568,6 +622,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 008: Events-Only Extension System
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Extensions need to hook into htmx lifecycle and modify behavior. Considered `override` pattern (wrapping kernel functions) but rejected it—creates hard-to-debug chains, leaks internal signatures as API, order-dependent behavior.
 
@@ -575,12 +630,12 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 
 **Rejected alternatives:**
 
-| Pattern | Why Rejected |
-|---|---|
+| Pattern                                   | Why Rejected                                                               |
+|-------------------------------------------|----------------------------------------------------------------------------|
 | Hook types (Sync, Bail, Waterfall, Async) | Tapable complexity for Webpack's needs, not ours. `return false` suffices. |
-| Plugin priority numbers | Implicit ordering games. Registration order + `requires` is simpler. |
-| Override/wrapping system | Hard to debug, leaks internal signatures as API, order-dependent. |
-| Registries (swapStyles, triggers) | Unnecessary indirection. Events handle custom swap styles and triggers. |
+| Plugin priority numbers                   | Implicit ordering games. Registration order + `requires` is simpler.       |
+| Override/wrapping system                  | Hard to debug, leaks internal signatures as API, order-dependent.          |
+| Registries (swapStyles, triggers)         | Unnecessary indirection. Events handle custom swap styles and triggers.    |
 
 **Consequences:** Simpler mental model. Extensions can't break each other via wrapping chains. All extension points are explicit lifecycle events. Slightly more verbose for some use cases but much more predictable. Hyrum's Law applies: every kernel function exposed to extensions becomes permanent API — keep the surface minimal (`register`, `emit`, `wrap`).
 
@@ -591,6 +646,7 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 ---
 
 ### 010: Extension Config via htmx:init Convention
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Extensions need configurable options with sensible defaults. Considered a `config:` field in registration, but that adds a special case to the API.
 
@@ -617,6 +673,7 @@ Late-registered extensions have their `htmx:init` called immediately.
 ---
 
 ### 011: Extension State via element.state.{name}
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Extensions need per-element state (e.g., storing an IntersectionObserver). Considered auto-namespacing via kernel magic, but that requires the kernel to know which extension is accessing state.
 
@@ -639,6 +696,7 @@ The `element.state` object uses auto-vivification (Proxy) so `element.state.prel
 ---
 
 ### 012: Fragment as Architectural Primitive
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** Explored whether the "UNIX file" primitive for htmx should be the attribute (user-facing interface) or the hypermedia fragment (data flowing through the system). The attribute is the shell command; the fragment is the file descriptor.
 
@@ -654,57 +712,24 @@ The pipeline model maps directly onto the event system — events are named chec
 
 ---
 
-### 014: Pragmatic Event Timing — No Mandatory Pairs
-
-**Context:** htmx 4.0-alpha has 30+ events with mandatory `before:`/`after:` pairs for every phase. Most go unused. The question: how to reduce event bloat while preserving extensibility?
-
-Considered approaches:
-1. Mandatory before/after pairs for everything → event bloat
-2. Single event per phase with phase flags → awkward API
-3. `before:` prefix for "before", bare name for "after" → still prefix clutter
-4. Past tense (`-ed`) for "after" universally → `hx-on::inited` is awkward, users expect `hx-on::init`
-
-**Decision:** Each event fires at its **most useful time**. Add a second event only where both timings are genuinely needed.
-
-See unified event table in "Event Model (22 events)" above. Key timing rationale:
-
-**No before-init event.** Use cases are covered:
-- Prevent init → use `hx-ignore`
-- Modify attributes → JIT reading means modify after init, read at trigger time
-
-**`htmx:settle` not `htmx:swapped`.** "Settle" implies dust has settled — cleaner than awkward past tense. Fires after DOM insertion + element processing + CSS settle transitions.
-
-**Subtree init completion:** Every `htmx:init` includes `e.detail.root`. Check `e.target === e.detail.root` for batch completion.
-
-**API method:**
-- `htmx.init(element)` — initialize htmx behaviors on subtree
-
-No public cleanup method. Cleanup happens automatically when elements are removed from DOM or when `htmx.init()` is called on a subtree that was already initialized.
-
-**Consequences:**
-- 22 total events (down from 30+)
-- No prefix clutter (`before:`/`after:`)
-- No awkward `-ed` suffixes
-- Each event fires at its most useful time
-- Feature events namespaced (`history:`, `sse:`, `ws:`)
-- `hx-on::init` just works
-- Breaking change from 4.0-alpha event names
+### 014: Pragmatic Event Timing — No Mandatory Pairs — *Superseded by ADR-017*
 
 ---
 
 ### 015: Public API — Modern Naming, Minimal Surface
+**Date:** 2026-02-03 | **Status:** Accepted
 
 **Context:** htmx 2.0 API has legacy names (`ajax`, `trigger`) and utility functions that duplicate browser APIs (`find`, `findAll`). Need to modernize for 4.0 while keeping API surface minimal.
 
 **Decision:**
 
 ```js
-htmx.config                      // Configuration object
-htmx.init(element)               // Initialize subtree
-htmx.fetch(method, url, options) // Programmatic request
-htmx.on(event, handler)          // Listen to lifecycle events
-htmx.emit(element, event, detail)// Dispatch event
-htmx.register(name, extension)   // Register extension
+htmx.config                              // Configuration object
+htmx.init(element)                       // Initialize subtree
+htmx.fetch(url, options)                 // Programmatic request
+htmx.on(element, event, handler)         // Bind listener, returns off()
+htmx.emit(element, event, detail)        // Dispatch event
+htmx.register(name, extension)           // Register extension
 ```
 
 Naming changes:
@@ -716,7 +741,7 @@ Naming changes:
 Removed:
 - `htmx.find()` / `htmx.findAll()` — use `document.querySelector`
 - `htmx.takeClass()` — too niche
-- `htmx.onLoad()` — use `htmx.on('htmx:init', ...)`
+- `htmx.onLoad()` — use `htmx.on('htmx:after:init', ...)`
 - `htmx.parseInterval()` / `htmx.timeout()` / `htmx.forEvent()` — trivial utilities, extensions can implement
 
 **Consequences:**
@@ -727,21 +752,399 @@ Removed:
 
 ---
 
-## Open Questions
+### 016: Modern JavaScript APIs
+**Date:** 2026-02-04 | **Status:** Accepted
 
-1. ~~**DOM processing naming**~~ — Resolved: `htmx.init()` with events `htmx:init` / `htmx:cleanup`. No public cleanup method. (see Decision 014)
+**Context:** htmx 2.0 supported IE11 until recently, which prevented use of modern browser APIs. htmx 4.0 drops IE11 support. Several patterns in the codebase can be simplified using APIs that landed in browsers 2020-2023.
 
-2. **`htmx.on` collision** - Layer 1 uses `htmx.on(event, handler)` for lifecycle events. Layer 3 uses `htmx.on(element, event).get(...)` for binding behaviors. Same name, different purposes. Options: different names (`listen` vs `on`), namespacing (`htmx.events.on`), or signature detection.
+**Decision:** Prefer native browser APIs over manual implementations:
 
-3. **Layer 2 design** - What's the clean API for the behavior/orchestration layer?
+| Pattern             | Old Approach                                                      | Modern API                                       |
+|---------------------|-------------------------------------------------------------------|--------------------------------------------------|
+| Once-only listeners | Manual wrapper: `let f; return e => { if (!f) { f = 1; fn(e) } }` | `addEventListener(event, handler, {once: true})` |
 
-4. **SSE/WebSocket** - How do they fit the chainable model?
+**Consequences:**
+- Simpler, less code
+- Native `{once: true}` auto-removes listener (less cleanup work)
+- Browser baseline: ES2020+ (Chrome 80+, Firefox 75+, Safari 14+)
 
-5. **OOB swaps** - How exposed in API?
+---
 
-6. **Boost** - Extension or built-in?
+### 017: Before/After Event Pairs with DOM Shorthands
+**Date:** 2026-02-04 | **Status:** Accepted
 
-7. **Error handling** - Events only? Callbacks? `.catch()`?
+**Context:** ADR-014 tried to simplify events by picking "the most useful time" for each event. But this caused problems:
+- Extensions need `htmx:before:init` to normalize exotic attribute syntax (e.g., `"every 2s"` → standard format) before the kernel parses
+- No way to hook in before parsing without adding ad-hoc events like `htmx:normalize`
+- The "pragmatic timing" approach doesn't scale — different extensions need different timings
+
+**Decision:** Restore explicit `htmx:before:X` / `htmx:after:X` pairs. The kernel emits both. Extensions always use the explicit form.
+
+For DOM convenience, `hx-on` maps shorthands to pragmatic defaults:
+
+| Shorthand       | Maps To                  | Rationale                                    |
+|-----------------|--------------------------|----------------------------------------------|
+| `hx-on::init`   | `htmx:before:init`       | Normalize attributes before parsing          |
+| `hx-on::cleanup`| `htmx:before:cleanup`    | Save state before teardown                   |
+| `hx-on::trigger`| `htmx:after:trigger`     | React to trigger firing                      |
+| `hx-on::request`| `htmx:before:request`    | Modify/cancel before fetch                   |
+| `hx-on::response`| `htmx:after:request`    | React to response                            |
+| `hx-on::swap`   | `htmx:before:swap`       | Modify/cancel before DOM mutation            |
+| `hx-on::settle` | `htmx:after:settle`      | React after CSS transitions complete         |
+| `hx-on::error`  | `htmx:error`             | No pair needed                               |
+| `hx-on::done`   | `htmx:done`              | No pair needed                               |
+
+The mapping lives in the `hx-on` extension, not the kernel. Users writing `hx-on::init` don't know or care about the underlying event name.
+
+**Consequences:**
+- Full extensibility — extensions can hook before or after any phase
+- Clean DOM syntax — users write `hx-on::init`, not `hx-on::before:init`
+- No ambiguity for extension authors — always use explicit `before:`/`after:`
+- Solves the exotic trigger problem (`"every 2s"`, `"intersect"`, custom swap methods)
+- More events than ADR-014, but predictable and symmetric
+
+---
+
+### 018: Event Listener API — `htmx.on()` and `element.on()`
+**Date:** 2026-02-04 | **Status:** Accepted
+
+**Context:** Need a clean way to bind event listeners that:
+- Tracks listeners automatically for cleanup
+- Works at both `htmx.on(element, event, handler)` and `element.on(event, handler)` levels
+- Returns something useful
+
+**Decision:**
+
+```js
+// Static API
+const off = htmx.on(element, event, handler, options?)
+
+// Wrapped element shorthand (calls htmx.on internally)
+const off = element.on(event, handler, options?)
+```
+
+Key behaviors:
+- Returns cleanup function (`off()` removes the listener)
+- Automatically tracks in `element.state["cleanup"]` for cleanup
+- Cleanup iterates `element.state["cleanup"]` and calls each `off()`
+- Use "handler" terminology consistently (not "callback" or "listener")
+
+**Why return cleanup function:**
+- Modern pattern (React `useEffect`, `AbortController`)
+- More useful than returning the handler
+- Enables: `const off = element.on('click', h); /* later */ off()`
+
+**State convention:** Use bracket notation `element.state["cleanup"]`, `element.state["sync"]` to visually distinguish the stable `state` object from dynamic keys inside it.
+
+**Consequences:**
+- Single API for binding with automatic cleanup tracking
+- Extensions use `element.on()` instead of raw `addEventListener`
+- Cleanup is trivial: iterate and call each stored `off()`
+- Resolves the `htmx.on` collision question — signature is `(element, event, handler)`
+
+---
+
+### 019: Inline Attribute Normalization
+**Date:** 2026-02-04 | **Status:** Accepted
+
+**Context:** Some htmx attributes have "exotic" syntax that doesn't fit the standard `"value mod:x mod:y"` parser format:
+
+- `hx-trigger="every 2s"` — space-separated, not colon-separated
+- `hx-sync="closest form:drop"` — colon means strategy, not modifier
+
+Options considered:
+1. **Schema/vocabulary system** — parser knows attribute semantics, too complex
+2. **Pre-processor registry** — extensions register normalizers, over-engineered
+3. **Inline normalization** — transform exotic syntax before parsing, at call site
+
+**Decision:** Normalize exotic syntax inline, at the call site, with clear before→after comments:
+
+```js
+// Normalize: "every 2s" → "every interval:2s"
+const triggerRaw = element.attr('hx-trigger')
+const triggerNormalized = triggerRaw?.replace(/^every\s+(\d+(?:ms|s|m)?)/, 'every interval:$1')
+const {value, ...modifiers} = parse(triggerNormalized)
+
+// Normalize: "closest form:drop" → "closest form strategy:drop"
+const syncRaw = element.attr('hx-sync')
+const syncNormalized = syncRaw?.replace(/:(?=drop|abort|replace|queue)/, ' strategy:')
+const {value: target, strategy} = parse(syncNormalized)
+```
+
+**Consequences:**
+- No parser complexity — parser stays generic
+- Transformations are visible and greppable
+- Each exotic attribute documents its own normalization
+- Extensions needing exotic syntax do the same pattern
+- Trade-off: slightly verbose, but explicit > implicit
+
+---
+
+### 020: State Management and Initialization Tracking
+**Date:** 2026-02-04 | **Status:** Accepted
+
+**Context:** Need to track per-element state (cleanup functions, config overrides, etc.) and detect whether an element has been initialized. Previous approach used `data-htmx-initialized` attribute for both tracking and DOM visibility.
+
+**Decision:**
+
+1. **WeakMap for state**, simple naming:
+```js
+const _state = new WeakMap()
+
+function state(element) {
+    let s = _state.get(element)
+    if (!s) {
+        s = {}
+        _state.set(element, s)
+    }
+    return s
+}
+```
+
+2. **Initialization check** uses WeakMap presence:
+```js
+if (_state.has(node)) continue
+```
+
+3. **DOM marker** is a separate registered extension:
+```js
+register('dom-marker', {
+    on: {
+        'htmx:after:init': ({element}) => {
+            element.native.toggleAttribute('data-htmx', true)
+        },
+        'htmx:after:cleanup': ({element}) => {
+            element.native.removeAttribute('data-htmx')
+        }
+    }
+})
+```
+
+Usage reads naturally:
+```js
+state(node)["cleanup"] = []
+state(node)["cleanup"].push(off)
+```
+
+**Consequences:**
+- Cleaner naming: `state(element)` instead of `getOrCreateState(element)`
+- Separation of concerns: init tracking (WeakMap) vs DOM visibility (extension)
+- Shorter DOM marker: `data-htmx` instead of `data-htmx-initialized`
+- DOM marker is optional (extension can be excluded)
+
+---
+
+### 021: Descendant Cleanup via Tree Walk
+**Date:** 2026-02-04 | **Status:** Accepted (pending perf validation)
+
+**Context:** MutationObserver only reports top-level removed nodes, not descendants. We need to clean up all initialized descendants (intervals, observers, extension state like `hx-sync` queues).
+
+**Decision:** Walk the removed subtree, check each element:
+
+```js
+removed.forEach(node => {
+    cleanup(node)
+    node.querySelectorAll('*').forEach(el => {
+        if (_state.has(el)) cleanup(el)
+    })
+})
+```
+
+**Rejected: Self-cleaning** (intervals check `isConnected` each tick) — adds overhead to every tick, holds references preventing GC, hides bugs.
+
+**Performance:** `querySelectorAll('*')` is O(subtree), `_state.has()` is O(1). Real cost is `cleanup()` calls (2 events each). Likely fine, but needs benchmarking with 100-1000 element removals.
+
+---
+
+### 022: `source` vs `trigger` — Naming Clarity
+**Date:** 2026-02-05 | **Status:** Accepted
+
+**Context:** The word "trigger" is overloaded:
+- `config.trigger` — configures the trigger system (event defaults, registry, modifiers)
+- `detail.trigger` — what initiated a request (element + event)
+
+This creates confusion: `config.trigger.event` (default trigger event) vs `detail.trigger.event` (the DOM event that fired).
+
+**Decision:** Use `source` for the "what initiated this request" concept in event details:
+
+```js
+// Config: trigger system configuration
+config.trigger.event      // 'click'
+config.trigger.registry   // { load, revealed, intersect, every }
+
+// Event detail: what initiated the request
+detail.source.element     // wrapped element that triggered the request
+detail.source.event       // DOM event that fired
+```
+
+All lifecycle events use `source` consistently:
+- `htmx:before:trigger` → `{ source: { element, event } }`
+- `htmx:before:request` → `{ source, request }`
+- `htmx:after:request` → `{ source, request, response }`
+- `htmx:before:swap` → `{ source, request, response, swap }`
+- `htmx:done` → `{ source, request, response, swap, error? }`
+
+Dynamic header functions receive `{ source, url, method }` as context.
+
+**Consequences:**
+- Clear distinction: `config.trigger` = system config, `detail.source` = request origin
+- Consistent detail shape across all lifecycle events
+- Extension authors always destructure `{ source }` for request lifecycle events
+- `htmx.fetch()` accepts `source: { element, event }` option
+
+---
+
+### 023: Config Structure — Pipeline Order with Registries
+**Date:** 2026-02-05 | **Status:** Accepted
+
+**Context:** The kernel config needs to be minimal, extensible, and ordered logically. Registries (swap methods, trigger handlers) need to coexist with scalar defaults.
+
+**Decision:** Config ordered by pipeline flow: `trigger → request → swap → syntax`. Each namespace has scalar defaults + optional `registry` for extensible implementations.
+
+```js
+config = {
+    trigger: {
+        event: 'click',           // default trigger event
+        delay: 0,                 // default delay (ms)
+        throttle: 0,              // default throttle (ms)
+        // Registry: non-DOM triggers. Anything not here is a DOM event name.
+        registry: { load, revealed, intersect, every },
+    },
+    request: {
+        timeout: 60000,
+        credentials: 'same-origin',
+        mode: 'same-origin',
+        // Static strings or functions. Functions called with { source, url, method }.
+        headers: {
+            'HX-Request': 'true',
+            'HX-Current-URL': () => location.href,
+        },
+    },
+    swap: {
+        method: 'innerHTML',      // default swap method
+        target: 'this',           // default swap target
+        settle: 20,               // default settle delay (ms)
+        transition: false,        // default view transition
+        // Registry: swap methods. fn(target, content).
+        registry: { innerHTML, outerHTML, textContent, beforebegin, afterbegin, beforeend, afterend, delete, none },
+    },
+    syntax: {
+        prefix: 'hx-',
+        delimiter: ':',
+        format: RelaxedJSON,
+    },
+}
+```
+
+**Key decisions:**
+- `trigger.event` is the scalar default, `trigger.registry` holds non-DOM trigger handlers
+- `swap.method` is the scalar default, `swap.registry` holds swap method implementations
+- `request.headers` supports functions for dynamic headers (evaluated before `htmx:before:request`)
+- Features like `history`, `sync`, `sse` register their own config namespaces via `htmx:ready`
+
+**Consequences:**
+- Minimal kernel config — only what the kernel needs
+- Extensible — features add their namespaces at runtime
+- Consistent pattern — scalar defaults + registry where needed
+- Dynamic headers built into kernel — no separate extension needed
+
+---
+
+### 024: htmx Core, Not Kernel
+**Date:** 2026-02-06 | **Status:** Accepted
+
+**Context:** Early design called this a "kernel" — implying an abstract, minimal core that could power different hypermedia libraries. But that's not what we're building.
+
+**Decision:** This is **htmx core**, not a kernel.
+
+**Baked in (this IS htmx):**
+- The lifecycle: init → trigger → request → response → swap → settle
+- Trigger syntax: `click delay:500ms`, `keyup[key=='Enter']`, `every 2s`
+- Attribute inheritance
+- The `hx-*` convention
+
+**Extensible (customization points):**
+- Swap methods via `registry.swaps`
+- Synthetic triggers via `registry.triggers`
+- Trigger modifiers via `registry.modifiers.trigger`
+- Request headers via `config.requestHeaders`
+
+**Escape hatches (for environment constraints):**
+- `syntaxPrefix` — when `hx-*` conflicts with server-side templating
+- `syntaxDelimiter` — same
+
+The difference from a "kernel" is intent. A kernel would be abstract; htmx core owns the htmx semantics. Extensions add capabilities to htmx, they don't define htmx from scratch.
+
+**Consequences:**
+- File is `htmx.core.js`, will become `htmx.js`
+- No pretense of abstraction
+- Trigger parsing, attribute syntax are baked in, not pluggable
+- Escape hatches documented as "if you have problems, use these" not as features
+
+---
+
+### 025: Config Structure Redesign — Flat Config + Registry
+**Date:** 2026-02-06 | **Status:** In Progress
+
+**Context:** ADR-023 used nested config (`config.trigger.event`, `config.swap.method`). This created confusion:
+- `config.trigger.registry` (implementations) mixed with `config.trigger.event` (default value)
+- Unclear what's a "value" vs an "implementation"
+- Extensions need to reach deep paths
+
+**Decision:** Separate concerns completely:
+
+```js
+// CONFIG: values (static or functions)
+config = {
+    defaultTrigger: (node) => ...,    // corresponds to hx-trigger
+    defaultSwap: 'innerHTML',          // corresponds to hx-swap
+    defaultTarget: 'this',             // corresponds to hx-target
+
+    requestTimeout: 60000,
+    requestCredentials: 'same-origin',
+    requestMode: 'same-origin',
+    requestHeaders: { ... },
+
+    syntaxPrefix: 'hx-',               // escape hatch
+    syntaxDelimiter: ':',              // escape hatch
+
+    selectors: [],                     // extensions push to this
+}
+
+// REGISTRY: implementations (always functions)
+registry = {
+    swaps: {},                         // method → fn(target, content)
+    triggers: {},                      // name → fn(element, modifiers, handler)
+    modifiers: {
+        trigger: {},                   // name → fn(handler, value, element)
+    },
+}
+```
+
+**Key principles:**
+1. **Config = values**, can be static or functions, use `resolve(config.X, context)`
+2. **Registry = implementations**, always functions, extensions populate at `htmx:ready`
+3. **`request*` prefix** for fetch API options (global, not per-element)
+4. **`default*` prefix** for values that correspond to `hx-*` attributes (per-element defaults)
+5. **`syntax*` prefix** for escape hatches (when `hx-*` conflicts with your stack)
+
+**Open question:** Naming consistency. We have:
+- `defaultTrigger`, `defaultSwap`, `defaultTarget` — consistent
+- `requestTimeout`, `requestCredentials`, `requestMode`, `requestHeaders` — consistent
+- `syntaxPrefix`, `syntaxDelimiter` — consistent within group, but...
+
+Is this the right grouping? Alternatives discussed but not resolved:
+- Everything `default*`: `defaultRequestTimeout` (verbose)
+- Drop prefixes: `trigger`, `swap`, `target`, `timeout` (ambiguous)
+- Different grouping entirely?
+
+**Current file:** `src/htmx.core.js` (~380 lines)
+
+**Consequences:**
+- Clear separation of concerns
+- Extensions populate registry, not config
+- `resolve()` exported for extensions to use same pattern
+- Naming question remains open
 
 ---
 
@@ -749,48 +1152,25 @@ Removed:
 
 Ideas worth preserving for later consideration. Not committed to.
 
-- **`htmx:arrival`** — fires on each top-level element added by any swap. Replaces htmx 2.0's `htmx:load`. For scripts/extensions reacting to new DOM that doesn't have `hx-*` attributes (where `htmx:init` wouldn't fire).
-- **Chainable Layer 3 API** — `htmx.on('#btn', 'click').get('/api', { target: '#result' })`. Declarative JS equivalent of attributes. Deferred until Layer 2 is designed.
-- **`CANCELLED` sentinel** — Symbol returned from pipeline to short-circuit without error. Cleaner than `return false` for "intentionally stopped."
-- **`detail.waitUntil(promise)`** — async extension hooks that delay the pipeline (e.g., confirm dialogs, async validation).
-- **RelaxedJSON parser** — dot notation support in `hx-vals`/`hx-headers` (e.g., `hx-vals="user.name: 'John'"`).
-- **Reactive state → DOM sync** — `element.state` changes auto-reflect to DOM attributes or text.
-- **`htmx.inspect(element)`** — debug helper returning all htmx state/config for an element.
-- **`hx-debug`** — per-element debug flag (registered feature, not kernel).
-- **`hx-on` shorthands** — shorthand syntax for common event handlers (separate feature).
-- **Universal attribute parser** — single parser for all `hx-*` attribute values (modifiers, selectors, expressions).
-- **View transitions queue** — coordinate multiple concurrent view transitions.
-- **Configurable selectors** — allow extensions to register custom selector syntax (e.g., `closest`, `find`, `next`, `previous`).
-- **Meta config dot-path naming** — `<meta name="htmx.config.swap.method" content="outerHTML">`.
-- **Trace mode** — opt-in debug logging (`htmx.config.debug = true` or `['request', 'swap']`). Log which extension fired, detail at each phase, cancellations.
-- **CDN bundle builder** — Landing page UI with checkboxes for extensions. Generates URL like `cdn.htmx.org/4.0/htmx.min.js?ext=focusRestore,sse`. Cloudflare Worker concatenates kernel + core + selected extensions on first request, caches result. Makes "what's in core" less high-stakes since adding/removing features is visible and trivial.
+| Idea                        | Category  | Description                                                                                                                                                                                                                                                                                                                |
+|-----------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `htmx:arrival`              | Event     | Fires on each top-level element added by any swap. Replaces htmx 2.0's `htmx:load`. For reacting to new DOM without `hx-*` attributes.                                                                                                                                                                                     |
+| Chainable Layer 3 API       | API       | `htmx.on('#btn', 'click').get('/api', { target: '#result' })`. Declarative JS equivalent of attributes. Deferred until Layer 2 is designed.                                                                                                                                                                                |
+| `CANCELLED` sentinel        | Pipeline  | Symbol returned from pipeline to short-circuit without error. Cleaner than `return false` for "intentionally stopped."                                                                                                                                                                                                     |
+| `detail.waitUntil(promise)` | Pipeline  | Async extension hooks that delay the pipeline (e.g., confirm dialogs, async validation).                                                                                                                                                                                                                                   |
+| RelaxedJSON parser          | Parsing   | Dot notation in `hx-vals`/`hx-headers` (e.g., `hx-vals="user.name: 'John'"`).                                                                                                                                                                                                                                              |
+| Reactive state → DOM sync   | State     | `element.state` changes auto-reflect to DOM attributes or text.                                                                                                                                                                                                                                                            |
+| `htmx.inspect(element)`     | Debug     | Returns all htmx state/config for an element.                                                                                                                                                                                                                                                                              |
+| `hx-debug`                  | Debug     | Per-element debug flag (registered feature, not kernel).                                                                                                                                                                                                                                                                   |
+| Trace mode                  | Debug     | Opt-in logging (`htmx.config.debug = true` or `['request', 'swap']`). Logs extension, detail, cancellations.                                                                                                                                                                                                               |
+| `hx-on` shorthands          | Attribute | `hx-on::init` maps to `htmx:before:init`, etc. (see ADR-017).                                                                                                                                                                                                                                                              |
+| `hx-on` unified syntax      | Attribute | `hx-on="click from:body throttle:500 => { handler() }; input => { other() }"`. Reuses trigger parser for event+modifiers, adds `=> {body}` and `;` separator. Enables modifier support (`from`, `throttle`, `debounce`, `once`) that `hx-on:event` can't express. Own MutationObserver since can't CSS-select `[hx-on:*]`. |
+| Universal attribute parser  | Parsing   | Single parser for all `hx-*` values (modifiers, selectors, expressions).                                                                                                                                                                                                                                                   |
+| View transitions queue      | Swap      | Coordinate multiple concurrent view transitions.                                                                                                                                                                                                                                                                           |
+| Configurable selectors      | Extension | Extensions register custom selector syntax (`closest`, `find`, `next`, `previous`).                                                                                                                                                                                                                                        |
+| Meta config dot-path        | Config    | `<meta name="htmx.config.swap.method" content="outerHTML">`.                                                                                                                                                                                                                                                               |
+| CDN bundle builder          | Tooling   | Landing page with checkboxes → `cdn.htmx.org/4.0/htmx.min.js?ext=focusRestore,sse`. CF Worker concatenates + caches.                                                                                                                                                                                                       |
+| `AbortSignal.timeout()`     | Modern JS | Replace manual `setTimeout` + `AbortController` in timeout extension. Cleaner request timeout handling.                                                                                                                                                                                                                    |
+| `AbortSignal.any()`         | Modern JS | Combine user cancel + timeout signals in sync extension. Eliminates manual signal tracking.                                                                                                                                                                                                                                |
+| `element.checkVisibility()` | Modern JS | Replace `offsetWidth > 0 && offsetHeight > 0` hack for `revealed` trigger. Native visibility check.                                                                                                                                                                                                                        |
 
----
-
-## Files
-
-| File                     | Status     | Purpose                                  |
-|--------------------------|------------|------------------------------------------|
-| `src/htmx.js`            | Current    | htmx 4.0-alpha (monolithic)              |
-| `src/htmx.draft.js`      | Draft      | Kernel implementation matching this spec |
-| `src/htmx.kernel.js`     | Delete     | Superseded by htmx.draft.js              |
-| `src/htmx.refactored.js` | Delete     | Superseded by htmx.draft.js              |
-| `dev/four/DECISIONS.md`  | Delete     | Superseded by this file                  |
-| `ARCHITECTURE_FULL.md`   | Delete     | Superseded by this file                  |
-| `EVENT_AUDIT.md`         | Delete     | Superseded by this file                  |
-| `IDEAS.md`               | Delete     | Superseded by this file                  |
-
----
-
-## Status
-
-- [x] Inventory current htmx behaviors
-- [x] Design Layer 3 API (high-level)
-- [x] Design Layer 1 kernel concepts
-- [ ] Design Layer 2 (behaviors/orchestration)
-- [ ] Implement kernel
-- [ ] Implement Layer 2
-- [ ] Implement Layer 3
-- [ ] Make attributes compile to API
-- [ ] Test suite
-- [ ] Migration guide

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>htmx Core Test</title>
+    <style>
+        body { font-family: system-ui; padding: 2rem; max-width: 800px; }
+        .test { margin: 1rem 0; padding: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+        .test h3 { margin: 0 0 0.5rem; }
+        .log { font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 0.5rem; margin-top: 0.5rem; min-height: 1.5rem; }
+        button { padding: 0.5rem 1rem; margin-right: 0.5rem; }
+        #target { border: 2px dashed #999; padding: 1rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <h1>htmx 4.0 Core Test</h1>
+
+    <div class="test">
+        <h3>Config Structure</h3>
+        <pre id="config-dump"></pre>
+    </div>
+
+    <div class="test">
+        <h3>Registry Structure</h3>
+        <pre id="registry-dump"></pre>
+    </div>
+
+    <div class="test">
+        <h3>1. Basic click trigger</h3>
+        <button hx-get="/api/test" hx-swap="innerHTML" hx-target="#target" id="test1">Click me</button>
+        <div class="log" id="log1"></div>
+    </div>
+
+    <div class="test">
+        <h3>2. Delay modifier (500ms debounce)</h3>
+        <button hx-get="/api/test" hx-trigger="click delay:500ms" hx-swap="none" id="test2">Click rapidly</button>
+        <div class="log" id="log2"></div>
+    </div>
+
+    <div class="test">
+        <h3>3. Load trigger</h3>
+        <div hx-get="/api/test" hx-trigger="load" hx-swap="none" id="test3">Should fire on load</div>
+        <div class="log" id="log3"></div>
+    </div>
+
+    <div id="target">Target area (swap content here)</div>
+
+    <script src="src/htmx.core.js"></script>
+    <script>
+        // ═══════════════════════════════════════════════════════════════════
+        // EXTENSIONS: populate the registry so htmx core can work
+        // ═══════════════════════════════════════════════════════════════════
+
+        htmx.register('core-selectors', {
+            on: {
+                'htmx:ready': () => {
+                    // Tell htmx which elements to init
+                    htmx.config.selectors.push('[hx-get]', '[hx-post]', '[hx-put]', '[hx-delete]')
+                }
+            }
+        })
+
+        htmx.register('core-swaps', {
+            on: {
+                'htmx:ready': () => {
+                    htmx.registry.swaps.innerHTML = (target, content) => {
+                        target.innerHTML = ''
+                        target.append(content)
+                    }
+                    htmx.registry.swaps.outerHTML = (target, content) => {
+                        target.replaceWith(content)
+                    }
+                    htmx.registry.swaps.none = () => {}
+                }
+            }
+        })
+
+        htmx.register('core-triggers', {
+            on: {
+                'htmx:ready': () => {
+                    // Synthetic trigger: load
+                    htmx.registry.triggers.load = (element, eventName, modifiers, handler) => {
+                        queueMicrotask(() => handler(new Event('load')))
+                    }
+
+                    // Modifier: delay (debounce)
+                    htmx.registry.modifiers.trigger.delay = (handler, value) => {
+                        let timeout
+                        return (event) => {
+                            clearTimeout(timeout)
+                            timeout = setTimeout(() => handler(event), value)
+                        }
+                    }
+                }
+            }
+        })
+
+        htmx.register('core-request', {
+            on: {
+                'htmx:after:trigger': (detail) => {
+                    const element = detail.source.element
+                    const url = element.attr('hx-get') || element.attr('hx-post')
+                    if (url) {
+                        htmx.request(url, {source: detail.source})
+                    }
+                }
+            }
+        })
+
+        // ═══════════════════════════════════════════════════════════════════
+        // LOGGING
+        // ═══════════════════════════════════════════════════════════════════
+
+        function log(testNum, msg) {
+            const el = document.getElementById('log' + testNum)
+            if (!el) return
+            const time = new Date().toLocaleTimeString()
+            el.textContent = `[${time}] ${msg}\n` + el.textContent
+        }
+
+        // Listen to pipeline events
+        for (const evt of ['htmx:before:trigger', 'htmx:after:trigger', 'htmx:before:request', 'htmx:after:request', 'htmx:error', 'htmx:done']) {
+            document.body.addEventListener(evt, (e) => {
+                const id = e.target.id
+                const num = id?.match(/test(\d+)/)?.[1]
+                if (num) log(num, evt.replace('htmx:', ''))
+            })
+        }
+
+        // Dump structures
+        document.getElementById('config-dump').textContent = JSON.stringify(htmx.config, (k, v) => typeof v === 'function' ? '[Function]' : v, 2)
+        document.getElementById('registry-dump').textContent = JSON.stringify(htmx.registry, (k, v) => typeof v === 'function' ? '[Function]' : v, 2)
+
+        console.log('htmx.config:', htmx.config)
+        console.log('htmx.registry:', htmx.registry)
+    </script>
+</body>
+</html>
