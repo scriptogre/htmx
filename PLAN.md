@@ -1,320 +1,65 @@
-# Config Restructure Plan
+# Plan: Simplify request() and trigger system
 
-## New Structure
+## Context
 
-```js
-htmx = {
-    // ═══════════════════════════════════════════════════════════════
-    // CONFIG: all values (static or functions)
-    // ═══════════════════════════════════════════════════════════════
-    config: {
-        // Trigger
-        triggerEvent: 'click',  // or (node) => 'click'
+We're building htmx 4.0 core (`src/htmx.core.js`). The current implementation works but the two most complex areas — `request()` and the trigger system — are hard to read and reason about.
 
-        // Swap
-        swapMethod: 'innerHTML',
-        swapTarget: 'this',
+## Current problems
 
-        // Request
-        requestTimeout: 60000,
-        requestCredentials: 'same-origin',
-        requestMode: 'same-origin',
-        requestHeaders: {
-            'HX-Request': 'true',
-            'HX-Current-URL': () => location.href,
-        },
+### request() (~70 lines)
 
-        // Syntax
-        syntaxPrefix: 'hx-',
-        syntaxDelimiter: ':',
+1. **Too many concerns in one function**: header resolution, fetch, response parsing, target resolution, fragment creation, swap execution, settle — all interleaved with event emission
+2. **Detail object accumulates incrementally**: starts with `{source, request, response: null, swap: null, error: null}`, gets fields added throughout. Hard to see the full shape at any point.
+3. **Repetitive error pattern**: construct error object → emit → return (done 3 times)
+4. **The destructure trick**: `const {timeout, headers: defaultHeaders, ...fetchDefaults} = config.defaultRequest` is clever but not obvious
+5. **8 event emissions** in the happy path (before/after for request, response, swap, settle) make the actual logic hard to find between them
 
-        // Init
-        selectors: [],
-    },
+### Trigger system (setupTriggers + handler + parseTrigger + parseModifiers)
 
-    // ═══════════════════════════════════════════════════════════════
-    // REGISTRY: all implementations (always functions)
-    // ═══════════════════════════════════════════════════════════════
-    registry: {
-        triggers: {
-            // (element, eventName, modifiers, handler) => cleanup?
-        },
-        swaps: {
-            // (target, content) => void
-        },
-        modifiers: {
-            trigger: {
-                // (handler, value, element) => handler
-            },
-            swap: {
-                // (options, value, element) => options
-            },
-        },
-    },
-}
-```
+1. **setupTriggers does too much**: parses attributes, creates the handler closure, loops through triggers, binds them
+2. **The handler closure** mixes: event handling → emit before/after trigger → JIT attribute reading → request dispatch. That's 4 concerns in one closure.
+3. **Registry fallback**: `config.triggers[trigger.event] || config.triggers.event` — `.event` is both a named trigger type AND the fallback for unknown DOM events. This dual role is confusing. (Marked as TODO in code)
+4. **Modifier application** is buried inside `config.triggers.event` — invisible from `setupTriggers`
 
-## Helper: resolve()
+## What to redesign
 
-```js
-// Resolves a config value - handles both static and function
-function resolve(value, context) {
-    return typeof value === 'function' ? value(context) : value
-}
-```
+### 1. request() should read like a recipe
 
-## Changes Required
+The happy path should be obvious at a glance. Each phase should be a clear block. Consider:
 
-### 1. Config object restructure
+- Extracting phase logic into small focused functions
+- Or using clear comment blocks that separate phases visually
+- The 8 event emissions are load-bearing (extensions hook into them) — they can't be removed, but the actual logic between them should be minimal and obvious
+- Error paths should be DRY (maybe a helper, maybe early returns)
+- The header resolution and fetch options assembly should be straightforward
 
-**Before:**
-```js
-const config = {
-    trigger: { event: fn, delay: 0, throttle: 0, registry: {}, modifiers: {} },
-    request: { timeout: 60000, credentials: '...', mode: '...', headers: {} },
-    swap: { method: '...', target: '...', settle: 20, transition: false, registry: {} },
-    syntax: { prefix: '...', delimiter: '...' },
-}
-```
+### 2. Trigger system should be transparent
 
-**After:**
-```js
-const config = {
-    triggerEvent: (node) => {
-        if (node.matches('form')) return 'submit'
-        if (node.matches('input:not([type=button]), select, textarea')) return 'change'
-        return 'click'
-    },
-    swapMethod: 'innerHTML',
-    swapTarget: 'this',
-    requestTimeout: 60000,
-    requestCredentials: 'same-origin',
-    requestMode: 'same-origin',
-    requestHeaders: {
-        'HX-Request': 'true',
-        'HX-Current-URL': () => location.href,
-    },
-    syntaxPrefix: 'hx-',
-    syntaxDelimiter: ':',
-    selectors: [],
-}
+- The "what happens when an element is triggered" flow should read linearly
+- The registry lookup/fallback needs a cleaner pattern than `config.triggers[name] || config.triggers.event`
+- Consider whether `setupTriggers` should be broken up or just reorganized
+- The handler that bridges trigger → request is the most important code path in htmx — it should be crystal clear
 
-const registry = {
-    triggers: {},
-    swaps: {},
-    modifiers: {
-        trigger: {},
-        swap: {},
-    },
-}
-```
+### 3. Naming
 
-### 2. Update setupTriggers()
+- `parseModifiers` — fine (it's the general syntax parser)
+- `parseTrigger` — fine (trigger-specific parsing on top of parseModifiers)
+- `parseDuration` — fine (internal utility)
+- `setupTriggers` — maybe rename? It does parsing + binding
+- `addCleanup` — fine
+- The registry fallback pattern needs better naming/structure than `config.triggers.event`
 
-**Before:**
-```js
-const defaultEvent = config.trigger.event(node)
-// ...
-for (const [name, fn] of Object.entries(config.trigger.modifiers)) { ... }
-// ...
-const synthetic = config.trigger.registry[eventName]
-```
+## Files
 
-**After:**
-```js
-const defaultEvent = resolve(config.triggerEvent, node)
-// ...
-for (const [name, fn] of Object.entries(registry.modifiers.trigger)) { ... }
-// ...
-const synthetic = registry.triggers[eventName]
-```
+| File | Purpose |
+|---|---|
+| `src/htmx.core.js` | Current implementation — rewrite request() and trigger sections |
+| `test-kernel.html` | Test page with inlined extensions — update if API changes |
 
-### 3. Update fetch()
+## Instructions
 
-**Before:**
-```js
-credentials: config.request.credentials,
-mode: config.request.mode,
-// headers built from config.request.headers
-```
-
-**After:**
-```js
-credentials: resolve(config.requestCredentials, context),
-mode: resolve(config.requestMode, context),
-// headers built from config.requestHeaders
-```
-
-### 4. Update swap()
-
-**Before:**
-```js
-const fn = config.swap.registry[method]
-```
-
-**After:**
-```js
-const fn = registry.swaps[method]
-```
-
-### 5. Update attr()
-
-**Before:**
-```js
-const {prefix, delimiter} = config.syntax
-```
-
-**After:**
-```js
-const prefix = config.syntaxPrefix
-const delimiter = config.syntaxDelimiter
-```
-
-### 6. Update init()
-
-**Before:**
-```js
-const selector = config.selectors?.init?.join(',')
-```
-
-**After:**
-```js
-const selector = config.selectors?.join(',')
-```
-
-## Extension Examples
-
-### Example 1: Adding a trigger (load)
-
-```js
-htmx.register('load-trigger', {
-    on: {
-        'htmx:ready': () => {
-            htmx.registry.triggers.load = (element, eventName, modifiers, handler) => {
-                queueMicrotask(() => handler(new Event('load')))
-                // no cleanup needed
-            }
-        }
-    }
-})
-```
-
-### Example 2: Adding a swap method (morph)
-
-```js
-htmx.register('morph', {
-    on: {
-        'htmx:ready': () => {
-            htmx.registry.swaps.morph = (target, content) => {
-                morphdom(target, content)
-            }
-        }
-    }
-})
-```
-
-### Example 3: Adding a trigger modifier (delay)
-
-```js
-htmx.register('delay-modifier', {
-    on: {
-        'htmx:ready': () => {
-            htmx.registry.modifiers.trigger.delay = (handler, value, element) => {
-                let timeout
-                return (event) => {
-                    clearTimeout(timeout)
-                    timeout = setTimeout(() => handler(event), value)
-                }
-            }
-        }
-    }
-})
-```
-
-### Example 4: Changing a default
-
-```js
-// Static value
-htmx.config.swapMethod = 'outerHTML'
-
-// Dynamic value
-htmx.config.swapMethod = (element) =>
-    element.matches('.modal') ? 'outerHTML' : 'innerHTML'
-```
-
-### Example 5: Adding a header
-
-```js
-htmx.config.requestHeaders['X-CSRF-Token'] = () =>
-    document.querySelector('meta[name="csrf-token"]').content
-```
-
-### Example 6: Adding selectors
-
-```js
-htmx.config.selectors.push('[hx-sse]', '[hx-ws]')
-```
-
-### Example 7: Extension with its own config namespace
-
-```js
-htmx.register('sse', {
-    on: {
-        'htmx:ready': () => {
-            // Extension adds its own config namespace
-            htmx.config.sse = {
-                reconnect: true,
-                reconnectDelay: 1000,
-            }
-        }
-    }
-})
-```
-
-## Public API
-
-```js
-return {
-    version: '4.0.0-kernel',
-
-    // Config & Registry
-    config,
-    registry,
-
-    // Core
-    register,
-    init,
-    fetch,
-
-    // Events
-    emit,
-    on,
-
-    // Elements
-    wrap,
-    attr,
-    state,
-
-    // Utilities
-    resolve,  // expose so extensions can use it
-    parse,
-    resolveTarget,
-    makeFragment,
-}
-```
-
-## Migration Checklist
-
-- [x] Create `resolve()` helper
-- [x] Restructure `config` object (flat, clear names)
-- [x] Create separate `registry` object
-- [x] Update `setupTriggers()` to use new paths
-- [x] Update `parseTrigger()` - no changes needed
-- [x] Update `fetch()` to use new paths + resolve()
-- [x] Update `swap()` to use new paths
-- [x] Update `attr()` to use new paths
-- [x] Update `init()` to use new paths
-- [x] Update `resolveHeaders()` to handle both static and function values
-- [x] Export `registry` in public API
-- [x] Export `resolve()` in public API
-- [ ] Test with basic HTML page
+1. Read `src/htmx.core.js` for current implementation
+2. Redesign ONLY the request() function and trigger system (setupTriggers, handler, parsing)
+3. Keep everything else as-is (boot, init, cleanup, wrapper, events, config, public API)
+4. Prioritize readability over cleverness
+5. The code should be something a new contributor can read top-to-bottom and understand

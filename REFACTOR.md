@@ -367,7 +367,7 @@ Open question: What's the cleanest API for this layer?
 
 ## Extension System
 
-Extensions listen to lifecycle events and modify behavior. That's it—no overrides, no registries, just events.
+Extensions hook into lifecycle events via `on` handlers. They can also customize API functions by reassigning `htmx.*` in `htmx:ready` handlers (see ADR-034).
 
 ### Registration
 
@@ -1083,68 +1083,855 @@ The difference from a "kernel" is intent. A kernel would be abstract; htmx core 
 
 ---
 
-### 025: Config Structure Redesign — Flat Config + Registry
-**Date:** 2026-02-06 | **Status:** In Progress
+### 025: Config Structure — Everything on `config`
+**Date:** 2026-02-06 | **Status:** Accepted (partially superseded by ADR-027, ADR-029)
 
-**Context:** ADR-023 used nested config (`config.trigger.event`, `config.swap.method`). This created confusion:
-- `config.trigger.registry` (implementations) mixed with `config.trigger.event` (default value)
-- Unclear what's a "value" vs an "implementation"
-- Extensions need to reach deep paths
+**Context:** ADR-023 used nested config (`config.trigger.event`, `config.swap.method`). ADR-025 initially proposed a separate `registry` object. Both caused confusion — too many objects, unclear where to look for things.
 
-**Decision:** Separate concerns completely:
+**Decision:** Everything lives on `config`. No separate `registry`. Registries are just objects on config alongside scalar defaults.
 
 ```js
-// CONFIG: values (static or functions)
 config = {
-    defaultTrigger: (node) => ...,    // corresponds to hx-trigger
-    defaultSwap: 'innerHTML',          // corresponds to hx-swap
-    defaultTarget: 'this',             // corresponds to hx-target
+    // Per-element defaults (correspond to hx-* attributes)
+    defaultTrigger: node => ...,       // fn or string
+    defaultSwap: 'innerHTML',
+    defaultTarget: 'this',
 
-    requestTimeout: 60000,
-    requestCredentials: 'same-origin',
-    requestMode: 'same-origin',
-    requestHeaders: { ... },
-
-    syntaxPrefix: 'hx-',               // escape hatch
-    syntaxDelimiter: ':',              // escape hatch
-
-    selectors: [],                     // extensions push to this
-}
-
-// REGISTRY: implementations (always functions)
-registry = {
-    swaps: {},                         // method → fn(target, content)
-    triggers: {},                      // name → fn(element, modifiers, handler)
-    modifiers: {
-        trigger: {},                   // name → fn(handler, value, element)
+    // Request defaults (grouped — these always travel together)
+    defaultRequest: {
+        timeout: 60000,
+        credentials: 'same-origin',
+        mode: 'same-origin',
+        headers: {
+            'HX-Request': 'true',
+            'HX-Current-URL': () => location.href,
+        },
     },
+
+    // Registries (implementations, always functions)
+    swaps: { innerHTML, outerHTML, beforebegin, ... },
+    triggers: { event: fn(element, trigger, handler) → cleanup },
+    triggerModifiers: {},              // name → fn(handler, value, element) → handler
+    swapModifiers: {},                 // name → fn(options, value, element) → options
+
+    // Escape hatches
+    syntaxPrefix: 'hx-',
+    syntaxDelimiter: ':',
+    initSelectors: ['[hx-get]', '[hx-post]', '[hx-put]', '[hx-patch]', '[hx-delete]'],
 }
 ```
 
-**Key principles:**
-1. **Config = values**, can be static or functions, use `resolve(config.X, context)`
-2. **Registry = implementations**, always functions, extensions populate at `htmx:ready`
-3. **`request*` prefix** for fetch API options (global, not per-element)
-4. **`default*` prefix** for values that correspond to `hx-*` attributes (per-element defaults)
-5. **`syntax*` prefix** for escape hatches (when `hx-*` conflicts with your stack)
+**Naming conventions:**
+- `default*` — per-element defaults that `hx-*` attributes override
+- `defaultRequest` — nested object because request options always travel together
+- Plurals — registries (`swaps`, `triggers`, `triggerModifiers`, `swapModifiers`)
+- `syntax*` — escape hatches for environment constraints
+- `initSelectors` — what elements to auto-initialize
 
-**Open question:** Naming consistency. We have:
-- `defaultTrigger`, `defaultSwap`, `defaultTarget` — consistent
-- `requestTimeout`, `requestCredentials`, `requestMode`, `requestHeaders` — consistent
-- `syntaxPrefix`, `syntaxDelimiter` — consistent within group, but...
+**Trigger registry pattern** (see TODO in code):
+- `config.triggers.event` handles DOM events (click, submit, keyup, etc.)
+- Custom triggers register as `config.triggers.load`, `config.triggers.every`, etc.
+- Lookup: `config.triggers[trigger.event] || config.triggers.event`
+- This naming is awkward — `.event` does double duty as a trigger name AND the fallback. Needs revisiting.
 
-Is this the right grouping? Alternatives discussed but not resolved:
-- Everything `default*`: `defaultRequestTimeout` (verbose)
-- Drop prefixes: `trigger`, `swap`, `target`, `timeout` (ambiguous)
-- Different grouping entirely?
+**`applyModifiers` is per-trigger-type:**
+- Modifiers (delay, throttle, etc.) are the trigger type's concern, not universal
+- `config.triggers.event` calls `applyModifiers()` internally
+- Custom trigger types opt in by calling `htmx.applyModifiers(handler, trigger, element)`
 
-**Current file:** `src/htmx.core.js` (~380 lines)
+**Current file:** `src/htmx.core.js` (~490 lines)
 
 **Consequences:**
-- Clear separation of concerns
-- Extensions populate registry, not config
-- `resolve()` exported for extensions to use same pattern
-- Naming question remains open
+- One object to look at: `htmx.config`
+- `resolve()` exported for extensions to use same static-or-function pattern
+- Extensions add to registries at `htmx:ready`
+- Trigger registry fallback pattern needs polish (marked TODO)
+
+---
+
+### 026: Error Handling — `fail()` Closure with `detail.phase` Tracking
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** The `request()` function had repetitive error handling: each failure needed to construct an error object, emit an event, and return. The catch block also needed to know which phase failed. There was no structured convention for error types.
+
+**Decision:** Three changes:
+
+1. **`fail()` closure** — defined inside `request()`, captures `detail` and `source` from closure scope. DRY error emission:
+```js
+const fail = (type, message, cause) => {
+    detail.error = { type, message }
+    if (cause) detail.error.cause = cause
+    emit(source.element, 'htmx:error', detail)
+}
+```
+
+2. **`detail.phase`** — tracks current lifecycle phase (`'request'`, `'response'`, `'swap'`, `'settle'`) directly on the event detail object. Updated as execution progresses. Available to extensions and error handlers.
+
+3. **`phase:specific` error type convention** — error types use colon-separated `phase:reason` format:
+   - `swap:target` — target element not found
+   - `swap:method` — unknown swap method
+   - `request:timeout` — request timed out (AbortError)
+   - Bare phase name (e.g., `'response'`) for unspecified errors in catch block
+
+**Consequences:**
+- Errors are consistent and machine-parseable
+- `detail.phase` gives extensions runtime context about where execution is
+- Catch block uses `detail.phase` for automatic error typing — no manual tracking needed
+- `fail()` closure keeps error handling DRY without introducing a helper class
+
+---
+
+### 027: Unified Registry Pattern — `default` Key with String Alias Resolution
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** Parts of ADR-025
+
+**Context:** ADR-025 had separate `defaultSwap`, `defaultTrigger` scalars alongside `swaps` and `triggers` registries. This created asymmetry — two places to look for the same concept. We wanted the registries to be self-contained.
+
+**Rejected alternatives:**
+- `default: () => config.swaps.innerHTML` — arrow function returns the function instead of calling it, breaks swap lookup
+- Getter on config — works but magical, hard to serialize for debugging
+- Separate `defaultSwap`/`defaultTrigger` keys — asymmetric, two places to look
+
+**Decision:** Both `config.swaps` and `config.triggers` have a `default` key. The value can be a string or a function (resolved via `resolve()`).
+
+```js
+config.swaps = {
+    default: 'innerHTML',        // string → looked up in same registry
+    innerHTML: (target, content) => { ... },
+    outerHTML: (target, content) => { ... },
+    // ...
+}
+
+config.triggers = {
+    default: 'click',            // string → used as event name
+    // Custom emitters added by extensions:
+    // load: (element, trigger) => { ... },
+}
+```
+
+**String alias resolution** at lookup time (one level):
+```js
+let swapFn = config.swaps[swapMethod]
+if (typeof swapFn === 'string') swapFn = config.swaps[swapFn]   // resolve alias
+if (typeof swapFn !== 'function') return fail('swap:method', ...)
+```
+
+This enables `config.swaps.default = 'outerHTML'` — users change the default by setting a string, which resolves to the function at runtime.
+
+**Consequences:**
+- Single source of truth: `config.swaps` and `config.triggers` are self-contained
+- `resolve()` handles both string and function values for `default` keys
+- Aliases are late-binding — changing `config.swaps.innerHTML` also changes any alias pointing to `'innerHTML'`
+- Meta tag override works: `<meta name="htmx.config.swaps.default" content="outerHTML">`
+- Removes `config.defaultSwap` and `config.defaultTrigger` from ADR-025
+
+---
+
+### 028: Swap Method Names — DOM-Native
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** htmx historically used `insertAdjacentHTML` position names (`beforebegin`, `afterbegin`, `beforeend`, `afterend`) for swap methods. Modern DOM has cleaner names: `before()`, `prepend()`, `append()`, `after()`. The old names are unintuitive — `beforeend` means "append" and `afterbegin` means "prepend."
+
+**Decision:** Primary swap methods use DOM-native names:
+
+| Old Name      | New Name    | DOM Method             |
+|---------------|-------------|------------------------|
+| `beforebegin` | `before`    | `element.before()`     |
+| `afterbegin`  | `prepend`   | `element.prepend()`    |
+| `beforeend`   | `append`    | `element.append()`     |
+| `afterend`    | `after`     | `element.after()`      |
+| `delete`      | `remove`    | `element.remove()`     |
+
+Kept as-is: `innerHTML`, `outerHTML`, `none` — these are already clear and standard.
+
+Legacy names (`beforebegin`, `afterbegin`, `beforeend`, `afterend`, `delete`) are available as string aliases via the `swap-aliases` default extension.
+
+**Consequences:**
+- Swap names match the DOM methods they actually call
+- New users can guess the swap method from the DOM API
+- Backwards compat via `swap-aliases` extension (string aliases, not copies — see ADR-029)
+
+---
+
+### 029: All Triggers Are Events — Emitter Pattern
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** Parts of ADR-025
+
+**Context:** ADR-025 had a dual-role `config.triggers.event` that served as both the fallback DOM event binder AND the namespace for custom triggers (`config.triggers.load`, etc.). Custom triggers called the handler directly, which meant trigger modifiers (delay, throttle) didn't apply — modifiers only wrapped the handler inside `bindDOMEvent`.
+
+**Decision:** All triggers work through DOM events. Custom trigger types are "emitters" — they dispatch events, and the core always listens via `addEventListener`.
+
+**Emitter contract:** `(element, trigger) → cleanup?`
+- Receives the wrapped element and parsed trigger spec
+- Dispatches events using `element.emit(trigger.event)`
+- Optionally returns a cleanup function
+
+```js
+// Core always does this for every trigger:
+const off = bindDOMEvent(element, trigger, handler)
+
+// If a custom emitter exists, it runs too:
+const emitter = config.triggers[trigger.event]
+if (typeof emitter === 'function') {
+    trigger.event = 'htmx:trigger:' + trigger.event  // namespace (see ADR-030)
+    const off2 = emitter(element, trigger)
+    if (off2) addCleanup(node, off2)
+}
+```
+
+**Example emitters:**
+```js
+// Load: fires once immediately
+config.triggers.load = (element, trigger) => {
+    queueMicrotask(() => element.emit(trigger.event))
+}
+
+// Every: fires on interval
+config.triggers.every = (element, trigger) => {
+    const id = setInterval(() => element.emit(trigger.event), trigger.interval)
+    return () => clearInterval(id)
+}
+```
+
+**Key insight:** Because the core always binds via `addEventListener`, modifiers (delay, throttle, once) apply uniformly to ALL trigger types — native DOM events and custom emitters alike. This was a bug in the old architecture.
+
+**Consequences:**
+- Modifiers work on all triggers — no opt-in required
+- Custom triggers are simpler — just emit events, don't manage handlers
+- `element.emit()` goes through htmx event system (extension handlers fire)
+- Eliminates the `config.triggers.event` dual-role confusion from ADR-025
+
+---
+
+### 030: Custom Trigger Event Namespacing
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** Custom trigger names like `load` clash with native DOM events. An element with `hx-trigger="load"` would receive both the native `load` event AND the htmx-emitted `load` event, causing double-fires.
+
+**Decision:** The core automatically namespaces custom trigger events with `htmx:trigger:` prefix. When `setupTriggers` finds a matching emitter in `config.triggers`, it rewrites `trigger.event` before binding:
+
+```js
+trigger.event = 'htmx:trigger:' + trigger.event
+```
+
+The emitter uses `trigger.event` (already namespaced) and never hardcodes the event name:
+```js
+// Correct — uses the namespaced event
+element.emit(trigger.event)
+
+// Wrong — hardcodes, would clash with native 'load'
+element.emit('load')
+```
+
+**Convention:** Emitters MUST use `trigger.event`, never a hardcoded string. This ensures the namespacing works automatically.
+
+**Consequences:**
+- No clashes with native DOM events (`load`, `error`, `scroll`, etc.)
+- Transparent to emitter authors — just use `trigger.event`
+- Namespace prefix (`htmx:trigger:`) is internal, never visible to users
+- Users write `hx-trigger="load"`, core handles the plumbing
+
+---
+
+### 031: Core/Defaults Split
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** Several htmx behaviors are conventions rather than core mechanics: smart trigger defaults (form→submit, input→change), legacy swap aliases, the `load` and `every` triggers, delay/throttle modifiers. Putting these in core violates the principle that the core should be minimal.
+
+**Decision:** Split into two files:
+
+- **`htmx.core.js`** — Minimal core: lifecycle pipeline, event system, element wrapping, extension registration, generic trigger/swap infrastructure. ~475 lines.
+- **`htmx.defaults.js`** — Conventions and conveniences as extensions, using only the public API (`htmx.register`, `htmx.config`). Shipped with htmx but separable.
+
+**Default extensions:**
+
+| Extension          | Purpose                                          |
+|--------------------|--------------------------------------------------|
+| `smart-triggers`   | Form→submit, input→change, else→click            |
+| `swap-aliases`     | `beforebegin`→`before`, `afterbegin`→`prepend`, etc. |
+| `trigger-load`     | Emitter: fires on init                           |
+| `trigger-every`    | Emitter: fires on interval                       |
+| `modifier-delay`   | Trigger modifier: debounce                       |
+| `modifier-throttle`| Trigger modifier: rate limit                     |
+
+Each registers via `htmx.register()` and configures via `htmx:ready` event — dogfooding the extension system.
+
+**Consequences:**
+- Core stays minimal and focused on the pipeline
+- Users can exclude defaults they don't need
+- Defaults serve as reference implementations for extension authors
+- Proves the extension system is sufficient for real features
+
+---
+
+### 032: No Extension-Specific Knowledge in Core
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-019 (partially)
+
+**Context:** The trigger parser in core had a normalization regex that converted `every 3s` → `every interval:3s`. But the `every` trigger itself is an extension (in `htmx.defaults.js`). Having parse rules in core for a feature that lives in an extension means the modular split failed.
+
+ADR-019 prescribed inline normalization at call sites. This is still correct for extensions normalizing their own syntax. But the core must not contain normalization for extension-specific syntax.
+
+**Decision:** Removed the `every` normalization regex from core's `parseTrigger()`. The `every` trigger now uses standard modifier syntax: `every interval:3s`. The generic parser handles this without any special cases.
+
+**Principle:** If a parse rule only exists to support an extension, the extension owns that rule. Core's parser is generic — it handles `value mod:x mod:y` and nothing more.
+
+**Consequences:**
+- Core parser has zero special cases
+- `every` syntax changes from `every 3s` to `every interval:3s` (consistent with all other modifiers)
+- Extensions that need exotic syntax normalization do it themselves (per ADR-019)
+- Adding a new custom trigger never requires modifying core
+
+---
+
+### 033: Remove `defaultTarget` — Self-Targeting Is Semantic, Not Configurable
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** `config.defaultTarget: 'this'` had two problems:
+1. The magic string `'this'` couples config to `resolveTarget()`'s implementation
+2. "Default target is self" is a semantic truth about htmx, not a user preference — if someone wants a different target, they use `hx-target` with inheritance
+
+**Decision:** Removed `config.defaultTarget`. The "no target → use source element" fallback is hardcoded in the request pipeline:
+
+```js
+const targetSelector = options.target
+const targetNode = targetSelector
+    ? resolveTarget(source.element.native, targetSelector)
+    : source.element.native
+```
+
+`'this'` still works as an explicit value in `hx-target="this"` — that's `resolveTarget`'s concern, not config's.
+
+**Consequences:**
+- No magic string in config
+- No coupling between config and target resolution internals
+- One fewer configurable option (less to document, less to misuse)
+- Global target override via `hx-target` inheritance on a parent element (e.g., `<body hx-target="body">`)
+
+---
+
+### 034: Events-Only Customization — No `api` Field
+**Date:** 2026-02-10 | **Status:** Accepted | **Reinforces:** ADR-008
+
+**Context:** Initially added an `api` field to `register()` for wrapping public functions (`attr`, `find`, `findAll`). But since `htmx === api` (the IIFE returns the api object), extensions can just reassign `htmx.*` in their `htmx:ready` handlers:
+
+```js
+htmx.register('extended-selectors', {
+    on: {
+        'htmx:ready': () => {
+            const original = htmx.find
+            htmx.find = (selector, node) => {
+                if (selector === 'this') return node
+                return original(selector, node)
+            }
+        }
+    }
+})
+```
+
+Internal code calls through `api.*`, so the reassignment takes effect everywhere. No special mechanism needed.
+
+**Decision:** Remove the `api` field from `register()`. Extensions customize API functions by reassigning `htmx.*` in `htmx:ready` handlers. One mechanism for everything: `on` events.
+
+**Rejected:** The `api` field with validation (`typeof api[key] !== 'function'` → throw). While typo-safe, it's a second mechanism alongside `on`. The validation benefit doesn't justify the added complexity.
+
+**Consequences:**
+- `register()` signature simplifies: just `{ requires?, on }`
+- One mechanism for all customization: events
+- Composable — multiple extensions wrap the same function via `requires` ordering
+- No typo validation (acceptable — extension author notices immediately when their wrap doesn't work)
+- ADR-008's "events only" vision fully realized
+
+---
+
+### 035: Trigger Infrastructure as Extension
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** The trigger system (parsing, modifiers, custom emitters, event namespacing) was ~50 lines of core infrastructure with 3 config keys (`config.triggers`, `config.triggerModifiers`, `config.swapModifiers`). While the pipeline is core, the trigger parsing and modifier system are conventions that can live in an extension.
+
+**Decision:** Core provides a minimal `setupTriggers` on the api — reads `hx-trigger` as a literal event name, calls `addEventListener`. No parsing, no modifiers, no emitters:
+
+```js
+setupTriggers: (element) => {
+    const event = element.attr('hx-trigger')
+    if (!event) return
+    element.on(event, element.state.handler)
+}
+```
+
+The handler is created by core's internal `createHandler()` and stored in `element.state.handler` during init.
+
+A `triggers` extension in defaults.js replaces `htmx.setupTriggers` in its `htmx:ready` handler, providing full trigger parsing, modifier application, custom emitters, and event namespacing. Trigger-specific extensions (`trigger-load`, `trigger-every`, `modifier-delay`, `modifier-throttle`) declare `requires: ['triggers']`.
+
+**Removed from core:** `setupTriggers` (complex), `bindDOMEvent`, `parseTriggerList`, `parseTrigger`, `config.triggers`, `config.triggerModifiers`, `config.swapModifiers`.
+
+**Kept in core:** `createHandler` (internal — pipeline bridge), `parseModifiers` (generic utility on api), `parseDuration` (internal).
+
+**Consequences:**
+- Core drops ~50 lines, config has 3 fewer keys
+- Core standalone: explicit `hx-trigger="click"` works, no modifiers, no custom triggers
+- With defaults: full trigger parsing, modifiers, emitters — same behavior as before
+- `parseTriggerList`/`parseTrigger` move to defaults.js as module-level functions, calling `htmx.parseModifiers()`
+- Proves the customization model: extensions can fully replace core behaviors by reassigning `htmx.*`
+
+---
+
+### 036: Defaults Out of Registries
+**Date:** 2026-02-10 | **Status:** Accepted | **Partially supersedes:** ADR-027
+
+**Context:** ADR-027 put `default` keys inside registries (`config.swaps.default = 'innerHTML'`, `config.triggers.default = 'click'`). This made registries self-contained, but once defaults moved to extensions (ADR-031), it created a conceptual mismatch: the registry is a pure lookup table of implementations, but `default` isn't an implementation — it's a preference.
+
+Extensions writing `htmx.config.swaps.default = 'innerHTML'` muddy the registry with opinion.
+
+**Decision:** Defaults live as separate config keys:
+
+```js
+config.defaultSwap       // string — looked up in config.swaps
+config.defaultTrigger    // string or function — resolved via resolve()
+```
+
+Registries are pure:
+```js
+config.swaps    = { innerHTML, outerHTML, before, ... }  // implementations only
+config.triggers = { load, every, ... }                    // emitters only
+```
+
+The `smart-defaults` extension sets `htmx.config.defaultSwap ??= 'innerHTML'` and `htmx.config.defaultTrigger ??= node => ...`.
+
+**Consequences:**
+- Registries are pure lookup tables — no special keys
+- Defaults are explicit config — easy to find, easy to override
+- `??=` convention preserved — user pre-configuration wins
+- Core reads `config.defaultSwap` and `config.defaultTrigger` (undefined by default = no opinion)
+
+---
+
+### 037: Unopinionated Kernel — Conventions via Extensions
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-024 (partially)
+
+**Context:** ADR-024 said "this IS htmx" and baked in inheritance, `hx-*` convention, and smart triggers. But as the extension system matured (ADR-034's `api` wrapping, ADR-031's core/defaults split), it became clear that *more* could move out without losing usability.
+
+The kernel should be an unopinionated but functional htmx — it runs the full pipeline (init → trigger → request → response → swap → settle), but has no opinions about defaults, inheritance, extended selectors, or request headers.
+
+**Decision:** The kernel provides:
+
+**Capabilities (stay in core):**
+- Full request pipeline with events at every phase
+- Swap implementations (`innerHTML`, `outerHTML`, `before`, `prepend`, `append`, `after`, `remove`, `none`)
+- Simple trigger binding (explicit `hx-trigger` → `addEventListener`)
+- Extension system (`register` with `on`, `detail.api` for internals)
+- State management, MutationObserver
+
+**Conventions (moved to `htmx.defaults.js`):**
+- `inheritance` — `attr` wraps `getAttribute` with parent walking
+- `extended-selectors` — `find`/`findAll` wraps `querySelector` with keyword selectors
+- `default-headers` — `HX-Request`, `HX-Current-URL`
+- `smart-defaults` — default swap (`innerHTML`), default trigger (click/change/submit)
+- `swap-aliases` — legacy position names
+- `trigger-load`, `trigger-every` — synthetic trigger emitters
+- `modifier-delay`, `modifier-throttle` — trigger modifiers
+
+The kernel alone requires explicit `hx-trigger` and `hx-swap` attributes. Loading defaults makes it feel like htmx.
+
+**Consequences:**
+- Core is ~380 lines of pure pipeline mechanics
+- Everything in defaults uses `detail.api` — proves the extension system works
+- Users can load a subset of defaults for minimal builds
+- ADR-024's "this IS htmx" still applies to the full build (core + defaults)
+
+---
+
+### 038: Internal API vs Public Surface
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-015 (partially)
+
+**Context:** The public `htmx` object exposed ~15 functions: `init`, `ajax`, `emit`, `on`, `attr`, `find`, `findAll`, `wrap`, `state`, `resolve`, `parseModifiers`, `setupTriggers`, `register`, plus `config` and `version`. Many of these are implementation details that only extensions need (e.g., `attr`, `find`, `wrap`, `state`, `parseModifiers`). Exposing them all as public API makes the surface area large and hard to maintain.
+
+Extensions need to wrap internal functions (inheritance wraps `attr`, extended-selectors wraps `find`), but users don't need to call these directly.
+
+**Rejected:** Keeping everything on one flat object (status quo) — large public surface, can't distinguish user API from extension internals.
+
+**Decision:** Two objects:
+
+- **`api`** (internal) — all extensible functions. Extensions receive it via `detail.api` in every event handler. `emit()` adds `api` to the detail before calling extension handlers, removes it before DOM dispatch.
+- **`htmx`** (public) — minimal surface with getters that delegate to `api`:
+
+```js
+return {
+    version, config, register,
+    get init() { return api.init },
+    get ajax() { return api.ajax },
+    get emit() { return api.emit },
+    get on() { return api.on },
+}
+```
+
+Extensions wrap internals via `({api}) =>` destructuring:
+```js
+htmx.register('inheritance', {
+    on: {
+        'htmx:ready': ({api}) => {
+            const original = api.attr
+            api.attr = (node, name, opts) => { /* ... */ }
+        }
+    }
+})
+```
+
+**Consequences:**
+- Public surface is 7 things: `version`, `config`, `register`, `init`, `ajax`, `emit`, `on`
+- Internal extensible functions (`attr`, `find`, `findAll`, `wrap`, `state`, `resolve`, `parseModifiers`) are only on `api`
+- Extensions access `api` via `detail.api` — available in all event handlers, not just `htmx:ready`
+- Getters ensure public `htmx.ajax` etc. always delegate to the (possibly wrapped) `api.ajax`
+- `api` is not leaked into DOM event details (removed before `dispatchEvent`)
+
+---
+
+### 039: Mutable Detail for Trigger Binding
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-035 (partially)
+
+**Context:** ADR-035 moved trigger infrastructure to an extension that replaced `htmx.setupTriggers`. But `setupTriggers` was an awkward API name (all other API functions are one word) and the wrapping pattern was ad-hoc compared to the rest of the architecture.
+
+The request pipeline already uses mutable detail as its extension pattern: `detail.request`, `detail.response`, `detail.swap` flow through events and extensions can modify them. The same pattern should apply to trigger binding.
+
+**Decision:** The init detail carries `trigger` (the event name string) and the handler lives in `element.state.handler`:
+
+```js
+// In init():
+const detail = {element, trigger: element.attr('hx-trigger')}
+emit(element, 'htmx:before:init', detail)
+
+// Default: if trigger wasn't consumed, simple addEventListener
+if (detail.trigger) {
+    element.on(detail.trigger, element.state.handler)
+}
+```
+
+The triggers extension nulls `trigger` to prevent core's default binding, and grabs the handler from state:
+
+```js
+'htmx:before:init': (detail) => {
+    detail.trigger = null  // I'm handling this
+    const handler = detail.element.state.handler
+    // ... rich trigger setup with parsing, modifiers, emitters
+}
+```
+
+This separates intent (`detail.trigger` — what event to bind) from implementation (`state.handler` — what to call). The detail describes what's happening, not how.
+
+**Consequences:**
+- `setupTriggers` removed from API entirely — no awkward naming
+- Core's default trigger binding is 3 lines (check trigger, addEventListener)
+- `detail.trigger` is a string, not a function — crystal clear what it means
+- Extensions override by nulling `detail.trigger` and doing their own binding
+- Handler always accessible via `element.state.handler` for wrapping with modifiers
+- Core alone works with explicit `hx-trigger="click"` — functional but minimal
+
+---
+
+### 040: No Element Wrapping in Core
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-006 (partially)
+
+**Context:** ADR-006 introduced Proxy-based element wrapping so extension handlers could use `element.attr()`, `element.state`, `element.emit()`, `element.on()` instead of calling API functions directly. This required `wrap()` (~20 lines), `unwrap()` (~10 lines), and a `WRAPPED` Symbol.
+
+With ADR-038's `detail.api` pattern, extensions already receive the API object in every handler. The wrapping layer provided syntactic sugar (`element.attr(name)` vs `api.attr(element, name)`) but added complexity: Proxy objects, a Symbol for identity checks, recursive unwrapping before DOM dispatch, and a conceptual split between "wrapped elements" and "raw nodes."
+
+**Decision:** Remove `wrap()`, `unwrap()`, and `WRAPPED` from core. Work with raw DOM elements everywhere.
+
+- Core calls `api.attr(element, name)`, `api.emit(element, name)`, etc.
+- Extensions use `detail.api` for the same: `api.attr(element, 'hx-trigger')`
+- `api.state(element)` is a function (wraps `WeakMap.get`) — returns the element's state object
+- `emit()` passes detail directly to `CustomEvent` — no unwrapping step
+- All internal calls go through `api.*` for consistency and extensibility
+
+**Consequences:**
+- Core drops ~30 lines (wrap, unwrap, WRAPPED symbol)
+- `emit()` simplified — no unwrap step, no `.native` extraction
+- One kind of element (DOM Element) — no wrapped vs unwrapped confusion
+- Extensions use `api.attr(element, name)` — slightly more verbose but explicit
+- `api.state(element).handler` replaces `element.state.handler` — clear what's happening
+- Wrapping could be re-added as an opt-in extension if ergonomics matter later
+
+---
+
+### 041: Consistent `api.*` for Internal Calls
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** Some internal functions called through `api.*` (extensible) while others called directly (bypassing wraps). This created an implicit, undocumented distinction between "extensible" and "non-extensible" functions.
+
+**Decision:** All internal calls to functions on the `api` object go through `api.*`. The `api` object IS the extensibility boundary — if it's on `api`, it's extensible; if it's not, it's internal implementation.
+
+```js
+// Core calls through api for everything on the api object:
+api.emit(element, 'htmx:before:init', detail)
+api.attr(element, 'hx-trigger')
+api.on(element, event, handler)
+api.init(inserted || targetElement)
+
+// Internal helpers called directly (not on api):
+addCleanup(element, fn)
+createHandler(element)
+cleanupTree(root)
+```
+
+**Consequences:**
+- Any function on `api` can be wrapped by extensions and the wrap takes effect everywhere
+- Clear rule: on `api` = extensible, not on `api` = internal
+- Slightly more verbose inside core, but explicit and consistent
+- No timing ambiguity — `api.*` resolves at call time, always gets the current (possibly wrapped) version
+
+---
+
+### 042: `htmx:setup:trigger` Event Instead of Registries
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** part of ADR-035
+
+**Context:** The `triggers` extension did too much — it parsed trigger strings, applied modifiers from `htmx.config.triggerModifiers`, applied custom emitters from `htmx.config.triggers`, and bound listeners. Two config-based registries (`htmx.config.triggers`, `htmx.config.triggerModifiers`) were a parallel extension mechanism outside the standard event system, and modifier/emitter extensions needed `requires: ['triggers']` to ensure registration order.
+
+**Decision:** The triggers extension emits `htmx:setup:trigger` for each parsed trigger with a mutable detail:
+
+```js
+{element, trigger, handler, cleanup: []}
+```
+
+- **Modifiers** (delay, throttle) hook into `htmx:setup:trigger` and wrap `detail.handler`
+- **Emitters** (load, every) hook into `htmx:setup:trigger`, rename `detail.trigger.event`, and push teardown functions to `detail.cleanup`
+- After the event, triggers binds the (possibly modified) handler to the (possibly renamed) event
+- Returning `false` from `htmx:setup:trigger` skips that trigger entirely
+- `htmx.config.triggers` and `htmx.config.triggerModifiers` registries are eliminated
+- `requires: ['triggers']` is no longer needed — if the event never fires, handlers are natural no-ops
+
+Event name follows the `htmx:<time>:<thing>` convention (`setup` is the time, `trigger` is the thing). No parallel `htmx:setup:request` is needed — `htmx:before:request` already serves as the request customization point. Requests are one-shot (configure and fire in the same moment), while triggers are configured once and fire many times, so the setup/fire distinction is meaningful only for triggers.
+
+**Consequences:**
+- Triggers extension is just parsing + binding (~30 lines). No registry management.
+- Modifiers and emitters are standard extension event handlers — no special API
+- Order is registration order (same as all extensions). Modifiers and emitters are orthogonal.
+- New trigger types and modifiers are trivial to add — just hook `htmx:setup:trigger`
+- `htmx:setup:trigger` is observable from DOM event listeners too (for debugging)
+
+---
+
+### 043: `detail.request` as Native RequestInit
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** `detail.request` was a custom object that core had to manually map to `fetch()` arguments. Meanwhile extensions like `request-timeout` needed to add `signal`, which is a standard RequestInit property.
+
+**Decision:** `detail.request` is a proper RequestInit object plus `url`:
+
+```js
+detail.request = {
+    url,
+    method: options.method || 'GET',
+    headers: options.headers || {},
+    body: options.body ?? null,
+}
+```
+
+Core destructures: `const {url: requestUrl, ...fetchOptions} = detail.request` and passes `fetchOptions` directly to `fetch()`. Extensions modify `detail.request` properties directly in `htmx:before:request` — any valid RequestInit property (signal, credentials, mode, cache, etc.) flows through automatically.
+
+**Consequences:**
+- `config.defaultRequest` eliminated — defaults live in extensions (e.g. `default-headers`)
+- `request-timeout` sets `request.signal` directly instead of wrapping `api.ajax`
+- Any RequestInit property is supported without core changes
+- Extensions compose naturally — timeout adds signal, CORS adds mode, etc.
+
+---
+
+### 044: Extension Handler Signature `(detail, api)`
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-034
+
+**Context:** ADR-034 added `detail.api` so extensions could access the internal API. This polluted every detail object with an `api` property that leaked into DOM CustomEvents. The `api` field was also added before dispatch and deleted after — messy lifecycle management.
+
+**Decision:** Pass `api` as the second argument to extension event handlers:
+
+```js
+// Extension handler signature:
+'htmx:boot': (detail, api) => { ... }
+'htmx:setup:trigger': ({element, trigger}, {emit}) => { ... }
+```
+
+`emit()` calls `extension.on?.[name]?.(detail, api)`. DOM CustomEvent listeners still receive the event as usual — `api` never touches the detail object.
+
+Late-registered extensions (after boot) receive: `extension.on['htmx:boot']({}, api)`.
+
+**Consequences:**
+- `detail` is clean — only data relevant to the event
+- No add/delete dance in `emit()`
+- Extensions destructure what they need: `({element, trigger}, {emit, attr})`
+- DOM event listeners see only the detail — no internal API leakage
+- `_api` shadowing issues eliminated — every handler gets api as second arg
+
+---
+
+### 045: `htmx.swap(content, target, options?)` — Standalone Swap
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** Swapping was only available through the request lifecycle (`ajax()`). Users and extensions needed programmatic swapping without triggering a request.
+
+**Decision:** `swap()` is a standalone public method on the API:
+
+```js
+swap(content, target, options = {})
+```
+
+- `content` — HTML string or DocumentFragment (positional, required)
+- `target` — Element or CSS selector string (positional, required)
+- `options.swap` — swap method name (string, e.g. "innerHTML")
+- `options.context` — arbitrary context (e.g. `{source, response}` when called from `ajax()`)
+
+Strings are parsed to DocumentFragment via `<template>`. Selectors resolved via `api.find()`. Swap events fire on `target` element:
+
+```js
+detail = {target, content, method: options.swap || null, fn: null, context: options.context || null}
+emit(target, 'htmx:before:swap', detail)    // extensions set detail.fn
+detail.fn(detail.target, detail.content)     // actual swap
+emit(target, 'htmx:after:swap', detail)
+```
+
+`ajax()` calls `swap()` internally, passing response context:
+
+```js
+swap(detail.response.text, target, {
+    swap: options.swap,
+    context: {source, response: detail.response},
+})
+```
+
+**Consequences:**
+- Programmatic swapping without the request lifecycle
+- `ajax()` uses the same swap path as everyone else
+- Swap events always fire on the target element (breaking change from htmx 1-3 which fired on source)
+- Extensions resolve `detail.fn` from `detail.method` during `htmx:before:swap`
+- `detail.fn = null` by default — if no extension sets it, nothing happens (core doesn't know swap methods)
+
+---
+
+### 046: Swap Events Fire on Target Element
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** htmx 1-3 fired swap events (`htmx:beforeSwap`, `htmx:afterSwap`) on the source element. But swap logically affects the target — that's where content goes and where observers need to react. With `htmx.swap()` being usable standalone (no source element), firing on source is impossible.
+
+**Decision:** Swap events (`htmx:before:swap`, `htmx:after:swap`) fire on the target element. Request events (`htmx:before:request`, etc.) fire on the source element.
+
+**Consequences:**
+- Breaking change for htmx 1-3 users who listened for swap events on source
+- Semantically correct — swap events fire where the swap happens
+- `htmx.swap()` works standalone with no source
+- Backwards compat extension is a possible future add-on (not designed yet — previous attempt rejected)
+
+---
+
+### 047: Triggers in Core, Trigger Behaviors as Extensions
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-035
+
+**Context:** ADR-035 moved the entire trigger system to a `triggers` extension. But triggers are fundamental to htmx — without them, `hx-trigger` is dead markup. The extension was awkward: it required `initSelectors` knowledge, duplicated core patterns, and every other trigger extension depended on it.
+
+**Decision:** Core owns trigger parsing and binding. The `init()` function:
+1. Reads `hx-trigger`, splits on commas (bracket-aware regex)
+2. Parses each part with `parse()` (universal parser)
+3. Sets `trigger.event = trigger.value`
+4. Emits `htmx:setup:trigger` for each trigger (mutable detail)
+5. Binds the (possibly modified) handler to the (possibly renamed) event
+
+Trigger *behaviors* remain extensions:
+- `trigger-load` — synthetic "load" trigger (renames to `htmx:trigger:load`, fires via microtask)
+- `trigger-every` — repeating interval trigger
+- `modifier-delay` — debounce via handler wrapping
+- `modifier-throttle` — throttle via handler wrapping
+- `default-trigger` — implicit trigger (click/change/submit) when `hx-trigger` omitted
+
+**Consequences:**
+- `triggers` extension eliminated — its logic is in core's `init()`
+- Core is self-sufficient: loads, parses triggers, binds handlers
+- `htmx:setup:trigger` remains the hook for trigger customization
+- No `requires: ['triggers']` needed anywhere
+
+---
+
+### 048: Universal `parse()` Method
+**Date:** 2026-02-10 | **Status:** Accepted
+
+**Context:** There were three parsers: `parseTriggerList` (comma-split + loop), `parseTrigger` (trigger-specific parsing), and `parseModifiers` (generic `value mod:arg` parsing). The trigger-specific parsers existed because `hx-trigger` had special syntax (comma-separated, filters). But `parseModifiers` was already sufficient for individual trigger specs.
+
+**Decision:** One universal parser named `parse()`:
+
+```js
+function parse(raw) {
+    if (!raw) return {value: null}
+    const [value, ...parts] = raw.trim().split(/\s+/)
+    const result = {value}
+    for (const part of parts) {
+        const index = part.indexOf(config.syntaxDelimiter)
+        if (index > 0) {
+            const key = part.slice(0, index)
+            const rawValue = part.slice(index + 1)
+            result[key] = parseDuration(rawValue) ?? rawValue
+        } else {
+            result[part] = true
+        }
+    }
+    return result
+}
+```
+
+Handles any `value modifier:arg modifier:arg flag` pattern. Comma-splitting for `hx-trigger` is done inline before calling `parse()` on each part. Duration parsing (`500ms`, `2s`, `1m`) is automatic for modifier values.
+
+`parseTriggerList` and `parseTrigger` are eliminated. `parseModifiers` is renamed to `parse()` and exposed on the api object.
+
+**Consequences:**
+- One parser for all attribute values
+- `api.parse` available to extensions for their own attributes
+- Trigger comma-splitting is separate from parsing (inline in `init()`)
+- Duration values auto-parsed to milliseconds
+
+---
+
+### 049: Config Reduced to Minimal Core
+**Date:** 2026-02-10 | **Status:** Accepted | **Supersedes:** ADR-025
+
+**Context:** ADR-025 put everything on `config` including swap registries, trigger registries, default values. With the events-only architecture, extensions handle all behavior — core config should only have what core itself needs.
+
+**Decision:** Core config is minimal:
+
+```js
+const config = {
+    syntaxDelimiter: ':',
+    initSelectors: ['[hx-get]', '[hx-post]', '[hx-put]', '[hx-patch]', '[hx-delete]'],
+}
+```
+
+- `syntaxDelimiter` — used by `parse()` for modifier syntax
+- `initSelectors` — CSS selectors that trigger htmx initialization
+
+Everything else lives in extensions that set config properties at boot:
+- `htmx.config.defaultSwap` — set by `default-swap` extension
+- `htmx.config.defaultHeaders` — set by `default-headers` extension
+- `htmx.config.requestTimeout` — set by `request-timeout` extension
+
+Extensions use `??=` so user overrides before boot are preserved.
+
+**Consequences:**
+- Core has zero opinions about defaults
+- `config` is open — extensions add properties freely
+- User can set any config property before boot; extensions use `??=` to respect it
+- No registries (`config.swaps`, `config.triggers`, `config.triggerModifiers` all eliminated)
+
+---
+
+### 050: Open — Comma-Splitting vs Filter Bracket Awareness
+**Date:** 2026-02-10 | **Status:** Open
+
+**Context:** Core splits `hx-trigger` values on commas to support multiple triggers:
+
+```js
+(attr(element, 'hx-trigger') ?? '').split(/,(?![^\[]*\])/)
+```
+
+The bracket-aware regex avoids splitting commas inside `[...]` filter expressions like `click[validate(event, this)]`. But if filters are a separate extension (`trigger-filters`), core shouldn't know about bracket syntax. A simple `.split(',')` would break legitimate filter expressions containing function calls with multiple arguments.
+
+**Options under consideration:**
+1. **Accept bracket-aware regex in core** — core knows about filter syntax, pragmatic
+2. **Core = single trigger only** — a `multiple-triggers` extension owns all comma-splitting including bracket awareness. Core's `init()` passes the raw `hx-trigger` value to `parse()` as-is for a single trigger.
+3. **Disallow commas in filters** — simplifies splitting but limits expressiveness
+4. **Different delimiter** — use something other than comma for multiple triggers (breaking change)
+
+**Tension:** Bracket-awareness in core means core implicitly knows about a feature (filters) that's supposed to be an extension. But without it, the extension can't fix things because the split already happened before it runs.
 
 ---
 

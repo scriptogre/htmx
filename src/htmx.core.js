@@ -2,58 +2,17 @@
 //
 // Lifecycle: init → trigger → request → response → swap → settle
 //
-// Extensions add capabilities via the registry (swap methods, triggers, modifiers).
 // The core handles the pipeline, syntax, and conventions.
+// Extensions add capabilities (triggers, modifiers, behaviors).
 
 var htmx = (function () {
     'use strict'
 
     // ── Config ───────────────────────────────────────────────────────────────
-    //
-    // Values can be static or functions: (context) => value
-    // Use resolve(config.X, context) to get the final value.
 
     const config = {
-        requestTimeout: 60000,
-        requestCredentials: 'same-origin',
-        requestMode: 'same-origin',
-        requestHeaders: {
-            'HX-Request': 'true',
-            'HX-Current-URL': () => location.href,
-        },
-
-        defaultTrigger: node => {
-            if (node.matches('form')) return 'submit'
-            if (node.matches('input:not([type=button]), select, textarea')) return 'change'
-            return 'click'
-        },
-        defaultSwap: 'innerHTML',
-        defaultTarget: 'this',
-
-        // Escape hatches for environments where hx-* causes issues
-        attributePrefix: 'hx-',
-        modifierDelimiter: ':',
-
-        // Selectors that trigger init (extensions add to this)
-        selectors: [],
-    }
-
-    // ── Registry ─────────────────────────────────────────────────────────────
-    //
-    // Extensions populate these to add capabilities.
-
-    const registry = {
-        swaps: {},              // method → fn(target, content)
-        triggers: {},           // name → fn(element, modifiers, handler) → cleanup?
-        modifiers: {
-            trigger: {},        // name → fn(handler, value, element) → handler
-        },
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    function resolve(value, context) {
-        return typeof value === 'function' ? value(context) : value
+        syntaxDelimiter: ':',
+        initSelectors: ['[hx-get]', '[hx-post]', '[hx-put]', '[hx-patch]', '[hx-delete]'],
     }
 
     // ── Extensions ───────────────────────────────────────────────────────────
@@ -62,20 +21,17 @@ var htmx = (function () {
     let booted = false
 
     function register(name, extension) {
-        if (extensions.some(e => e.name === name)) {
+        if (extensions.some(registered => registered.name === name)) {
             throw new Error(`htmx: extension "${name}" already registered`)
         }
-
-        for (const dep of extension.requires || []) {
-            if (!extensions.some(e => e.name === dep)) {
-                throw new Error(`htmx: extension "${name}" requires "${dep}"`)
+        for (const dependency of extension.requires || []) {
+            if (!extensions.some(registered => registered.name === dependency)) {
+                throw new Error(`htmx: extension "${name}" requires "${dependency}"`)
             }
         }
-
         extensions.push({name, ...extension})
-
-        if (booted && extension.on?.['htmx:ready']) {
-            extension.on['htmx:ready']({})
+        if (booted && extension.on?.['htmx:boot']) {
+            extension.on['htmx:boot']({}, api)
         }
     }
 
@@ -83,10 +39,14 @@ var htmx = (function () {
 
     function boot() {
         booted = true
-        emit(document, 'htmx:ready')
+        api.emit(document, 'htmx:boot')
+
+        // Extensions have wrapped api — safe to destructure
+        const {init} = api
         init(document.body)
 
         new MutationObserver(mutations => {
+            const {init} = api
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
                     if (node.nodeType === 1) init(node)
@@ -100,113 +60,103 @@ var htmx = (function () {
 
     function cleanupTree(root) {
         cleanup(root)
-        for (const node of root.querySelectorAll('*')) {
-            if (_state.has(node)) cleanup(node)
+        for (const child of root.querySelectorAll('*')) {
+            if (state.has(child)) cleanup(child)
         }
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
 
     function init(root = document.body) {
-        const selector = config.selectors.join(',')
+        const {attr, emit, on} = api
+        const selector = config.initSelectors.join(',')
         if (!selector) return
 
-        const nodes = root.matches?.(selector)
+        const elements = root.matches?.(selector)
             ? [root, ...root.querySelectorAll(selector)]
             : [...root.querySelectorAll(selector)]
 
-        for (const node of nodes) {
-            if (_state.has(node)) continue
+        for (const element of elements) {
+            if (state.has(element)) continue
+            const s = {handler: createHandler(element), cleanup: []}
+            state.set(element, s)
 
-            const element = wrap(node)
             emit(element, 'htmx:before:init', {element})
-            setupTriggers(element)
+
+            for (const each of (attr(element, 'hx-trigger') ?? '').split(/,(?![^\[]*\])/)) {
+                const trigger = parse(each.trim())
+                trigger.event = trigger.value
+                const setup = {element, trigger, handler: s.handler, cleanup: []}
+                if (emit(element, 'htmx:setup:trigger', setup) === false) continue
+                if (!trigger.event) continue
+
+                const targets = trigger.from
+                    ? document.querySelectorAll(trigger.from)
+                    : [element]
+                for (const target of targets) {
+                    const off = on(target, trigger.event, setup.handler, {once: trigger.once})
+                    if (target !== element) s.cleanup.push(off)
+                }
+
+                for (const fn of setup.cleanup) s.cleanup.push(fn)
+            }
+
             emit(element, 'htmx:after:init', {element})
         }
     }
 
-    function cleanup(node) {
-        if (!_state.has(node)) return
+    function cleanup(element) {
+        if (!state.has(element)) return
 
-        const element = wrap(node)
+        const {emit} = api
         emit(element, 'htmx:before:cleanup', {element})
 
-        for (const fn of state(node).cleanup || []) fn()
-        _state.delete(node)
+        for (const callback of state.get(element).cleanup || []) callback()
+        state.delete(element)
 
         emit(element, 'htmx:after:cleanup', {element})
     }
 
-    // ── Trigger ──────────────────────────────────────────────────────────────
+    // ── Handler ──────────────────────────────────────────────────────────────
 
-    function setupTriggers(element) {
-        const node = element.native
-        const defaultEvent = resolve(config.defaultTrigger, node)
-        const raw = element.attr('hx-trigger')
-        const specs = raw ? raw.split(/,(?![^\[]*\])/).map(s => s.trim()) : [defaultEvent]
-
-        for (const spec of specs) {
-            const {event, modifiers} = parseTriggerSpec(spec)
-            const handler = wrapHandler(baseHandler(element), modifiers, element)
-
-            // Synthetic trigger (load, revealed, every, intersect...)
-            if (event in registry.triggers) {
-                const off = registry.triggers[event](element, modifiers, handler)
-                if (off) addCleanup(node, off)
-                continue
-            }
-
-            // DOM event
-            const targets = modifiers.from ? document.querySelectorAll(modifiers.from) : [node]
-            for (const target of targets) {
-                target.addEventListener(event || defaultEvent, handler, {once: modifiers.once})
-                addCleanup(node, () => target.removeEventListener(event || defaultEvent, handler))
-            }
-        }
-    }
-
-    function baseHandler(element) {
+    function createHandler(element) {
         return event => {
+            const {attr, emit, ajax} = api
             event.preventDefault?.()
             const source = {element, event}
             if (emit(element, 'htmx:before:trigger', {source}) === false) return
             emit(element, 'htmx:after:trigger', {source})
+
+            // Read verb + URL at trigger time (JIT — supports dynamic attributes)
+            let url, method
+            if ((url = attr(element, 'hx-get'))) method = 'GET'
+            else if ((url = attr(element, 'hx-post'))) method = 'POST'
+            else if ((url = attr(element, 'hx-put'))) method = 'PUT'
+            else if ((url = attr(element, 'hx-patch'))) method = 'PATCH'
+            else if ((url = attr(element, 'hx-delete'))) method = 'DELETE'
+            else return
+
+            ajax(url, {
+                method,
+                source,
+                target: attr(element, 'hx-target'),
+                swap: attr(element, 'hx-swap')?.split(/\s+/)[0],
+            })
         }
     }
 
-    function wrapHandler(handler, modifiers, element) {
-        for (const [name, fn] of Object.entries(registry.modifiers.trigger)) {
-            if (modifiers[name] !== undefined) {
-                handler = fn(handler, modifiers[name], element)
-            }
-        }
-        return handler
-    }
-
-    function parseTriggerSpec(spec) {
-        // "every 2s" → "every interval:2s"
-        const normalized = spec.replace(/^every\s+(\d+(?:ms|s|m)?)/, 'every interval:$1')
-        const {value, ...modifiers} = parseModifiers(normalized)
-
-        // "click[key=='Enter']" → event="click", filter="key=='Enter'"
-        const match = value?.match(/^([^\[]+?)(?:\[(.+)])?$/)
-        if (match?.[2]) modifiers.filter = match[2]
-
-        return {event: match?.[1], modifiers}
-    }
-
-    function parseModifiers(raw) {
+    function parse(raw) {
         if (!raw) return {value: null}
 
         const [value, ...parts] = raw.trim().split(/\s+/)
         const result = {value}
 
         for (const part of parts) {
-            const i = part.indexOf(config.modifierDelimiter)
-            if (i > 0) {
-                const key = part.slice(0, i)
-                const val = part.slice(i + 1)
-                result[key] = parseDuration(val) ?? val
+            const index = part.indexOf(config.syntaxDelimiter)
+            if (index > 0) {
+                const key = part.slice(0, index)
+                const rawValue = part.slice(index + 1)
+                result[key] = parseDuration(rawValue) ?? rawValue
             } else {
                 result[part] = true
             }
@@ -218,64 +168,86 @@ var htmx = (function () {
     function parseDuration(str) {
         const match = str?.match(/^(\d+)(ms|s|m)?$/)
         if (!match) return null
-        const [, n, unit] = match
-        return unit === 's' ? n * 1000 : unit === 'm' ? n * 60000 : +n
+        const [, amount, unit] = match
+        return unit === 's' ? amount * 1000 : unit === 'm' ? amount * 60000 : +amount
     }
 
-    function addCleanup(node, fn) {
-        const s = state(node)
-        s.cleanup ||= []
-        s.cleanup.push(fn)
-    }
+    // ── Swap ───────────────────────────────────────────────────────────────
 
-    // ── Fetch ────────────────────────────────────────────────────────────────
+    function swap(content, target, options = {}) {
+        const {emit, find, init} = api
 
-    async function request(url, options = {}) {
-        const method = options.method || 'GET'
-        const source = {
-            element: options.source?.element || wrap(document.body),
-            event: options.source?.event ?? null,
+        // Resolve target selector
+        if (typeof target === 'string') target = find(target)
+        if (!target) return
+
+        // Parse HTML string to fragment
+        if (typeof content === 'string') {
+            const template = document.createElement('template')
+            template.innerHTML = content
+            content = template.content
         }
 
         const detail = {
+            target,
+            content,
+            method: options.swap || null,
+            fn: null,
+            context: options.context || null,
+        }
+
+        if (emit(target, 'htmx:before:swap', detail) === false) return
+
+        if (typeof detail.fn !== 'function') return
+
+        const inserted = detail.fn(detail.target, detail.content)
+        init(inserted || detail.target)
+
+        emit(target, 'htmx:after:swap', detail)
+    }
+
+    // ── Request ──────────────────────────────────────────────────────────────
+
+    async function ajax(url, options = {}) {
+        const {emit, find, swap} = api
+        const source = options.source || {element: document.body, event: null}
+
+        // detail.request is a RequestInit (+ url) — extensions modify it in htmx:before:request
+        const detail = {
             source,
-            request: {url, method, body: options.body ?? null, headers: {}},
+            phase: 'request',
+            request: {
+                url,
+                method: options.method || 'GET',
+                headers: options.headers || {},
+                body: options.body ?? null,
+            },
             response: null,
-            swap: null,
             error: null,
         }
 
-        // Headers
-        for (const [key, value] of Object.entries(config.requestHeaders)) {
-            detail.request.headers[key] = resolve(value, {source, url, method})
+        const fail = (type, message, cause) => {
+            detail.error = {type, message}
+            if (cause) detail.error.cause = cause
+            emit(source.element, 'htmx:error', detail)
         }
-        Object.assign(detail.request.headers, options.headers)
-
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), resolve(config.requestTimeout, source))
 
         try {
             // ── Request ──
             if (emit(source.element, 'htmx:before:request', detail) === false) return
 
-            const response = await fetch(url, {
-                method,
-                headers: detail.request.headers,
-                body: detail.request.body,
-                credentials: resolve(config.requestCredentials, source),
-                mode: resolve(config.requestMode, source),
-                signal: controller.signal,
-            })
+            const {url: requestUrl, ...fetchOptions} = detail.request
+            const response = await fetch(requestUrl, fetchOptions)
 
             emit(source.element, 'htmx:after:request', detail)
 
             // ── Response ──
+            detail.phase = 'response'
             detail.response = {
                 status: response.status,
                 ok: response.ok,
                 url: response.url,
                 headers: Object.fromEntries(response.headers),
-                text: null,
             }
 
             if (emit(source.element, 'htmx:before:response', detail) === false) return
@@ -283,162 +255,78 @@ var htmx = (function () {
             if (emit(source.element, 'htmx:after:response', detail) === false) return
 
             // ── Swap ──
-            const targetSelector = options.target || resolve(config.defaultTarget, source.element.native)
-            const targetNode = resolveTarget(source.element.native, targetSelector)
+            detail.phase = 'swap'
+            const target = options.target
+                ? find(source.element, options.target)
+                : source.element
+            if (!target) return fail('swap:target', `Target not found: ${options.target}`)
 
-            if (!targetNode) {
-                detail.error = {type: 'target', message: `Target not found: ${targetSelector}`}
-                emit(source.element, 'htmx:error', detail)
-                return
-            }
-
-            const swapMethod = options.swap || resolve(config.defaultSwap, source.element.native)
-            const swapFn = registry.swaps[swapMethod]
-
-            if (!swapFn) {
-                detail.error = {type: 'swap', message: `Unknown swap method: ${swapMethod}`}
-                emit(source.element, 'htmx:error', detail)
-                return
-            }
-
-            detail.swap = {
-                target: wrap(targetNode),
-                method: swapMethod,
-                content: null,  // created after before:swap
-            }
-
-            if (emit(source.element, 'htmx:before:swap', detail) === false) return
-
-            detail.swap.content = makeFragment(detail.response.text)
-            const inserted = swapFn(targetNode, detail.swap.content)
-            init(inserted || targetNode)
-
-            emit(source.element, 'htmx:after:swap', detail)
+            swap(detail.response.text, target, {
+                swap: options.swap,
+                context: {source, response: detail.response},
+            })
 
             // ── Settle ──
+            detail.phase = 'settle'
             if (emit(source.element, 'htmx:before:settle', detail) === false) return
             emit(source.element, 'htmx:after:settle', detail)
 
             return detail.response
 
         } catch (error) {
-            detail.error = {
-                type: error.name === 'AbortError' ? 'timeout' : 'network',
-                message: error.message,
-                cause: error,
-            }
-            emit(source.element, 'htmx:error', detail)
-
+            fail(detail.phase, error.message, error)
         } finally {
-            clearTimeout(timeout)
             emit(source.element, 'htmx:done', detail)
         }
     }
 
     // ── State ────────────────────────────────────────────────────────────────
 
-    const _state = new WeakMap()
+    const state = new WeakMap()
 
-    function state(node) {
-        let s = _state.get(node)
-        if (!s) _state.set(node, s = {})
-        return s
-    }
+    // ── DOM ──────────────────────────────────────────────────────────────────
 
-    // ── Element Wrapper ──────────────────────────────────────────────────────
-
-    const WRAPPED = Symbol('htmx.wrapped')
-
-    function wrap(node) {
-        if (!node) return null
-        if (node[WRAPPED]) return node
-
-        return new Proxy(node, {
-            get(target, prop) {
-                if (prop === WRAPPED) return true
-                if (prop === 'native') return target
-                if (prop === 'attr') return (name, opts) => attr(target, name, opts)
-                if (prop === 'state') return state(target)
-                if (prop === 'find') return sel => wrap(target.querySelector(sel))
-                if (prop === 'findAll') return sel => [...target.querySelectorAll(sel)].map(wrap)
-                if (prop === 'emit') return (name, detail) => emit(target, name, detail)
-                if (prop === 'on') return (evt, fn, opts) => on(target, evt, fn, opts)
-
-                const value = target[prop]
-                return typeof value === 'function' ? value.bind(target) : value
-            }
-        })
-    }
-
-    function attr(node, name, {inherit = true} = {}) {
-        const attrName = name.startsWith('hx-')
-            ? config.attributePrefix + name.slice(3)
-            : name
-
-        let current = node
-        while (current) {
-            const value = current.getAttribute(attrName)
-            if (value !== null) return value
-            if (!inherit) return null
-            current = current.parentElement
+    function find(element, selector) {
+        if (selector === undefined) {
+            selector = element;
+            element = document
         }
-        return null
+        return element.querySelector(selector)
+    }
+
+    function findAll(element, selector) {
+        if (selector === undefined) {
+            selector = element;
+            element = document
+        }
+        return [...element.querySelectorAll(selector)]
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
 
     function emit(target, name, detail = {}) {
-        // Extension handlers first (can cancel)
-        for (const ext of extensions) {
-            if (ext.on?.[name]?.(detail) === false) return false
+        for (const extension of extensions) {
+            if (extension.on?.[name]?.(detail, api) === false) return false
         }
 
-        // DOM event
-        const node = target?.native || target
-        const el = node?.isConnected !== false ? node : document
+        const dispatchTarget = target?.isConnected ? target : document
 
-        return el.dispatchEvent(new CustomEvent(name, {
-            detail: unwrap(detail),
+        return dispatchTarget.dispatchEvent(new CustomEvent(name, {
+            detail,
             bubbles: true,
             cancelable: true,
             composed: true,
         }))
     }
 
-    function on(node, event, handler, options) {
-        const target = node.native || node
-        target.addEventListener(event, handler, options)
-        const off = () => target.removeEventListener(event, handler, options)
-        addCleanup(target, off)
-        return off
-    }
-
-    function unwrap(obj) {
-        if (!obj || typeof obj !== 'object') return obj
-        if (obj[WRAPPED]) return obj.native
-        if (Array.isArray(obj)) return obj.map(unwrap)
-
-        const result = {}
-        for (const [k, v] of Object.entries(obj)) {
-            result[k] = unwrap(v)
+    function on(element, event, handler, options) {
+        element.addEventListener(event, handler, options)
+        const off = () => element.removeEventListener(event, handler, options)
+        if (state.has(element)) {
+            state.get(element).cleanup ||= []
+            state.get(element).cleanup.push(off)
         }
-        return result
-    }
-
-    // ── DOM Helpers ──────────────────────────────────────────────────────────
-
-    function resolveTarget(node, selector) {
-        if (!selector || selector === 'this') return node
-        if (selector === 'body') return document.body
-        if (selector.startsWith('closest ')) return node.closest(selector.slice(8))
-        if (selector.startsWith('find ')) return node.querySelector(selector.slice(5))
-        return document.querySelector(selector)
-    }
-
-    function makeFragment(html) {
-        const tpl = document.createElement('template')
-        tpl.innerHTML = html
-        return tpl.content
+        return off
     }
 
     // ── Start ────────────────────────────────────────────────────────────────
@@ -449,26 +337,56 @@ var htmx = (function () {
         queueMicrotask(boot)
     }
 
-    // ── Public API ───────────────────────────────────────────────────────────
+    // ── Internal API ────────────────────────────────────────────────────────
+    // Extensions receive this as the second argument in event handlers.
+    // They can wrap/replace functions here; internal code calls through api.
+
+    const api = {
+        config,
+        register,
+        init,
+        swap,
+        ajax,
+        emit,
+        on,
+
+        // Extensible internals
+        attr: (element, name) => element.getAttribute(name),
+        find,
+        findAll,
+
+        // Utilities
+        state,
+        parse,
+    }
+
+    // ── Public API ──────────────────────────────────────────────────────────
+    // Small surface. Getters delegate to api so extension wraps take effect.
 
     return {
         version: '4.0.0',
         config,
-        registry,
-
         register,
-        init,
-        request,
-
-        emit,
-        on,
-
-        wrap,
-        attr,
-        state,
-
-        resolve,
-        resolveTarget,
-        makeFragment,
+        get init() {
+            return api.init
+        },
+        get swap() {
+            return api.swap
+        },
+        get ajax() {
+            return api.ajax
+        },
+        get emit() {
+            return api.emit
+        },
+        get on() {
+            return api.on
+        },
+        get find() {
+            return api.find
+        },
+        get findAll() {
+            return api.findAll
+        },
     }
 })()

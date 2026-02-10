@@ -20,13 +20,8 @@
     </div>
 
     <div class="test">
-        <h3>Registry Structure</h3>
-        <pre id="registry-dump"></pre>
-    </div>
-
-    <div class="test">
-        <h3>1. Basic click trigger</h3>
-        <button hx-get="/api/test" hx-swap="innerHTML" hx-target="#target" id="test1">Click me</button>
+        <h3>1. Basic click trigger (core only — explicit hx-trigger)</h3>
+        <button hx-get="/api/test" hx-trigger="click" hx-swap="innerHTML" hx-target="#target" id="test1">Click me</button>
         <div class="log" id="log1"></div>
     </div>
 
@@ -47,91 +42,78 @@
     <script src="src/htmx.core.js"></script>
     <script>
         // ═══════════════════════════════════════════════════════════════════
-        // EXTENSIONS: populate the registry so htmx core can work
+        // SWAP METHODS (core sets swap.fn = null — we resolve it here)
         // ═══════════════════════════════════════════════════════════════════
 
-        htmx.register('core-selectors', {
+        htmx.register('swap-methods', {
             on: {
-                'htmx:ready': () => {
-                    // Tell htmx which elements to init
-                    htmx.config.selectors.push('[hx-get]', '[hx-post]', '[hx-put]', '[hx-delete]')
+                'htmx:before:swap': (detail) => {
+                    if (detail.fn) return
+                    const methods = {
+                        innerHTML: (target, content) => { target.innerHTML = ''; target.append(content) },
+                        none: () => {},
+                    }
+                    detail.fn = methods[detail.method]
                 }
             }
         })
 
-        htmx.register('core-swaps', {
+        // ═══════════════════════════════════════════════════════════════════
+        // EXTENSIONS: custom trigger types, modifiers
+        // ═══════════════════════════════════════════════════════════════════
+
+        // Synthetic trigger: load (fires immediately)
+        htmx.register('trigger-load', {
             on: {
-                'htmx:ready': () => {
-                    htmx.registry.swaps.innerHTML = (target, content) => {
-                        target.innerHTML = ''
-                        target.append(content)
-                    }
-                    htmx.registry.swaps.outerHTML = (target, content) => {
-                        target.replaceWith(content)
-                    }
-                    htmx.registry.swaps.none = () => {}
+                'htmx:setup:trigger': ({element, trigger}, {emit}) => {
+                    if (trigger.event !== 'load') return
+                    trigger.event = 'htmx:trigger:load'
+                    queueMicrotask(() => emit(element, trigger.event))
                 }
             }
         })
 
-        htmx.register('core-triggers', {
+        // Trigger modifier: delay (debounce)
+        htmx.register('modifier-delay', {
             on: {
-                'htmx:ready': () => {
-                    // Synthetic trigger: load
-                    htmx.registry.triggers.load = (element, eventName, modifiers, handler) => {
-                        queueMicrotask(() => handler(new Event('load')))
-                    }
-
-                    // Modifier: delay (debounce)
-                    htmx.registry.modifiers.trigger.delay = (handler, value) => {
-                        let timeout
-                        return (event) => {
-                            clearTimeout(timeout)
-                            timeout = setTimeout(() => handler(event), value)
-                        }
+                'htmx:setup:trigger': (detail) => {
+                    if (detail.trigger.delay === undefined) return
+                    const value = detail.trigger.delay
+                    const original = detail.handler
+                    let timeout
+                    detail.handler = (event) => {
+                        clearTimeout(timeout)
+                        timeout = setTimeout(() => original(event), value)
                     }
                 }
             }
         })
 
-        htmx.register('core-request', {
-            on: {
-                'htmx:after:trigger': (detail) => {
-                    const element = detail.source.element
-                    const url = element.attr('hx-get') || element.attr('hx-post')
-                    if (url) {
-                        htmx.request(url, {source: detail.source})
-                    }
-                }
-            }
-        })
 
         // ═══════════════════════════════════════════════════════════════════
         // LOGGING
         // ═══════════════════════════════════════════════════════════════════
 
-        function log(testNum, msg) {
-            const el = document.getElementById('log' + testNum)
-            if (!el) return
+        function log(testNum, message) {
+            const logElement = document.getElementById('log' + testNum)
+            if (!logElement) return
             const time = new Date().toLocaleTimeString()
-            el.textContent = `[${time}] ${msg}\n` + el.textContent
+            logElement.textContent = `[${time}] ${message}\n` + logElement.textContent
         }
 
         // Listen to pipeline events
-        for (const evt of ['htmx:before:trigger', 'htmx:after:trigger', 'htmx:before:request', 'htmx:after:request', 'htmx:error', 'htmx:done']) {
-            document.body.addEventListener(evt, (e) => {
-                const id = e.target.id
+        for (const eventName of ['htmx:before:trigger', 'htmx:after:trigger', 'htmx:before:request', 'htmx:after:request', 'htmx:error', 'htmx:done']) {
+            document.body.addEventListener(eventName, (event) => {
+                const id = event.target.id
                 const num = id?.match(/test(\d+)/)?.[1]
-                if (num) log(num, evt.replace('htmx:', ''))
+                if (num) log(num, eventName.replace('htmx:', ''))
             })
         }
 
-        // Dump structures
-        document.getElementById('config-dump').textContent = JSON.stringify(htmx.config, (k, v) => typeof v === 'function' ? '[Function]' : v, 2)
-        document.getElementById('registry-dump').textContent = JSON.stringify(htmx.registry, (k, v) => typeof v === 'function' ? '[Function]' : v, 2)
+        // Dump config
+        document.getElementById('config-dump').textContent = JSON.stringify(htmx.config, (key, value) => typeof value === 'function' ? '[Function]' : value, 2)
 
         console.log('htmx.config:', htmx.config)
-        console.log('htmx.registry:', htmx.registry)
     </script>
 </body>
 </html>
