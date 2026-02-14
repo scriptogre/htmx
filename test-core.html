@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>htmx 4.0 — Core Only</title>
+    <style>
+        body { font-family: system-ui; padding: 2rem; max-width: 900px; margin: 0 auto; }
+        .pass { color: #2a2; } .fail { color: #a22; font-weight: bold; }
+        pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>htmx 4.0 — Core Only Tests</h1>
+    <pre id="log"></pre>
+
+    <script src="src/htmx.core.js"></script>
+    <script>
+    // No defaults loaded — just the kernel.
+    // Boot is deferred (DOMContentLoaded), so we run everything after it fires.
+
+    const log = document.getElementById('log')
+    let passed = 0, failed = 0
+
+    function assert(name, condition, detail) {
+        if (condition) {
+            log.innerHTML += `<span class="pass">✓ ${name}</span>\n`
+            passed++
+        } else {
+            log.innerHTML += `<span class="fail">✗ ${name}</span>${detail ? ' — ' + detail : ''}\n`
+            failed++
+        }
+    }
+
+    async function runTests() {
+    // Wait for boot — htmx.core.js registers boot on DOMContentLoaded (earlier script tag),
+    // so by the time our DOMContentLoaded handler fires, boot() has already run.
+    await new Promise(r => document.addEventListener('DOMContentLoaded', () => setTimeout(r, 0)))
+
+    // ── parse ────────────────────────────────────────────────────────
+
+    assert('parse: null → null', htmx.parse(null) === null)
+    assert('parse: empty → null', htmx.parse('') === null)
+    assert('parse: bare value', htmx.parse('click')?.value === 'click')
+    assert('parse: key:value', htmx.parse('delay:300')?.delay === 300)
+    assert('parse: bare + modifiers',
+        (() => { const r = htmx.parse('click delay:300ms once'); return r.value === 'click' && r.delay === 300 && r.once === true })())
+    assert('parse: {as} renames value',
+        htmx.parse('innerHTML', {as: 'style'})?.style === 'innerHTML')
+    assert('parse: duration coercion (s)',
+        htmx.parse('x delay:2s')?.delay === 2000)
+    assert('parse: duration coercion (m)',
+        htmx.parse('x delay:1m')?.delay === 60000)
+    assert('parse: boolean coercion',
+        htmx.parse('x foo:true')?.foo === true)
+
+    // ── find ─────────────────────────────────────────────────────────
+
+    assert('find: by id', htmx.find('#log') === log)
+    assert('find: null selector → null', htmx.find(null) === null)
+    assert('find: multiple', Array.isArray(htmx.find('script', {multiple: true})))
+    assert('find: element passthrough', htmx.find(log) === log)
+    assert('find: element passthrough multiple', (() => { const r = htmx.find(log, {multiple: true}); return Array.isArray(r) && r[0] === log })())
+
+    // ── emit ─────────────────────────────────────────────────────────
+
+    ;(() => {
+        let saw = null
+        document.body.addEventListener('htmx:test', e => { saw = e.detail }, {once: true})
+        const result = htmx.emit(document.body, 'htmx:test', {foo: 1})
+        assert('emit: dispatches CustomEvent', saw?.foo === 1)
+        assert('emit: returns true when not canceled', result === true)
+    })()
+
+    ;(() => {
+        htmx.register('cancel-test', {
+            on: { 'htmx:cancel-me': () => false }
+        })
+        const result = htmx.emit(document.body, 'htmx:cancel-me')
+        assert('emit: extension returning false cancels', result === false)
+    })()
+
+    // ── on ────────────────────────────────────────────────────────────
+
+    ;(() => {
+        const el = document.createElement('div')
+        let count = 0
+        const off = htmx.on(el, 'click', () => count++)
+        el.click()
+        assert('on: listener fires', count === 1)
+        off()
+        el.click()
+        assert('on: off() removes listener', count === 1)
+    })()
+
+    // ── attr ─────────────────────────────────────────────────────────
+
+    ;(() => {
+        const el = document.createElement('div')
+        el.setAttribute('hx-swap', 'innerHTML')
+        el.setAttribute('hx-get', '/test')
+        assert('attr: reads and parses', htmx.attr(el, 'hx-swap', {as: 'style'})?.style === 'innerHTML')
+        assert('attr: missing → null', htmx.attr(el, 'hx-post') === null)
+    })()
+
+    // ── swap ─────────────────────────────────────────────────────────
+
+    ;(() => {
+        const el = document.createElement('div')
+        el.textContent = 'old'
+        document.body.appendChild(el)
+        htmx.swap({content: '<b>new</b>', target: el, style: 'innerHTML'})
+        assert('swap: innerHTML', el.querySelector('b')?.textContent === 'new')
+        el.remove()
+    })()
+
+    ;(() => {
+        const parent = document.createElement('div')
+        const child = document.createElement('span')
+        child.textContent = 'old'
+        parent.appendChild(child)
+        document.body.appendChild(parent)
+        htmx.swap({content: '<em>replaced</em>', target: child, style: 'outerHTML'})
+        assert('swap: outerHTML', parent.innerHTML === '<em>replaced</em>')
+        parent.remove()
+    })()
+
+    ;(() => {
+        const el = document.createElement('div')
+        el.textContent = 'before'
+        document.body.appendChild(el)
+        htmx.swap({content: '<b>after</b>', target: el, style: 'beforeend'})
+        assert('swap: beforeend', el.innerHTML.includes('before') && el.innerHTML.includes('after'))
+        el.remove()
+    })()
+
+    // ── register ─────────────────────────────────────────────────────
+
+    ;(() => {
+        let booted = false
+        htmx.register('late-boot-test', { on: { 'htmx:boot': () => { booted = true } } })
+        assert('register: late extension gets boot event', booted)
+    })()
+
+    ;(() => {
+        let threw = false
+        try { htmx.register('late-boot-test', {}) } catch { threw = true }
+        assert('register: duplicate name throws', threw)
+    })()
+
+    ;(() => {
+        let threw = false
+        try { htmx.register('dep-test', { requires: ['nonexistent'] }) } catch { threw = true }
+        assert('register: missing dependency throws', threw)
+    })()
+
+    // ── init pipeline ────────────────────────────────────────────────
+
+    ;(() => {
+        const events = []
+        htmx.register('init-spy', {
+            on: {
+                'htmx:before:walk:init': (detail) => events.push('before:walk:init'),
+                'htmx:before:init': (detail) => events.push('before:init'),
+                'htmx:after:walk:init': (detail) => events.push('after:walk:init'),
+            }
+        })
+        const div = document.createElement('div')
+        div.innerHTML = '<span hx-get="/x"></span>'
+        document.body.appendChild(div)
+        htmx.init(div)
+        assert('init: emits before:walk:init', events.includes('before:walk:init'))
+        assert('init: discovers hx-* elements', events.includes('before:init'))
+        assert('init: emits after:walk:init', events.includes('after:walk:init'))
+        div.remove()
+    })()
+
+    // ── initElement without extensions → no URL → skipped ────────────
+
+    ;(() => {
+        // With no extensions setting a URL, initElement should skip the element
+        const el = document.createElement('div')
+        el.setAttribute('hx-get', '/test')
+        // Kernel doesn't know about hx-get — that's method-attrs' job
+        // So no URL is set, element is skipped
+        htmx.init(el)
+        // Element should not have state (was skipped)
+        let cleaned = false
+        htmx.register('cleanup-spy', {
+            on: { 'htmx:before:cleanup': (detail) => { if (detail.element === el) cleaned = true } }
+        })
+        htmx.init(el) // should be able to re-init (no state retained)
+        assert('initElement: no URL → element skipped (no state)', !cleaned)
+    })()
+
+    // ── trigger lifecycle ────────────────────────────────────────────
+
+    ;(() => {
+        const events = []
+        htmx.register('trigger-lifecycle-spy', {
+            on: {
+                'htmx:before:init': (detail) => {
+                    if (detail.element.id === 'trigger-test') {
+                        detail.request = {url: '/test', method: 'GET'}
+                        detail.trigger.eventName = 'click'
+                    }
+                },
+                'htmx:before:trigger': () => events.push('before:trigger'),
+                'htmx:after:trigger': () => events.push('after:trigger'),
+            }
+        })
+
+        const el = document.createElement('button')
+        el.id = 'trigger-test'
+        el.setAttribute('hx-get', '/test') // need hx-* for discovery
+        document.body.appendChild(el)
+        htmx.init(el)
+
+        // Click should fire the trigger lifecycle
+        el.click()
+        assert('trigger lifecycle: before:trigger on click', events.includes('before:trigger'))
+        assert('trigger lifecycle: after:trigger on click', events.includes('after:trigger'))
+
+        el.remove()
+    })()
+
+    // ── ajax ─────────────────────────────────────────────────────────
+
+    ;{
+        const realFetch = window.fetch
+        let capturedUrl, capturedMethod
+        window.fetch = async (url, opts) => {
+            capturedUrl = url
+            capturedMethod = opts.method
+            return new Response('<p>hello</p>', {status: 200, headers: {'Content-Type': 'text/html'}})
+        }
+
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+
+        await htmx.ajax({url: '/api/test', method: 'POST', element: target, swap: {style: 'innerHTML', target}})
+
+        window.fetch = realFetch
+
+        assert('ajax: sends to correct URL', capturedUrl === '/api/test')
+        assert('ajax: uses correct method', capturedMethod === 'POST')
+        assert('ajax: swaps response into target', target.querySelector('p')?.textContent === 'hello')
+
+        target.remove()
+    }
+
+    // Update summary
+    document.title = `${passed}/${passed + failed} passed`
+    log.innerHTML += `\n<b>${passed}/${passed + failed} passed</b>\n`
+
+    } // end runTests
+    runTests()
+    </script>
+</body>
+</html>

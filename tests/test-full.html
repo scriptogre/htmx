@@ -13,7 +13,7 @@
 </head>
 <body>
     <h1>htmx 4.0 — Full Bundle Test</h1>
-    <p>All extensions loaded individually. Replaces test-kernel.html.</p>
+    <p>Core + monolithic defaults. Replaces test-kernel.html.</p>
     <pre id="log"></pre>
 
     <!-- Test elements for manual/automated tests -->
@@ -30,27 +30,9 @@
 
     <div id="results"></div>
 
-    <!-- Core -->
+    <!-- Core + Defaults -->
     <script src="../src/htmx.core.js"></script>
-
-    <!-- Extensions in registration order (matches htmx.defaults.js) -->
-    <script src="../src/defaults/extended-selectors.js"></script>
-    <script src="../src/defaults/inheritance.js"></script>
-    <script src="../src/defaults/parse-dot-path.js"></script>
-    <script src="../src/defaults/method-attrs.js"></script>
-    <script src="../src/defaults/trigger-attrs.js"></script>
-    <script src="../src/defaults/boost.js"></script>
-    <script src="../src/defaults/default-swap.js"></script>
-    <script src="../src/defaults/default-headers.js"></script>
-    <script src="../src/defaults/default-trigger.js"></script>
-    <script src="../src/defaults/swap-style-aliases.js"></script>
-    <script src="../src/defaults/timeout.js"></script>
-    <script src="../src/defaults/load.js"></script>
-    <script src="../src/defaults/every.js"></script>
-    <script src="../src/defaults/once.js"></script>
-    <script src="../src/defaults/delay.js"></script>
-    <script src="../src/defaults/throttle.js"></script>
-    <script src="../src/defaults/from.js"></script>
+    <script src="../src/htmx.defaults.js"></script>
 
     <script>
     // ═══════════════════════════════════════════════════════════════════
@@ -246,14 +228,14 @@
             const tag = e.detail.element.tagName.toLowerCase()
             triggers[tag] = e.detail.trigger.eventName
         }
-        document.body.addEventListener('htmx:config:init', handler)
+        document.body.addEventListener('htmx:before:init', handler)
 
         const container = document.createElement('div')
         container.append(btn, input, form)
         document.body.appendChild(container)
         htmx.init(container)
 
-        document.body.removeEventListener('htmx:config:init', handler)
+        document.body.removeEventListener('htmx:before:init', handler)
         container.remove()
 
         assert('default-trigger: button gets click',

@@ -1,8 +1,8 @@
 // htmx 4.0 — Kernel
 //
 // Pipeline: init → [event fires] → request → response → swap
-// Each phase emits config:* → before:* → handler() → after:*
-// Extensions hook any phase to add behavior; kernel stays minimal.
+// Each phase emits before:* → execute() → after:*
+// Extensions modify detail or replace execute during before:*.
 //
 // Errors:
 //
@@ -56,7 +56,7 @@ var htmx = (function () {
         if (extensions.some(registered => registered.name === name)) {
             throw new HtmxError(`Extension "${name}" is already registered`, {type: 'EXTENSION_ALREADY_REGISTERED'})
         }
-        // Enforce declared dependencies
+
         for (const dependency of extension.requires || []) {
             if (!extensions.some(registered => registered.name === dependency)) {
                 throw new HtmxError(`Extension "${name}" requires "${dependency}" to be registered first`, {type: 'EXTENSION_DEPENDENCY_MISSING'})
@@ -186,17 +186,17 @@ var htmx = (function () {
     /**
      * Initialize a subtree — discover hx-* elements and init each one.
      *
-     * Default handler walks the subtree with a TreeWalker, calling initElement
-     * on any element with an hx-* attribute. Extensions can replace the handler
-     * during htmx:config:init:all for custom discovery.
+     * Default execute walks the subtree with a TreeWalker, calling initElement
+     * on any element with an hx-* attribute. Extensions can replace
+     * detail.walk.execute during htmx:before:walk:init for custom discovery.
      *
      * @param {Element} [root=document.body] - Subtree root to initialize.
      */
     function init(root = document.body) {
-        const detail = {element: root, handler: null}
+        const detail = {element: root, walk: {execute: null}}
 
-        // Default handler: walk the subtree, initElement anything with hx-*
-        detail.handler = () => {
+        // Default execute: walk the subtree, initElement anything with hx-*
+        detail.walk.execute = () => {
             const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
             let node = root
             while (node) {
@@ -211,10 +211,9 @@ var htmx = (function () {
             }
         }
 
-        if (canceled(api.emit(root, 'htmx:config:init:all', detail))) return
-        if (canceled(api.emit(root, 'htmx:before:init:all', detail))) return
-        detail.handler()
-        api.emit(root, 'htmx:after:init:all', {element: root})
+        if (canceled(api.emit(root, 'htmx:before:walk:init', detail))) return
+        detail.walk.execute()
+        api.emit(root, 'htmx:after:walk:init', {element: root})
     }
 
     /**
@@ -222,17 +221,20 @@ var htmx = (function () {
      * then wire it to the pipeline.
      *
      * Sequence:
-     *   config:init → before:init → config:trigger → [wired] → after:init
-     *   ···later, on event···
+     *   before:init → init.execute() → after:init
+     *   ···later, on trigger event···
      *   before:trigger → ajax(request → response → swap) → after:trigger
      *
-     * Two callbacks on detail (defined before config:init so extensions can see them):
+     * detail.trigger.execute — what runs each time the trigger event fires.
+     *   Default: preventDefault + ajax pipeline. Replaceable during before:init.
      *
-     *   detail.trigger.handler — what runs each time the event fires.
-     *     Wrappable via config:trigger (e.g., hx-confirm).
+     * detail.init.execute — what runs at init time.
+     *   Default: commit state + wire trigger listener. Replaceable during before:init.
      *
-     *   detail.handler — how to wire the listener (default: one api.on call).
-     *     trigger-attrs replaces this for multi-trigger, reusing detail.trigger.handler.
+     * detail.trigger.eventName — which DOM event to listen for.
+     *   Set by default-trigger or trigger-attrs during before:init.
+     *   Null means "don't wire a default listener" — used by extensions that
+     *   handle their own wiring (multi-trigger) or connection (SSE, WebSockets).
      *
      * @param {Element} element
      */
@@ -241,38 +243,38 @@ var htmx = (function () {
 
         const detail = {
             element,
-            handler: null,      // wiring: how to connect trigger to pipeline
             trigger: {
-                element,
                 eventName: null, // set by default-trigger or trigger-attrs
-                handler: null,   // per-fire: what runs when the event fires
+                execute: null,   // per-fire: preventDefault + ajax pipeline
+            },
+            init: {
+                execute: null,   // init-time: commit state + wire trigger
             },
             request: null,       // set by method-attrs: {url, method}
             swap: null,          // set by method-attrs: {style, target}
         }
 
-        detail.trigger.handler = (event) => {
+        // Default trigger execute: fire the ajax pipeline
+        detail.trigger.execute = (event) => {
             event?.preventDefault()
             if (canceled(api.emit(element, 'htmx:before:trigger', {element, event}))) return
-            api.ajax({element, request: detail.request, swap: detail.swap})  // new pipeline detail
+            api.ajax({element, request: detail.request, swap: detail.swap})
             api.emit(element, 'htmx:after:trigger', {element, event})
         }
 
-        detail.handler = () => {
-            if (detail.trigger.eventName) api.on(element, detail.trigger.eventName, detail.trigger.handler)
+        // Default init execute: commit state + wire trigger
+        detail.init.execute = () => {
+            state.set(element, {cleanup: []})
+            if (detail.trigger.eventName) {
+                api.on(element, detail.trigger.eventName, detail.trigger.execute)
+            }
         }
 
         // ── Init sequence ────────────────────────────────────────────────
 
-        if (canceled(api.emit(element, 'htmx:config:init', detail))) return
-        if (!detail.request?.url) return
         if (canceled(api.emit(element, 'htmx:before:init', detail))) return
 
-        state.set(element, {cleanup: []})
-
-        api.emit(element, 'htmx:config:trigger', detail.trigger)
-        
-        detail.handler()  // htmx:before:trigger -> ajax -> htmx:after:trigger
+        detail.init.execute()
 
         api.emit(element, 'htmx:after:init', detail)
     }
@@ -280,17 +282,17 @@ var htmx = (function () {
     /**
      * Clean up a subtree — tear down root and all stateful descendants.
      *
-     * Default handler walks the subtree, calling cleanupElement on any
-     * element with state. Extensions can replace the handler during
-     * htmx:config:cleanup:all for custom discovery (e.g., shadow DOM).
+     * Default execute walks the subtree, calling cleanupElement on any
+     * element with state. Extensions can replace detail.walk.execute
+     * during htmx:before:walk:cleanup for custom discovery (e.g., shadow DOM).
      *
      * @param {Element} root - Subtree root to clean up.
      */
     function cleanup(root) {
-        const detail = {element: root, handler: null}
+        const detail = {element: root, walk: {execute: null}}
 
-        // Default handler: cleanupElement on root + all stateful descendants
-        detail.handler = () => {
+        // Default execute: cleanupElement on root + all stateful descendants
+        detail.walk.execute = () => {
             const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
             let node = root
             while (node) {
@@ -299,10 +301,9 @@ var htmx = (function () {
             }
         }
 
-        if (canceled(api.emit(root, 'htmx:config:cleanup:all', detail))) return
-        if (canceled(api.emit(root, 'htmx:before:cleanup:all', detail))) return
-        detail.handler()
-        api.emit(root, 'htmx:after:cleanup:all', {element: root})
+        if (canceled(api.emit(root, 'htmx:before:walk:cleanup', detail))) return
+        detail.walk.execute()
+        api.emit(root, 'htmx:after:walk:cleanup', {element: root})
     }
 
     /**
@@ -349,9 +350,8 @@ var htmx = (function () {
      * Expects a pipeline detail object with at least detail.swap.
      * Called internally by ajax() after the response phase.
      *
-     * The kernel sets detail.handler to a default that looks up the style
-     * in its built-in swap styles map. Extensions can modify detail.swap.style
-     * or replace detail.handler during htmx:config:swap.
+     * detail.swap.execute — the function that performs the DOM manipulation.
+     * Default: look up style in api.swaps and call it. Replaceable during before:swap.
      *
      * @param {Object} detail - Pipeline detail with detail.swap.{content, target, style}.
      */
@@ -377,18 +377,17 @@ var htmx = (function () {
 
         const emitOn = detail.element || detail.swap.target
 
-        // Default handler: look up swap style in api.swaps and execute
-        detail.handler = () => {
+        // Default execute: look up swap style in api.swaps and apply
+        detail.swap.execute = () => {
             if (!api.swaps[detail.swap.style]) {
                 throw new HtmxError(`Swap style "${detail.swap.style}" is not registered`, {type: 'SWAP_STYLE_UNKNOWN'})
             }
             api.swaps[detail.swap.style](detail.swap.target, detail.swap.content)
         }
 
-        if (canceled(api.emit(emitOn, 'htmx:config:swap', detail))) return
         if (canceled(api.emit(emitOn, 'htmx:before:swap', detail))) return
 
-        detail.handler()
+        detail.swap.execute()
 
         api.emit(emitOn, 'htmx:after:swap', detail)
     }
@@ -400,16 +399,13 @@ var htmx = (function () {
      *
      * Builds a pipeline detail from options, then runs three phases:
      *
-     * 1. **Request** — config:request (handler = fetch) → before:request → handler() → after:request
-     * 2. **Response** — config:response (handler = read body) → handler()
-     * 3. **Swap** — delegated to {@link swap} (has its own config/before/after)
+     * 1. **Request** — before:request → request.execute() (=fetch) → after:request
+     * 2. **Response** — before:response → response.execute() (=read body)
+     * 3. **Swap** — delegated to {@link swap} (has its own before/execute/after)
      *
-     * detail.handler is reassigned per phase. Extensions replace it during config:*.
+     * Extensions modify detail or replace execute during before:*.
      *
-     * Expects a pipeline detail object with at least detail.request.url.
-     * Called internally by initElement's trigger handler.
-     *
-     * @param {Object} detail - Pipeline detail with detail.request, detail.swap, etc.
+     * @param {Object} options - Pipeline options with request, swap, etc.
      * @returns {Promise<void>}
      */
     async function ajax(options = {}) {
@@ -418,8 +414,7 @@ var htmx = (function () {
 
         const detail = {
             element,
-            handler: null,
-            request: options.request,
+            request: {...options.request, execute: null},
             swap: options.swap || null,
             response: null,
             error: null,
@@ -427,15 +422,14 @@ var htmx = (function () {
 
         try {
             // ── Request phase ───────────────────────────────────────────
-            detail.handler = async () => {
-                const {url, ...fetchOptions} = detail.request
+            detail.request.execute = async () => {
+                const {url, execute, ...fetchOptions} = detail.request
                 return await fetch(url, fetchOptions)
             }
 
-            if (canceled(api.emit(element, 'htmx:config:request', detail))) return
             if (canceled(api.emit(element, 'htmx:before:request', detail))) return
 
-            const response = await detail.handler()
+            const response = await detail.request.execute()
 
             detail.response = {
                 raw: response,
@@ -443,21 +437,23 @@ var htmx = (function () {
                 ok: response.ok,
                 url: response.url,
                 headers: Object.fromEntries(response.headers),
+                execute: null,
             }
 
             api.emit(element, 'htmx:after:request', detail)
 
             // ── Response phase ──────────────────────────────────────────
-            detail.handler = async () => {
+            detail.response.execute = async () => {
                 detail.response.text = await detail.response.raw.text()
             }
 
-            if (canceled(api.emit(element, 'htmx:config:response', detail))) return
+            if (canceled(api.emit(element, 'htmx:before:response', detail))) return
 
-            await detail.handler()
+            await detail.response.execute()
 
             // ── Swap phase ──────────────────────────────────────────────
             if (detail.response.text != null) {
+                detail.swap ??= {}
                 detail.swap.content = detail.response.text
                 api.swap(detail)
             }
@@ -621,7 +617,7 @@ var htmx = (function () {
         },
         /**
          * Public swap — accepts flat options, normalizes to a pipeline detail
-         * (the object that becomes event.detail on htmx:config:swap etc.).
+         * (the object that becomes event.detail on htmx:before:swap etc.).
          *
          * Extra keys become modifiers on detail.swap for extensions to read.
          *
@@ -632,11 +628,7 @@ var htmx = (function () {
             const {element, content, target, style, ...modifiers} = options
             return api.swap({
                 element: element || null,
-                handler: null,
-                request: null,
                 swap: {content, target, style: style || null, ...modifiers},
-                response: null,
-                error: null,
             })
         },
         /**
@@ -654,7 +646,12 @@ var htmx = (function () {
             const swapObj = typeof swap === 'string' ? {style: swap} : (swap || {})
             return api.ajax({
                 element: element || null,
-                request: {url, method: method || 'GET', headers: headers || {}, body: body ?? null, ...requestModifiers},
+                request: {
+                    url,
+                    method: method || 'GET',
+                    headers: headers || {},
+                    body: body ?? null, ...requestModifiers
+                },
                 swap: {style: null, target: target || null, ...swapObj},
             })
         },
