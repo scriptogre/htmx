@@ -1,48 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>htmx 4.0 Core Test</title>
+    <title>htmx 4.0 — Full Bundle</title>
     <style>
         body { font-family: system-ui; padding: 2rem; max-width: 900px; margin: 0 auto; }
         .test { margin: 1rem 0; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; }
         .test h3 { margin: 0 0 0.5rem; }
-        .pass { border-color: #4a4; background: #f0fff0; }
-        .fail { border-color: #a44; background: #fff0f0; }
-        .log { font-family: monospace; font-size: 12px; white-space: pre-wrap; }
-        button { padding: 0.5rem 1rem; cursor: pointer; }
-        #target { border: 2px dashed #999; padding: 1rem; margin-top: 1rem; min-height: 2rem; }
+        .pass { color: #2a2; } .fail { color: #a22; font-weight: bold; }
+        pre { background: #f5f5f5; padding: 1rem; overflow-x: auto; }
         #results { margin-top: 2rem; font-weight: bold; font-size: 1.2rem; }
     </style>
 </head>
 <body>
-    <h1>htmx 4.0 Core + Defaults Test</h1>
+    <h1>htmx 4.0 — Full Bundle Test</h1>
+    <p>All extensions loaded individually. Replaces test-kernel.html.</p>
+    <pre id="log"></pre>
 
-    <!-- Test elements (some are used by automated tests, some by manual tests) -->
+    <!-- Test elements for manual/automated tests -->
     <div class="test" id="test-click">
-        <h3>Manual: Click trigger (default)</h3>
+        <h3>Click trigger (default)</h3>
         <button hx-get="/api/hello" hx-target="#target">Click me</button>
     </div>
 
     <div class="test" id="test-swap-target">
-        <h3>Manual: Swap into target</h3>
+        <h3>Swap into target</h3>
         <button hx-get="/api/hello" hx-target="#target" hx-swap="innerHTML">Swap into target</button>
         <div id="target">Original content</div>
     </div>
 
     <div id="results"></div>
-    <div class="log" id="log"></div>
 
-    <script src="src/htmx.core.js"></script>
-    <script src="src/htmx.defaults.js"></script>
+    <!-- Core -->
+    <script src="../src/htmx.core.js"></script>
+
+    <!-- Extensions in registration order (matches htmx.defaults.js) -->
+    <script src="../src/defaults/extended-selectors.js"></script>
+    <script src="../src/defaults/inheritance.js"></script>
+    <script src="../src/defaults/parse-dot-path.js"></script>
+    <script src="../src/defaults/method-attrs.js"></script>
+    <script src="../src/defaults/trigger-attrs.js"></script>
+    <script src="../src/defaults/boost.js"></script>
+    <script src="../src/defaults/default-swap.js"></script>
+    <script src="../src/defaults/default-headers.js"></script>
+    <script src="../src/defaults/default-trigger.js"></script>
+    <script src="../src/defaults/swap-style-aliases.js"></script>
+    <script src="../src/defaults/timeout.js"></script>
+    <script src="../src/defaults/load.js"></script>
+    <script src="../src/defaults/every.js"></script>
+    <script src="../src/defaults/once.js"></script>
+    <script src="../src/defaults/delay.js"></script>
+    <script src="../src/defaults/throttle.js"></script>
+    <script src="../src/defaults/from.js"></script>
+
     <script>
     // ═══════════════════════════════════════════════════════════════════
-    // Mock fetch — intercepts all requests, returns canned HTML
+    // Mock fetch
     // ═══════════════════════════════════════════════════════════════════
 
     const realFetch = window.fetch
     window.fetch = async (url, options = {}) => {
         log(`fetch: ${options.method || 'GET'} ${url}`)
-        await new Promise(r => setTimeout(r, 10)) // simulate async
+        await new Promise(r => setTimeout(r, 10))
         return new Response(`<p>Response from ${url}</p>`, {
             status: 200,
             headers: {'Content-Type': 'text/html'},
@@ -72,49 +90,32 @@
         const el = document.getElementById('results')
         el.textContent = `${passed}/${total} tests passed`
         el.style.color = passed === total ? '#4a4' : '#a44'
+        document.title = `${passed}/${total} passed`
 
         for (const r of results) {
             const div = document.createElement('div')
             div.className = 'test ' + (r.pass ? 'pass' : 'fail')
             div.innerHTML = `<b>${r.pass ? 'PASS' : 'FAIL'}:</b> ${r.name}`
-            if (!r.pass && r.detail) div.innerHTML += `<br><span class="log">${r.detail}</span>`
+            if (!r.pass && r.detail) div.innerHTML += `<br><span style="font-family:monospace;font-size:12px">${r.detail}</span>`
             el.after(div)
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Tests — run after boot completes
+    // Tests — mirrors test-kernel.html coverage
     // ═══════════════════════════════════════════════════════════════════
 
     async function runTests() {
-        // Wait for boot (microtask) + init
         await new Promise(r => setTimeout(r, 50))
 
-        // ── parse ──────────────────────────────────────────────────
         testParse()
-
-        // ── attr ───────────────────────────────────────────────────
         testAttr()
-
-        // ── init ───────────────────────────────────────────────────
         testInit()
-
-        // ── click → ajax → swap ────────────────────────────────────
         await testClickPipeline()
-
-        // ── POST method ────────────────────────────────────────────
         await testPostMethod()
-
-        // ── default trigger types ──────────────────────────────────
         testDefaultTriggers()
-
-        // ── swap styles ────────────────────────────────────────────
         await testSwapStyles()
-
-        // ── load trigger ───────────────────────────────────────────
         await testLoadTrigger()
-
-        // ── events ─────────────────────────────────────────────────
         await testEvents()
 
         showResults()
@@ -192,9 +193,6 @@
         const btn = document.querySelector('#test-click button')
         assert('init: button with hx-get was initialized',
             btn && btn.__htmxInitialized !== false)
-
-        // Check that state exists (element was inited)
-        // We can verify by trying to trigger — if not inited, click won't fire ajax
     }
 
     async function testClickPipeline() {
@@ -205,19 +203,17 @@
         btn.click()
         await new Promise(r => setTimeout(r, 100))
 
-        assert('click→ajax→swap: target content replaced',
+        assert('click\u2192ajax\u2192swap: target content replaced',
             target.textContent.includes('Response from'),
             `target.textContent = "${target.textContent}"`)
     }
 
     async function testPostMethod() {
-        // Create a temporary element
         const div = document.createElement('div')
         div.innerHTML = '<button hx-post="/api/submit" hx-swap="none">Post</button>'
         document.body.appendChild(div)
-        const btn = div.querySelector('button')
-
-        await new Promise(r => setTimeout(r, 50)) // wait for MutationObserver + init
+        await new Promise(r => setTimeout(r, 50))
+        htmx.init(div)
 
         let capturedMethod = null
         const origFetch = window.fetch
@@ -226,7 +222,7 @@
             return new Response('ok', {status: 200})
         }
 
-        btn.click()
+        div.querySelector('button').click()
         await new Promise(r => setTimeout(r, 50))
         window.fetch = origFetch
 
@@ -234,11 +230,10 @@
             capturedMethod === 'POST',
             `method = "${capturedMethod}"`)
 
-        document.body.removeChild(div)
+        div.remove()
     }
 
     function testDefaultTriggers() {
-        // Button should get click, input should get change, form should get submit
         const btn = document.createElement('button')
         btn.setAttribute('hx-get', '/x')
         const input = document.createElement('input')
@@ -246,7 +241,6 @@
         const form = document.createElement('form')
         form.setAttribute('hx-get', '/x')
 
-        // Read what default-trigger assigns via htmx:config:init
         const triggers = {}
         const handler = (e) => {
             const tag = e.detail.element.tagName.toLowerCase()
@@ -254,16 +248,13 @@
         }
         document.body.addEventListener('htmx:config:init', handler)
 
-        // Temporarily add to DOM to trigger init
         const container = document.createElement('div')
         container.append(btn, input, form)
         document.body.appendChild(container)
-
-        // Sync — MutationObserver is async, so use htmx.init directly
         htmx.init(container)
 
         document.body.removeEventListener('htmx:config:init', handler)
-        document.body.removeChild(container)
+        container.remove()
 
         assert('default-trigger: button gets click',
             triggers.button === 'click',
@@ -279,7 +270,6 @@
     }
 
     async function testSwapStyles() {
-        // Test append swap
         const container = document.createElement('div')
         container.id = 'swap-test-target'
         container.textContent = 'Before'
@@ -290,7 +280,6 @@
             container.innerHTML.includes('Before') && container.innerHTML.includes('After'),
             `innerHTML = "${container.innerHTML}"`)
 
-        // Test outerHTML
         const wrapper = document.createElement('div')
         const child = document.createElement('span')
         child.id = 'outer-test'
@@ -303,7 +292,6 @@
             wrapper.innerHTML === '<em>new</em>',
             `wrapper.innerHTML = "${wrapper.innerHTML}"`)
 
-        // Test delete
         const toDelete = document.createElement('div')
         toDelete.id = 'delete-test'
         document.body.appendChild(toDelete)
@@ -327,14 +315,13 @@
         }
 
         document.body.appendChild(div)
-        await new Promise(r => setTimeout(r, 100)) // MutationObserver + microtask + fetch
+        await new Promise(r => setTimeout(r, 100))
 
         window.fetch = origFetch
 
-        assert('trigger-load: fires fetch on init',
-            loadFired)
+        assert('trigger-load: fires fetch on init', loadFired)
 
-        document.body.removeChild(div)
+        div.remove()
     }
 
     async function testEvents() {
@@ -362,7 +349,7 @@
             events[5] === 'htmx:finally',
             `events = [${events.join(', ')}]`)
 
-        document.body.removeChild(div)
+        div.remove()
     }
 
     runTests()

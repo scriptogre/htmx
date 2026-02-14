@@ -1,335 +1,552 @@
-// htmx 4.0
+// htmx 4.0 — Kernel
 //
-// Lifecycle: init → trigger → request → response → swap → settle
+// Pipeline: init → [event fires] → request → response → swap
+// Each phase emits config:* → before:* → handler() → after:*
+// Extensions hook any phase to add behavior; kernel stays minimal.
 //
-// The core handles the pipeline, syntax, and conventions.
-// Extensions add capabilities (triggers, modifiers, behaviors).
+// Errors:
+//
+//   throw HtmxError — Programmer error. You passed bad arguments, called
+//   something wrong, or misconfigured an extension. Crashes immediately so
+//   you fix your code. (Inside the ajax pipeline, these are caught and
+//   converted to htmx:error events — see below.)
+//
+//   htmx:error event — Runtime error. Something failed during the ajax
+//   pipeline (network down, target removed from DOM, etc.). Logged to
+//   console, available on detail.error, and always followed by htmx:finally.
+
+class HtmxError extends Error {
+    constructor(message, options) {
+        super(message, options)
+        this.type = options?.type
+    }
+}
 
 var htmx = (function () {
     'use strict'
 
-    // ── Config ───────────────────────────────────────────────────────────────
+    // ── State ────────────────────────────────────────────────────────────────
+    /**
+     * @typedef {Object} ElementState
+     * @property {Function[]} cleanup - Teardown callbacks, run on element removal.
+     * Other properties are extensions' prerogative (e.g., trigger handles, timers).
+     */
 
-    const config = {
-        syntaxDelimiter: ':',
-        initSelectors: ['[hx-get]', '[hx-post]', '[hx-put]', '[hx-patch]', '[hx-delete]'],
-    }
+    /** @type {WeakMap<Element, ElementState>} */
+    const state = new WeakMap()
 
-    // ── Extensions ───────────────────────────────────────────────────────────
+    /** @param {boolean} result - Return value of api.emit(). */
+    const canceled = (result) => result === false
+
+    // ── Config ──────────────────────────────────────────────────────────────
+    // Extensions populate this at boot (e.g., defaultSwap, requestTimeout).
+    const config = {}
+
+    // ── Extensions ──────────────────────────────────────────────────────────
 
     const extensions = []
     let booted = false
 
+    /**
+     * Register an extension. Extensions run in registration order.
+     * @param {string} name - Unique extension name.
+     * @param {{requires?: string[], on?: Object<string, function>}} extension
+     */
     function register(name, extension) {
         if (extensions.some(registered => registered.name === name)) {
-            throw new Error(`htmx: extension "${name}" already registered`)
+            throw new HtmxError(`Extension "${name}" is already registered`, {type: 'EXTENSION_ALREADY_REGISTERED'})
         }
+        // Enforce declared dependencies
         for (const dependency of extension.requires || []) {
             if (!extensions.some(registered => registered.name === dependency)) {
-                throw new Error(`htmx: extension "${name}" requires "${dependency}"`)
+                throw new HtmxError(`Extension "${name}" requires "${dependency}" to be registered first`, {type: 'EXTENSION_DEPENDENCY_MISSING'})
             }
         }
         extensions.push({name, ...extension})
+        // Late-registered extensions still get a boot event
         if (booted && extension.on?.['htmx:boot']) {
             extension.on['htmx:boot']({}, api)
         }
     }
 
-    // ── Boot ─────────────────────────────────────────────────────────────────
+    // ── Events ──────────────────────────────────────────────────────────────
 
+    /**
+     * Emit an event: extensions see it first, then it dispatches as a DOM CustomEvent.
+     * Any extension returning false (or preventDefault) cancels the event.
+     * @param {Element} element
+     * @param {string} eventName
+     * @param {Object} [detail={}]
+     * @returns {boolean} false if canceled
+     */
+    function emit(element, eventName, detail = {}) {
+        // Extensions get first crack — can inspect/modify detail or cancel
+        for (const extension of extensions) {
+            if (extension.on?.[eventName]?.(detail, api) === false) return false
+        }
+
+        // Fall back to body for disconnected elements (e.g., during cleanup)
+        const dispatchTarget = element?.isConnected ? element : document.body
+
+        return dispatchTarget.dispatchEvent(
+            new CustomEvent(eventName, {
+                detail,
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+            }))
+    }
+
+    /**
+     * Listen for a DOM event. Auto-registers a cleanup callback if the element
+     * has state, so listeners are removed when the element is cleaned up.
+     * @param {EventTarget} element
+     * @param {string} eventName
+     * @param {EventListener} handler
+     * @param {AddEventListenerOptions} [options]
+     * @returns {function} unsubscribe callback
+     */
+    function on(element, eventName, handler, options) {
+        if (!eventName) throw new HtmxError(`Cannot add listener without an event name`, {type: 'EVENT_NAME_MISSING'})
+        element.addEventListener(eventName, handler, options)
+
+        const off = () => element.removeEventListener(eventName, handler, options)
+
+        // Auto-cleanup: if this element is managed, unsubscribe on removal
+        if (state.has(element)) state.get(element).cleanup.push(off)
+
+        return off
+    }
+
+    // ── DOM ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Resolve an element reference.
+     *
+     * Supports CSS selectors and direct Element references.
+     * Pass {multiple: true} to get an array of matches.
+     * Extended selectors (named targets, traversal keywords) are added
+     * by the extended-selectors extension wrapping api.find.
+     *
+     * @param {Element}  [element=document] - Context element.
+     * @param {string|Element|null} selector - What to resolve.
+     * @param {{multiple?: boolean}} [options] - Options.
+     * @returns {Element|Element[]|null}
+     *
+     * @example find('#target')                         // → Element
+     * @example find('.items', {multiple: true})         // → Element[]
+     */
+    function find(element, selector, options) {
+        // find(selector[, options]) — string as first arg
+        if (typeof element === 'string') {
+            options = selector
+            selector = element
+            element = document
+        }
+        // find(element[, options]) — element passthrough, or find(null)
+        else if (selector === undefined || (selector !== null && typeof selector === 'object' && !(selector instanceof Node))) {
+            options = selector
+            selector = element
+            element = document
+        }
+        const multiple = options?.multiple
+        if (selector instanceof Element) return multiple ? [selector] : selector
+        if (!selector) return multiple ? [] : null
+        return multiple
+            ? [...element.querySelectorAll(selector)]
+            : element.querySelector(selector)
+    }
+
+    // ── Boot ────────────────────────────────────────────────────────────────
+
+    /**
+     * Emit htmx:boot, init the document body, and observe DOM mutations
+     * (added nodes → init, removed nodes → cleanup).
+     */
     function boot() {
         booted = true
-        api.emit(document, 'htmx:boot')
+        api.emit(document.body, 'htmx:boot')
 
-        // Extensions have wrapped api — safe to destructure
-        const {init} = api
-        init(document.body)
+        api.init(document.body)
 
         new MutationObserver(mutations => {
-            const {init} = api
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
-                    if (node.nodeType === 1) init(node)
+                    if (node instanceof Element) api.init(node)
                 }
                 for (const node of mutation.removedNodes) {
-                    if (node.nodeType === 1) cleanupTree(node)
+                    if (node instanceof Element) api.cleanup(node)
                 }
             }
         }).observe(document.body, {childList: true, subtree: true})
     }
 
-    function cleanupTree(root) {
-        cleanup(root)
-        for (const child of root.querySelectorAll('*')) {
-            if (state.has(child)) cleanup(child)
-        }
-    }
+    // ── Init & Cleanup ──────────────────────────────────────────────────────
 
-    // ── Init ─────────────────────────────────────────────────────────────────
-
+    /**
+     * Initialize a subtree — discover hx-* elements and init each one.
+     *
+     * Default handler walks the subtree with a TreeWalker, calling initElement
+     * on any element with an hx-* attribute. Extensions can replace the handler
+     * during htmx:config:init:all for custom discovery.
+     *
+     * @param {Element} [root=document.body] - Subtree root to initialize.
+     */
     function init(root = document.body) {
-        const {attr, emit, on} = api
-        const selector = config.initSelectors.join(',')
-        if (!selector) return
+        const detail = {element: root, handler: null}
 
-        const elements = root.matches?.(selector)
-            ? [root, ...root.querySelectorAll(selector)]
-            : [...root.querySelectorAll(selector)]
-
-        for (const element of elements) {
-            if (state.has(element)) continue
-            const s = {handler: createHandler(element), cleanup: []}
-            state.set(element, s)
-
-            emit(element, 'htmx:before:init', {element})
-
-            for (const each of (attr(element, 'hx-trigger') ?? '').split(/,(?![^\[]*\])/)) {
-                const trigger = parse(each.trim())
-                trigger.event = trigger.value
-                const setup = {element, trigger, handler: s.handler, cleanup: []}
-                if (emit(element, 'htmx:setup:trigger', setup) === false) continue
-                if (!trigger.event) continue
-
-                const targets = trigger.from
-                    ? document.querySelectorAll(trigger.from)
-                    : [element]
-                for (const target of targets) {
-                    const off = on(target, trigger.event, setup.handler, {once: trigger.once})
-                    if (target !== element) s.cleanup.push(off)
+        // Default handler: walk the subtree, initElement anything with hx-*
+        detail.handler = () => {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+            let node = root
+            while (node) {
+                const attrs = node.attributes
+                for (let i = 0; i < attrs.length; i++) {
+                    if (attrs[i].name.startsWith('hx-')) {
+                        api.initElement(node)
+                        break
+                    }
                 }
-
-                for (const fn of setup.cleanup) s.cleanup.push(fn)
+                node = walker.nextNode()
             }
-
-            emit(element, 'htmx:after:init', {element})
         }
+
+        if (canceled(api.emit(root, 'htmx:config:init:all', detail))) return
+        if (canceled(api.emit(root, 'htmx:before:init:all', detail))) return
+        detail.handler()
+        api.emit(root, 'htmx:after:init:all', {element: root})
     }
 
-    function cleanup(element) {
+    /**
+     * Initialize a single element: set up state, let extensions configure it,
+     * then wire it to the pipeline.
+     *
+     * Sequence:
+     *   config:init → before:init → config:trigger → [wired] → after:init
+     *   ···later, on event···
+     *   before:trigger → ajax(request → response → swap) → after:trigger
+     *
+     * Two callbacks on detail (defined before config:init so extensions can see them):
+     *
+     *   detail.trigger.handler — what runs each time the event fires.
+     *     Wrappable via config:trigger (e.g., hx-confirm).
+     *
+     *   detail.handler — how to wire the listener (default: one api.on call).
+     *     trigger-attrs replaces this for multi-trigger, reusing detail.trigger.handler.
+     *
+     * @param {Element} element
+     */
+    function initElement(element) {
+        if (state.has(element)) return // already initialized
+
+        const detail = {
+            element,
+            handler: null,      // wiring: how to connect trigger to pipeline
+            trigger: {
+                element,
+                eventName: null, // set by default-trigger or trigger-attrs
+                handler: null,   // per-fire: what runs when the event fires
+            },
+            request: null,       // set by method-attrs: {url, method}
+            swap: null,          // set by method-attrs: {style, target}
+        }
+
+        detail.trigger.handler = (event) => {
+            event?.preventDefault()
+            if (canceled(api.emit(element, 'htmx:before:trigger', {element, event}))) return
+            api.ajax({element, request: detail.request, swap: detail.swap})  // new pipeline detail
+            api.emit(element, 'htmx:after:trigger', {element, event})
+        }
+
+        detail.handler = () => {
+            if (detail.trigger.eventName) api.on(element, detail.trigger.eventName, detail.trigger.handler)
+        }
+
+        // ── Init sequence ────────────────────────────────────────────────
+
+        if (canceled(api.emit(element, 'htmx:config:init', detail))) return
+        if (!detail.request?.url) return
+        if (canceled(api.emit(element, 'htmx:before:init', detail))) return
+
+        state.set(element, {cleanup: []})
+
+        api.emit(element, 'htmx:config:trigger', detail.trigger)
+        
+        detail.handler()  // htmx:before:trigger -> ajax -> htmx:after:trigger
+
+        api.emit(element, 'htmx:after:init', detail)
+    }
+
+    /**
+     * Clean up a subtree — tear down root and all stateful descendants.
+     *
+     * Default handler walks the subtree, calling cleanupElement on any
+     * element with state. Extensions can replace the handler during
+     * htmx:config:cleanup:all for custom discovery (e.g., shadow DOM).
+     *
+     * @param {Element} root - Subtree root to clean up.
+     */
+    function cleanup(root) {
+        const detail = {element: root, handler: null}
+
+        // Default handler: cleanupElement on root + all stateful descendants
+        detail.handler = () => {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+            let node = root
+            while (node) {
+                if (state.has(node)) api.cleanupElement(node)
+                node = walker.nextNode()
+            }
+        }
+
+        if (canceled(api.emit(root, 'htmx:config:cleanup:all', detail))) return
+        if (canceled(api.emit(root, 'htmx:before:cleanup:all', detail))) return
+        detail.handler()
+        api.emit(root, 'htmx:after:cleanup:all', {element: root})
+    }
+
+    /**
+     * Tear down listeners and delete state for a single element.
+     * Emits htmx:before:cleanup / htmx:after:cleanup.
+     * @param {Element} element - The element to clean up.
+     */
+    function cleanupElement(element) {
         if (!state.has(element)) return
 
-        const {emit} = api
-        emit(element, 'htmx:before:cleanup', {element})
+        api.emit(element, 'htmx:before:cleanup', {element})
 
-        for (const callback of state.get(element).cleanup || []) callback()
+        for (const teardown of state.get(element).cleanup) teardown()
         state.delete(element)
 
-        emit(element, 'htmx:after:cleanup', {element})
+        api.emit(element, 'htmx:after:cleanup', {element})
     }
 
-    // ── Handler ──────────────────────────────────────────────────────────────
+    // ── Attributes ─────────────────────────────────────────────────────────
 
-    function createHandler(element) {
-        return event => {
-            const {attr, emit, ajax} = api
-            event.preventDefault?.()
-            const source = {element, event}
-            if (emit(element, 'htmx:before:trigger', {source}) === false) return
-            emit(element, 'htmx:after:trigger', {source})
+    /**
+     * Read and parse an attribute from an element.
+     *
+     * Calls getAttribute then api.parse (so exotic syntax extensions apply).
+     * Extensions wrap `api.attr` for inheritance.
+     *
+     * @param {Element} element - Element to read from.
+     * @param {string} name - Attribute name.
+     * @param {{as?: string}} [options] - Passed to api.parse. `as` renames the first bare token.
+     * @returns {Object|null} Parsed object, or null if attribute is absent.
+     * @example attr(element, 'hx-trigger', {as: 'eventName'})  // {eventName: 'click', delay: 300}
+     * @example attr(element, 'hx-swap', {as: 'style'})         // {style: 'innerHTML'}
+     * @example attr(element, 'hx-target', {as: 'selector'})    // {selector: '#foo'}
+     */
+    function attr(element, name, options) {
+        return api.parse(element.getAttribute(name), options)
+    }
 
-            // Read verb + URL at trigger time (JIT — supports dynamic attributes)
-            let url, method
-            if ((url = attr(element, 'hx-get'))) method = 'GET'
-            else if ((url = attr(element, 'hx-post'))) method = 'POST'
-            else if ((url = attr(element, 'hx-put'))) method = 'PUT'
-            else if ((url = attr(element, 'hx-patch'))) method = 'PATCH'
-            else if ((url = attr(element, 'hx-delete'))) method = 'DELETE'
-            else return
+    // ── Swap ────────────────────────────────────────────────────────────────
 
-            ajax(url, {
-                method,
-                source,
-                target: attr(element, 'hx-target'),
-                swap: attr(element, 'hx-swap')?.split(/\s+/)[0],
-            })
+    /**
+     * Swap content into the DOM.
+     *
+     * Expects a pipeline detail object with at least detail.swap.
+     * Called internally by ajax() after the response phase.
+     *
+     * The kernel sets detail.handler to a default that looks up the style
+     * in its built-in swap styles map. Extensions can modify detail.swap.style
+     * or replace detail.handler during htmx:config:swap.
+     *
+     * @param {Object} detail - Pipeline detail with detail.swap.{content, target, style}.
+     */
+    function swap(detail) {
+
+        // Resolve target: string → element, fallback to element
+        const targetSelector = detail.swap.target
+        if (typeof detail.swap.target === 'string') {
+            detail.swap.target = api.find(detail.element || document, detail.swap.target)
         }
-    }
+        detail.swap.target ??= detail.element
 
-    function parse(raw) {
-        if (!raw) return {value: null}
-
-        const [value, ...parts] = raw.trim().split(/\s+/)
-        const result = {value}
-
-        for (const part of parts) {
-            const index = part.indexOf(config.syntaxDelimiter)
-            if (index > 0) {
-                const key = part.slice(0, index)
-                const rawValue = part.slice(index + 1)
-                result[key] = parseDuration(rawValue) ?? rawValue
-            } else {
-                result[part] = true
-            }
+        if (!detail.swap.target) {
+            throw new HtmxError(`Swap target "${targetSelector}" not found`, {type: 'SWAP_TARGET_MISSING'})
         }
 
-        return result
-    }
-
-    function parseDuration(str) {
-        const match = str?.match(/^(\d+)(ms|s|m)?$/)
-        if (!match) return null
-        const [, amount, unit] = match
-        return unit === 's' ? amount * 1000 : unit === 'm' ? amount * 60000 : +amount
-    }
-
-    // ── Swap ───────────────────────────────────────────────────────────────
-
-    function swap(content, target, options = {}) {
-        const {emit, find, init} = api
-
-        // Resolve target selector
-        if (typeof target === 'string') target = find(target)
-        if (!target) return
-
-        // Parse HTML string to fragment
-        if (typeof content === 'string') {
+        // Parse content: string → DocumentFragment
+        if (typeof detail.swap.content === 'string') {
             const template = document.createElement('template')
-            template.innerHTML = content
-            content = template.content
+            template.innerHTML = detail.swap.content
+            detail.swap.content = template.content
         }
 
-        const detail = {
-            target,
-            content,
-            method: options.swap || null,
-            fn: null,
-            context: options.context || null,
+        const emitOn = detail.element || detail.swap.target
+
+        // Default handler: look up swap style in api.swaps and execute
+        detail.handler = () => {
+            if (!api.swaps[detail.swap.style]) {
+                throw new HtmxError(`Swap style "${detail.swap.style}" is not registered`, {type: 'SWAP_STYLE_UNKNOWN'})
+            }
+            api.swaps[detail.swap.style](detail.swap.target, detail.swap.content)
         }
 
-        if (emit(target, 'htmx:before:swap', detail) === false) return
+        if (canceled(api.emit(emitOn, 'htmx:config:swap', detail))) return
+        if (canceled(api.emit(emitOn, 'htmx:before:swap', detail))) return
 
-        if (typeof detail.fn !== 'function') return
+        detail.handler()
 
-        const inserted = detail.fn(detail.target, detail.content)
-        init(inserted || detail.target)
-
-        emit(target, 'htmx:after:swap', detail)
+        api.emit(emitOn, 'htmx:after:swap', detail)
     }
 
-    // ── Request ──────────────────────────────────────────────────────────────
+    // ── Request ─────────────────────────────────────────────────────────────
 
-    async function ajax(url, options = {}) {
-        const {emit, find, swap} = api
-        const source = options.source || {element: document.body, event: null}
+    /**
+     * Issue an HTTP request and swap the response into the DOM.
+     *
+     * Builds a pipeline detail from options, then runs three phases:
+     *
+     * 1. **Request** — config:request (handler = fetch) → before:request → handler() → after:request
+     * 2. **Response** — config:response (handler = read body) → handler()
+     * 3. **Swap** — delegated to {@link swap} (has its own config/before/after)
+     *
+     * detail.handler is reassigned per phase. Extensions replace it during config:*.
+     *
+     * Expects a pipeline detail object with at least detail.request.url.
+     * Called internally by initElement's trigger handler.
+     *
+     * @param {Object} detail - Pipeline detail with detail.request, detail.swap, etc.
+     * @returns {Promise<void>}
+     */
+    async function ajax(options = {}) {
+        if (!options.request?.url) throw new HtmxError(`Cannot issue request without a URL`, {type: 'REQUEST_URL_MISSING'})
+        const element = options.element || document.body
 
-        // detail.request is a RequestInit (+ url) — extensions modify it in htmx:before:request
         const detail = {
-            source,
-            phase: 'request',
-            request: {
-                url,
-                method: options.method || 'GET',
-                headers: options.headers || {},
-                body: options.body ?? null,
-            },
+            element,
+            handler: null,
+            request: options.request,
+            swap: options.swap || null,
             response: null,
             error: null,
         }
 
-        const fail = (type, message, cause) => {
-            detail.error = {type, message}
-            if (cause) detail.error.cause = cause
-            emit(source.element, 'htmx:error', detail)
-        }
-
         try {
-            // ── Request ──
-            if (emit(source.element, 'htmx:before:request', detail) === false) return
+            // ── Request phase ───────────────────────────────────────────
+            detail.handler = async () => {
+                const {url, ...fetchOptions} = detail.request
+                return await fetch(url, fetchOptions)
+            }
 
-            const {url: requestUrl, ...fetchOptions} = detail.request
-            const response = await fetch(requestUrl, fetchOptions)
+            if (canceled(api.emit(element, 'htmx:config:request', detail))) return
+            if (canceled(api.emit(element, 'htmx:before:request', detail))) return
 
-            emit(source.element, 'htmx:after:request', detail)
+            const response = await detail.handler()
 
-            // ── Response ──
-            detail.phase = 'response'
             detail.response = {
+                raw: response,
                 status: response.status,
                 ok: response.ok,
                 url: response.url,
                 headers: Object.fromEntries(response.headers),
             }
 
-            if (emit(source.element, 'htmx:before:response', detail) === false) return
-            detail.response.text = await response.text()
-            if (emit(source.element, 'htmx:after:response', detail) === false) return
+            api.emit(element, 'htmx:after:request', detail)
 
-            // ── Swap ──
-            detail.phase = 'swap'
-            const target = options.target
-                ? find(source.element, options.target)
-                : source.element
-            if (!target) return fail('swap:target', `Target not found: ${options.target}`)
+            // ── Response phase ──────────────────────────────────────────
+            detail.handler = async () => {
+                detail.response.text = await detail.response.raw.text()
+            }
 
-            swap(detail.response.text, target, {
-                swap: options.swap,
-                context: {source, response: detail.response},
-            })
+            if (canceled(api.emit(element, 'htmx:config:response', detail))) return
 
-            // ── Settle ──
-            detail.phase = 'settle'
-            if (emit(source.element, 'htmx:before:settle', detail) === false) return
-            emit(source.element, 'htmx:after:settle', detail)
+            await detail.handler()
 
-            return detail.response
+            // ── Swap phase ──────────────────────────────────────────────
+            if (detail.response.text != null) {
+                detail.swap.content = detail.response.text
+                api.swap(detail)
+            }
 
-        } catch (error) {
-            fail(detail.phase, error.message, error)
+            api.emit(element, 'htmx:done', detail)
+
+        } catch (error) {  // catches fetch failures, swap errors, extension throws, etc.
+            detail.error = error
+            console.error(error)
+            api.emit(element, 'htmx:error', detail)
         } finally {
-            emit(source.element, 'htmx:done', detail)
+            api.emit(element, 'htmx:finally', detail)
         }
     }
 
-    // ── State ────────────────────────────────────────────────────────────────
+    // ── Parsing ─────────────────────────────────────────────────────────────
 
-    const state = new WeakMap()
+    /**
+     * Token regex — matches one property in a RelaxedJSON segment.
+     *
+     * Grammar: `key:value` or bare `value`. Keys and values may be quoted.
+     * Groups: 1=dq key, 2=sq key, 3=bare key, 4=dq val, 5=sq val, 6=bare val.
+     * @type {RegExp}
+     */
+    const tokenPattern = /(?:"([^"]*)"|'([^']*)'|([^\s,:]+))(?:\s*:\s*(?:"([^"]*)"|'([^']*)'|([^\s,]*)))?/g
 
-    // ── DOM ──────────────────────────────────────────────────────────────────
-
-    function find(element, selector) {
-        if (selector === undefined) {
-            selector = element;
-            element = document
+    /**
+     * Coerce a string to a native type.
+     * @param {string} text - Raw string value.
+     * @returns {string|boolean|number} Coerced value.
+     * @example coerce("true")   // true
+     * @example coerce("300ms")  // 300
+     * @example coerce("2s")     // 2000
+     * @example coerce("1m")     // 60000
+     */
+    function coerce(text) {
+        if (text === 'true') return true
+        if (text === 'false') return false
+        const duration = text.match(/^(\d+)(ms|s|m)?$/)
+        if (duration) {
+            const [, n, unit] = duration
+            return unit === 's' ? n * 1000 : unit === 'm' ? n * 60000 : +n
         }
-        return element.querySelector(selector)
+        return text
     }
 
-    function findAll(element, selector) {
-        if (selector === undefined) {
-            selector = element;
-            element = document
+    /**
+     * Parse a RelaxedJSON segment into an object (ADR-054).
+     * Extensions wrap `api.parse` for exotic syntax (protect-and-restore).
+     * @param {string|null|undefined} text - One segment (caller splits on commas).
+     * @param {{as?: string}} [options] - Options. `as` renames the first bare token.
+     * @returns {?Object} Parsed object, or null if empty.
+     * @example parse("click delay:300ms once")           // {value: "click", delay: 300, once: true}
+     * @example parse("innerHTML")                        // {value: "innerHTML"}
+     * @example parse("innerHTML", {as: 'style'})         // {style: "innerHTML"}
+     * @example parse("click delay:300ms", {as: 'event'}) // {event: "click", delay: 300}
+     */
+    function parse(text, options) {
+        if (!text) return null
+
+        const matches = [...text.trim().matchAll(tokenPattern)]
+        if (!matches.length) return null
+
+        const result = {}
+
+        for (let i = 0; i < matches.length; i++) {
+            const m = matches[i]
+            const key = m[1] ?? m[2] ?? m[3]
+            const val = m[4] ?? m[5] ?? m[6]
+            const hasVal = val !== undefined
+
+            if (i === 0 && !hasVal) {
+                result.value = key
+            } else if (hasVal) {
+                result[key] = coerce(val)
+            } else {
+                result[key] = true
+            }
         }
-        return [...element.querySelectorAll(selector)]
+
+        if (options?.as && result.value !== undefined) {
+            result[options.as] = result.value
+            delete result.value
+        }
+
+        return result
     }
 
-    // ── Events ───────────────────────────────────────────────────────────────
-
-    function emit(target, name, detail = {}) {
-        for (const extension of extensions) {
-            if (extension.on?.[name]?.(detail, api) === false) return false
-        }
-
-        const dispatchTarget = target?.isConnected ? target : document
-
-        return dispatchTarget.dispatchEvent(new CustomEvent(name, {
-            detail,
-            bubbles: true,
-            cancelable: true,
-            composed: true,
-        }))
-    }
-
-    function on(element, event, handler, options) {
-        element.addEventListener(event, handler, options)
-        const off = () => element.removeEventListener(event, handler, options)
-        if (state.has(element)) {
-            state.get(element).cleanup ||= []
-            state.get(element).cleanup.push(off)
-        }
-        return off
-    }
-
-    // ── Start ────────────────────────────────────────────────────────────────
+    // ── Start ───────────────────────────────────────────────────────────────
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', boot)
@@ -341,23 +558,55 @@ var htmx = (function () {
     // Extensions receive this as the second argument in event handlers.
     // They can wrap/replace functions here; internal code calls through api.
 
+    // ── Swap Styles ────────────────────────────────────────────────────────
+    // Plain object — extensions add styles via direct assignment:
+    //   api.swaps.morph = (target, content) => { ... }
+
+    const swaps = {
+        innerHTML: (target, content) => {
+            target.innerHTML = '';
+            target.append(content)
+        },
+        outerHTML: (target, content) => target.replaceWith(content),
+        beforebegin: (target, content) => target.before(content),
+        afterbegin: (target, content) => target.prepend(content),
+        beforeend: (target, content) => target.append(content),
+        afterend: (target, content) => target.after(content),
+        delete: (target) => target.remove(),
+        none: () => {
+        },
+    }
+
+    /**
+     * Wrap an api function with a decorator. The wrapper receives the original
+     * function as its first argument, followed by the caller's arguments.
+     * @param {string} name - Property name on api to wrap.
+     * @param {Function} wrapper - (original, ...args) => result
+     */
+    function wrap(name, wrapper) {
+        if (!api[name]) throw new HtmxError(`Cannot wrap "${name}" — not found on api`, {type: 'WRAP_TARGET_MISSING'})
+        const original = api[name]
+        api[name] = (...args) => wrapper(original, ...args)
+    }
+
     const api = {
         config,
         register,
         init,
+        initElement,
+        cleanup,
+        cleanupElement,
         swap,
         ajax,
         emit,
         on,
-
-        // Extensible internals
-        attr: (element, name) => element.getAttribute(name),
+        attr,
         find,
-        findAll,
 
-        // Utilities
-        state,
-        parse,
+        swaps,  // swaps registry
+        parse,  // attribute parser
+        state,  // element state
+        wrap,   // function wrapper (for extensions)
     }
 
     // ── Public API ──────────────────────────────────────────────────────────
@@ -370,11 +619,44 @@ var htmx = (function () {
         get init() {
             return api.init
         },
-        get swap() {
-            return api.swap
+        /**
+         * Public swap — accepts flat options, normalizes to a pipeline detail
+         * (the object that becomes event.detail on htmx:config:swap etc.).
+         *
+         * Extra keys become modifiers on detail.swap for extensions to read.
+         *
+         * @example htmx.swap({content: '<p>hi</p>', style: 'innerHTML', target: '#foo'})
+         * @example htmx.swap({content: '<p>hi</p>', style: 'innerHTML', target: '#foo', transition: true})
+         */
+        swap(options) {
+            const {element, content, target, style, ...modifiers} = options
+            return api.swap({
+                element: element || null,
+                handler: null,
+                request: null,
+                swap: {content, target, style: style || null, ...modifiers},
+                response: null,
+                error: null,
+            })
         },
-        get ajax() {
-            return api.ajax
+        /**
+         * Public ajax — accepts flat options, normalizes to a pipeline detail
+         * (the object that becomes event.detail on htmx:before:request etc.).
+         *
+         * Extra keys become modifiers on detail.request for extensions to read.
+         * swap accepts a string (style shorthand) or object (with modifiers).
+         *
+         * @example htmx.ajax({url: '/api/data', method: 'POST', target: '#results'})
+         * @example htmx.ajax({url: '/api', swap: {style: 'innerHTML', transition: true}})
+         */
+        ajax(options) {
+            const {element, url, method, headers, body, target, swap, ...requestModifiers} = options
+            const swapObj = typeof swap === 'string' ? {style: swap} : (swap || {})
+            return api.ajax({
+                element: element || null,
+                request: {url, method: method || 'GET', headers: headers || {}, body: body ?? null, ...requestModifiers},
+                swap: {style: null, target: target || null, ...swapObj},
+            })
         },
         get emit() {
             return api.emit
@@ -382,11 +664,15 @@ var htmx = (function () {
         get on() {
             return api.on
         },
+        get attr() {
+            return api.attr
+        },
         get find() {
             return api.find
         },
-        get findAll() {
-            return api.findAll
+        get parse() {
+            return api.parse
         },
+        swaps,   // swap style registry
     }
 })()
