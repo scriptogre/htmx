@@ -27,6 +27,7 @@
     "test:firefox": "web-test-runner --browsers firefox --config test/web-test-runner.config.mjs --playwright",
     "test:webkit": "web-test-runner --browsers webkit --config test/web-test-runner.config.mjs --playwright",
     "test:all": "web-test-runner --browsers chromium firefox webkit --config test/web-test-runner.config.mjs --playwright --concurrency 1",
+    "assemble": "cargo build --manifest-path tools/assembler/Cargo.toml && sh -c 'cargo run --bin htmx --manifest-path tools/assembler/Cargo.toml -- build -i src/htmx.kernel.js -i src/htmx.core.js -o dist/htmx.assembled.js \"$@\"' -- --inline",
     "test:pw": "npx playwright test --config tests/playwright.config.mjs",
     "test:pw:ui": "npx playwright test --ui --config tests/playwright.config.mjs",
     "test:pw:headed": "npx playwright test --headed  --config tests/playwright.config.mjs",

@@ -1,0 +1,6 @@
+name = "htmx-cdn"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+
+[vars]
+HTMX_VERSION = "4.0.0"

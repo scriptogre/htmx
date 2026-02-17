@@ -1,19 +1,90 @@
 # htmx 4.0 Refactor — Design Journal
 
-> **This document is the design process, not the spec.** Many ideas below were explored and discarded. ADRs contradict each other as thinking evolved. The source of truth for the current architecture is the code itself: `src/htmx.core.js`, `src/htmx.defaults.js`, and `src/extensions/`. Read the code first, then come here for historical context on *why* decisions were made.
+> **This document is the design process, not the spec.** Many ideas below were explored and discarded. ADRs contradict each other as thinking evolved. The source of truth for the current architecture is the code itself: `src/htmx.kernel.js`, `src/htmx.core.js`, and `tools/assembler/`. Read the code first, then come here for historical context on *why* decisions were made.
 
 ---
 
 ## Current Architecture (read the code)
 
-- **`src/htmx.core.js`** (~580 lines) — Complete engine: parse, find, attr, swap, ajax, init/cleanup, events, wrap, register, emit, on. Standalone-usable (no extensions needed for programmatic API).
-- **`src/htmx.defaults.js`** (~260 lines) — All standard behaviors in one file, 12 individual `htmx.register()` calls: hx-get/post/put/patch/delete, hx-swap, hx-target, hx-trigger, default-trigger, defaults (config, swap aliases, headers, timeout), delay, throttle.
-- **`src/extensions/`** (4 files) — Optional: extended-selectors, inheritance, parse-dot-path, boost.
-- **`dist/htmx.js`** — Always the assembled output. All extensions inlined, zero register() calls.
-- **`tools/assembler/`** — Rust assembler. Inlines boot handlers between markers, event handlers at `api.emit()` call sites. Zero `register()` calls in output. Validates handler params at build time.
-- **`dist/htmx.js`** — Assembled output with all extensions inlined.
-- Extensions register via `htmx.register(name, {on: {...}})` and receive `(detail, api)` in handlers.
-- Internal code calls through `api.*` so extension wraps take effect. Extensions wrap api functions via `api.wrap(name, fn)`. Public API uses getters that delegate to `api`.
+- **`src/htmx.kernel.js`** — Runtime micro-kernel: lifecycle, element state, `emit`, `on`, `find`, `attr`, init/cleanup, and extension installation.
+- **`src/htmx.core.js`** — Built-in extensions installed via `htmx.install(...)` (parser, swaps, ajax, defaults, hx-* behaviors, wraps).
+- **`tools/assembler/`** — Rust assembler + CLI/UI. Produces simple or `--inline` assembled output from kernel + installed extensions.
+- **`dist/htmx.assembled.js`** — Assembled build output.
+- Extension registration primitive is **`htmx.install(name, extension)`**.
+- Extension object fields are:
+  - `requires: string[]` — install-time dependency ordering.
+  - `config: object` — merged into kernel config (`??=`; first writer wins unless user pre-set).
+  - `define: object` — declares API members.
+  - `on: object` — lifecycle event handlers.
+  - `wrap: object` — wraps existing API members.
+- `wrap` signature remains `(original, ...kernelArgs, api) => ...`.
+- `state.defines` and `state.wraps` are kernel-managed metadata for ownership/introspection.
+
+## Current Decisions (Feb 2026)
+
+This section captures the latest decisions from the runtime-vs-assembler contract discussion.
+
+### Problem We Hit
+
+- We need assembled builds to behave exactly like runtime `install(...)` composition.
+- Complex `define` functions need private helpers/classes.
+- We tried supporting IIFE-style `define` values (example: `parse: (() => { ...; return function parse(...) {} })()`).
+- That required assembler inference of intent ("find returned function inside call expression"), which is too magical.
+
+### Hard Constraints
+
+- No heuristic AST magic in assembler.
+- Runtime and assembled output must follow one explicit contract.
+- `--inline` output should read close to handwritten code.
+- Extensions must support internal helper declarations without new kernel primitives.
+
+### Direction Chosen
+
+- `define` uses a strict factory contract:
+  - `define.foo` is a factory invoked once at install.
+  - Factory returns the function assigned to `api.foo`.
+  - Canonical forms:
+    - `foo: (api) => function foo(...) { ... }`
+    - `foo: () => function foo(...) { ... }`
+    - block form with helpers:
+      - `foo: (api) => { const helper = ...; return function foo(...) { ... } }`
+- Runtime behavior in kernel:
+  - validates define value is a function factory.
+  - invokes factory with `api`.
+  - requires returned value to be a function.
+- `wrap` contract remains unchanged.
+- `state.defines` remains kernel/assembler-managed metadata (not extension-authored).
+
+### Why Not Descriptor Objects (`setup`/`body`)
+
+- Rejected as an unnecessary new DSL/primitive.
+- Adds ceremony and surface area versus plain JS factory closures.
+
+### Inline Output Goal
+
+- Prefer handwritten-looking lowering where possible, but only if it is mechanically derivable from strict syntax.
+- If a `define` factory does not match the lowerable shape, assembler should hard-error (not guess).
+
+### Validation Policy
+
+Assembler should fail builds when `define` entries violate contract. Current checks are strict:
+
+- `define[key]` must be an arrow-function factory.
+- Factory arity must be `0` or `1`; if present, the parameter name must be `api`.
+- Factory must return a named function expression.
+- Returned function name must match the `define` key.
+- Diagnostics are compiler-style with file/line/caret + actionable help.
+
+### Naming Clarity
+
+- Avoid method-shorthand factories like `swap(api) { ... }` in extension source.
+- Prefer explicit property assignment:
+  - `swap: (api) => function swap(swap, options) { ... }`
+
+### Notes
+
+- Most of this section reflects current code.
+- Everything below this section is historical design journal material and may be stale.
 
 ### Two-Level Interception Architecture
 
@@ -3033,39 +3104,288 @@ The kernel's `swap()` reads `detail.element` and `detail.swap.*`. Everything els
 - The kernel documents which namespaces it reads; everything else is pass-through
 - Same pattern applies to any future kernel function that participates in a pipeline
 
+### 090: Declarative Wraps Only — Remove Imperative `api.wrap()` from Extensions
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** Extensions could wrap kernel functions two ways: (1) declaratively via the `wrap:` key in `register()`, or (2) imperatively by calling `api.wrap()` inside boot handlers. This duplication made wrap tracking difficult — `register()` could see declarative wraps but had no visibility into imperative ones. The assembler needed two separate code paths: `parse_declarative_wraps()` (simple brace-matching) and `parse_wraps_from_boot()` (tree-sitter AST parsing to find and extract `api.wrap()` calls from boot handler bodies).
+
+**Rejected alternatives:**
+- **Keep both, track via context variable** — `_registering` set during `register()` to attribute imperative wraps. Ugly hidden state, doesn't cover all call sites.
+- **Add `by` parameter to `wrap()`** — `wrap(name, fn, 'extensionName')`. Extra parameter on a core function for a debugging concern.
+
+**Decision:** Standardize on declarative wraps only. All wraps use the `wrap:` key in `register()`. The `register()` function tracks wraps in `state.wraps` (a `{fnName: [extensionName, ...]}` map). `api.wrap()` still exists for third-party runtime use but is not used by built-in extensions.
+
+Converted `parse` and `inheritance` from imperative to declarative. Their boot handlers keep setup code (installing `api.parse`, configuring `api.config.inheritance`); only the wrap moved.
+
+Removed ~193 lines from the Rust assembler: `parse_wraps_from_boot()`, `find_wrap_calls()`, `find_api_wrap_in()`, `reindent_function()`, and the imperative extraction loop in `assemble()`.
+
+**Consequences:**
+- One mechanism for wraps, one place to track them (`state.wraps`)
+- `htmx.state.wraps` → `{attr: ['parse', 'inheritance'], find: ['extended-selectors'], on: ['delay', 'throttle']}`
+- Assembler simplified: single wrap extraction path via brace-matching, no tree-sitter needed for wrap discovery
+- `api.wrap()` remains available for third-party extensions registered at runtime
+- Wrap closures reference `api.*` at call time (not definition time), so declarative wraps that depend on boot-time setup (e.g., `parse` wrap calling `api.parse`) work correctly
+
+### 091: Kernel Hardening — Error Boundaries, Attribute Observation, Wrap Tracking
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** Architectural review identified several kernel robustness gaps: (1) a throwing extension handler in `emit()` kills the entire event loop, (2) dynamically-added `hx-*` attributes on existing elements go unnoticed by the MutationObserver, (3) no visibility into which extensions have wrapped which functions.
+
+**Decision:** Three kernel changes:
+
+1. **Error boundaries in `emit()`** — try/catch around each extension handler. A throwing extension logs an error but doesn't prevent other extensions from running. In optimized builds, inlined handlers are kernel code and should not throw (bugs to fix, not catch), so the assembler can skip the try/catch for inlined code.
+
+2. **Attribute mutation observation** — MutationObserver gains `attributes: true` with `attributeFilter` driven by `config.attributeFilter`. The kernel stays attribute-agnostic; extensions populate the filter at boot. `smart-defaults` sets `['hx-get', 'hx-post', 'hx-put', 'hx-patch', 'hx-delete', 'hx-trigger', 'hx-target', 'hx-swap', 'hx-boost']`. When an observed attribute is added to an existing element, `initElement` is called (idempotent — no-ops if already initialized).
+
+3. **`state.wraps`** — `register()` records declarative wraps in `state.wraps` (see ADR-090).
+
+**Consequences:**
+- Extension errors are isolated — one bad extension doesn't take down the pipeline
+- `element.setAttribute('hx-get', '/api')` on an existing DOM element now triggers initialization
+- `htmx.state.wraps` provides runtime introspection of the wrap chain for debugging
+- No new API surface — `state` already exposed, `config` already populated by extensions
+
+---
+
+### 092: `api` as Last Parameter — Consistent Injection for Handlers and Wraps
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** Extensions that wrap kernel functions sometimes need access to `api` (e.g., `parse` wraps `attr` and calls `api.parse()`). Previously, `api` was a closure variable inside the kernel's IIFE — accessible when extensions are assembled/inlined, but not when loaded as standalone `<script>` tags after the kernel. Event handlers already received `api` as `(detail, api)`, but wraps only had `(original, ...args)` — no way to get `api` in standalone mode.
+
+We evaluated several approaches:
+- **Factory pattern** `(api) => ({...})` — registration-time injection. Tested and rejected: adds DX complexity (wrapping every extension in a factory), complicates the assembler (factory unwrapping), and creates two different extension forms.
+- **Destructured context object** `({ original, api }, ...args)` — groups magic values, but complicates the assembler's AST parsing and hides the function signature.
+- **`api` as second positional** `(original, api, ...args)` — forces unused `_` placeholder in wraps that don't need `api`.
+
+**Decision:** `api` is always the **last argument**, injected by the kernel. Same convention for both handlers and wraps:
+
+```js
+// Event handler — api is last:
+'htmx:boot': (detail, api) => { ... }
+
+// Wrap — original first, kernel args in the middle, api last:
+attr: (original, element, name, options, api) => {
+    return api.parse(original(element, name), options)
+}
+
+// Wrap that doesn't need api — just don't declare it (JS ignores extra args):
+find: (original, selector, options) => { ... }
+```
+
+Extensions are always plain objects. No factory form, no special syntax.
+
+**Kernel change:**
+```js
+// wrap() now passes api as the last argument:
+function wrap(name, wrapper) {
+    const original = api[name]
+    api[name] = (...args) => wrapper(original, ...args, api)
+}
+
+// emit() unchanged — already passes api:
+extension.on?.[eventName]?.(detail, api)
+```
+
+**Assembler change:** `parse_declarative_wraps` strips a trailing `api` parameter before comparing against kernel function params. No other changes needed — the assembler already handled `(detail, api)` for handlers.
+
+**Consequences:**
+- One consistent convention: `api` is always last, in both handlers and wraps
+- Extensions stay as simple objects — best DX
+- Wraps that don't need `api` are unchanged — extra arg silently ignored
+- `original` stays first in wraps — matches TC39 decorators, Python, Go middleware
+- Standalone `<script>` loading works — `api` is passed at call time
+- Assembler change is trivial — strip trailing `api` from wrap params
+
+### 093: Remove `wrap` from Public API — Single Front Door
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** `wrap(name, wrapper)` was exposed on `api`, allowing extensions to wrap kernel functions at any time. This created two wrapping paths: declarative (`register({wrap: {...}})`) which tracks ownership in `state.wraps`, and imperative (`api.wrap()`) which bypasses tracking entirely.
+
+**Rejected alternative:** Keep both paths for conditional/lazy wrapping. Rejected because conditional behavior belongs inside the wrapper itself (`if (!condition) return original(...args)`), not in whether the wrap is registered.
+
+**Decision:** Remove `wrap` from `api`. Inline the wrapping logic into `register()`. All wraps flow through `register({wrap: {...}})` — the single auditable path.
+
+**Consequences:**
+- API surface reduced by one function
+- All wraps are tracked and attributable to a named extension
+- No anonymous/untracked wraps possible
+
+---
+
+### 094: Configurable Attribute Prefix
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** The kernel hardcoded `hx-` in the init walk. This is policy baked into mechanism.
+
+**Decision:** Add `config.attributePrefix` (default `'hx-'`). Also declare `config.attributeFilter` (default `[]`) explicitly rather than having it appear implicitly in `boot()`. Both documented with JSDoc.
+
+```js
+const config = {
+    /** @type {string} Attribute prefix for element discovery during init walks. */
+    attributePrefix: 'hx-',
+    /** @type {string[]} Attributes the MutationObserver watches for re-init. Empty = childList only. */
+    attributeFilter: [],
+}
+```
+
+**Consequences:**
+- `data-hx-` or custom prefixes work without kernel changes
+- `config` is self-documenting — no hidden fields that materialize at runtime
+
+---
+
+### 095: `api` Is Open, Assembler Enforces Boundaries
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** Extensions install capabilities on `api` during boot (`api.swap`, `api.ajax`, `api.parse`). This means `api` is mutable and open — any extension can write any key. Risks: shadowing kernel functions, collisions between extensions. Locking `api` down (freeze, Proxy, pre-declared slots) would either prevent capability installation or require the kernel to know about extension capabilities.
+
+**Decision:** Keep `api` as a plain mutable object. Enforce boundaries at build time via the Rust assembler:
+
+- Extension writes new key (`api.swap = ...`) → allowed
+- Extension overwrites kernel function (`api.emit = ...`) → build error
+- Two extensions write same key → build error
+- Extension reads `api.swap` without `requires: ['swap']` → build warning
+
+The assembler knows the kernel's `api` shape (parses kernel source) and every extension's reads/writes (parses `register()` calls). All enforcement is static, zero runtime cost.
+
+**Consequences:**
+- `api` stays a plain object — zero runtime overhead
+- Kernel stays small — no validation logic
+- Built output is guaranteed safe — no shadowing, no collisions
+- Runtime `<script>` extensions bypass checks (acceptable — same as any plugin system)
+- Assembler enforces policy; kernel provides mechanism
+
+---
+
+### 096: State Architecture — Private Internals, Shared Namespace, Element Accessor
+**Date:** 2026-02-17 | **Status:** Accepted (not fully settled — cleanup ergonomics still under review)
+
+**Context:** The kernel exposed `state` as a flat object containing kernel internals (`booted`, `elements` WeakMap, `wraps`) alongside extension-writable properties. This leaked internal structure and created ambiguity about what extensions could safely touch.
+
+Two competing needs for state:
+1. **Per-element lifecycle state** — kernel creates `{cleanup: []}` per managed element, drains on removal. ~9 of ~20 extensions need cleanup registration.
+2. **Shared extension namespace** — extensions need a place for global data (connection pools, history caches) that isn't arbitrary keys on `api`.
+
+**Evaluated approaches:**
+- **`api.state(element)`** as a function — clean but prevents `state.connections = ...` (function isn't a namespace)
+- **Callable function with properties** (`Object.assign(function(){}, {})`) — jQuery pattern, works but feels like a trick
+- **Symbols** for kernel keys — clever but if exported, just `state.elements` with more steps
+- **`state.of(element)`** — extra nesting, `.of` isn't a strong verb
+- **Remove state entirely, use closures + `api.*`** — no shared namespace for extensions
+- **Root element strategy** (store globals on `document.documentElement`) — clever but undiscoverable
+
+**Decision:** `state` is a plain object — shared namespace for extensions. Kernel internals (`booted`, `elements` WeakMap, `wraps` map) are closure-scoped. `state.elements(el)` is a kernel-provided accessor returning per-element lifecycle state. `state.wraps` is a read-only reference to wrap tracking for introspection.
+
+```js
+// Kernel internals (closure-scoped)
+let booted = false
+const elements = new WeakMap()
+const wraps = {}
+
+// Shared namespace
+const state = {}
+state.elements = function (element) { return elements.get(element) }
+state.wraps = wraps
+```
+
+**Extension usage:**
+```js
+// Per-element cleanup (one-liner, closure-friendly):
+api.state.elements(detail.element).cleanup.push(() => clearInterval(id))
+
+// Shared global state:
+api.state.connections = new Map()
+
+// Wrap introspection:
+api.state.wraps  // → {find: ['extended-selectors'], attr: ['inheritance', 'parse'], ...}
+```
+
+**Assembler enforcement (build-time):**
+- Extensions may only access `.cleanup` on element state objects — `state.elements(el).cleanup.push(...)` is allowed, `state.elements(el).foo = ...` is a build error (use a WeakMap on `state` instead)
+- Extensions may not overwrite `state.elements` or `state.wraps` (kernel-owned keys)
+
+**What's NOT settled:** Whether `{cleanup: []}` as the per-element contract is the right long-term answer, or whether cleanup registration should go through a dedicated mechanism. Current position: the array is stable enough and the ergonomics (one-liner closure push) outweigh the theoretical shape-coupling risk. Revisit if the shape needs to change.
+
+**Consequences:**
+- `booted`, raw WeakMap, and `wraps` map are unreachable by extensions (language-level)
+- `state` is both a shared namespace and the home for element/wrap accessors
+- Per-element cleanup is a one-liner: `state.elements(el).cleanup.push(fn)`
+- API surface: `config`, `register`, `init`, `initElement`, `cleanup`, `cleanupElement`, `emit`, `on`, `attr`, `find`, `state`
+
+### 097: Declarative `config:` Key — Type-Aware Merge
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** Extensions set config defaults imperatively in boot handlers (`api.config.defaultSwap ??= 'innerHTML'`). This works at runtime but can't be inlined by the assembler — boot code stays as runtime code. We want config defaults to be declarative data that the assembler can merge at build time, identical to runtime behavior.
+
+**Challenge:** Simple `??=` semantics don't handle accumulation. `attributeFilter: []` in the kernel blocks `??= [...]` because `[]` is not nullish. Multiple extensions need to contribute to the same array (attribute lists) or object (default headers).
+
+**Rejected approaches:**
+- `??=` only — can't accumulate arrays/objects
+- Deep merge with magic type detection — unpredictable
+- Separate `attributes:` key on install — clutters the extension API with more top-level keys
+- Derive attributeFilter from loaded extensions automatically — inference is fragile
+
+**Decision:** Extensions declare config defaults via `config: {}` in their install object. The kernel's `install()` merges with type-aware rules:
+
+| Existing value | New value | Behavior |
+|---|---|---|
+| absent/null | anything | set |
+| scalar | scalar | skip (first writer wins) |
+| array | array | concat |
+| object | object | per-key ??= |
+
+```js
+htmx.install('smart-defaults', {
+    config: {
+        defaultSwap: 'innerHTML',
+        defaultHeaders: {'HX-Request': 'true'},
+        attributeFilter: ['hx-get', 'hx-post', ...],
+    },
+    on: { ... }
+})
+```
+
+The assembler performs the same merge at build time and emits the final config object literal. No runtime merge code in the assembled output.
+
+**Convention:**
+- `config:` is for declarative defaults (data, inlinable). Merge semantics follow from the type.
+- Boot handlers with `=` are for imperative overrides (code, stays as runtime boot code).
+- Kernel config declares only properties the kernel itself needs defaults for (`attributePrefix`, `attributeFilter: []`). Extensions own everything else.
+
+**Consequences:**
+- smart-defaults, request-timeout, inheritance boot handlers eliminated (config moved to `config:` key)
+- Assembled output has config pre-merged — no install() calls needed for config
+- Runtime and assembled output produce identical config objects
+- Adding a new header to `defaultHeaders` from a later extension: `config: {defaultHeaders: {'X-New': 'val'}}` — per-key ??= merges it in
+- Adding a new attribute to watch: `config: {attributeFilter: ['hx-foo']}` — array concat appends it
+
 ---
 
 ## Session State (2026-02-17) — Snapshot, may be stale
 
 ### What's done
-- All previous work (ADRs 001-085)
-- **ADR-086**: Remove request/swap from initElement detail. JIT attribute reading at trigger time. Kernel has no HTTP awareness.
-- **ADR-087**: Move ajax() from kernel to core extension. Installed on api.ajax at boot (like api.parse).
-- **ADR-088**: Remove api.swaps registry. Custom swap styles use before:swap → replace execute(). Two extension mechanisms only: events and wrappers.
-- **ADR-089**: Pipeline context with namespaces. swap(detail) reads detail.element and detail.swap.*; transport-specific fields (request, response, connection, message) are pass-through for extensions.
+- All previous work (ADRs 001-089)
+- **ADR-090**: Declarative wraps only. Converted `parse` and `inheritance` from imperative `api.wrap()` to `wrap:` key. Removed ~193 lines of dead Rust from assembler.
+- **ADR-091**: Kernel hardening — error boundaries in `emit()`, attribute mutation observation via `config.attributeFilter`, `state.wraps` tracking.
 
-### Kernel scope (after ADRs 086-088)
-- **Lifecycle:** init, initElement, cleanup, cleanupElement, boot, MutationObserver
-- **DOM primitives:** swap (with built-in styles in default execute)
-- **Events:** emit, on
+### Kernel scope (after ADRs 086-091)
+- **Lifecycle:** init, initElement, cleanup, cleanupElement, boot, MutationObserver (childList + attributes)
+- **Events:** emit (with error boundaries), on
 - **Utilities:** find, attr, wrap
-- **State:** elements WeakMap, config, extensions
+- **State:** elements WeakMap, wraps map, config, extensions
 
-NOT in kernel: ajax, parse, resolve, swap registry. These are core extensions.
+NOT in kernel: ajax, parse, swap, resolve. These are core extensions.
 
-### Pending kernel changes
-- [ ] Strip request/swap from initElement detail, make default trigger.execute just emit before:trigger / after:trigger
-- [ ] Move ajax() to core extension (install on api.ajax at boot)
-- [ ] Remove api.swaps registry, move built-in styles into default swap.execute
-- [ ] Add execute() to cleanupElement for lifecycle uniformity
-- [ ] Move swap preprocessing (target resolution, content parsing) into swap.execute
+### Pending
+- [ ] Assembler output quality: de-indent boot bodies, compose wraps as linear code (no labeled blocks), resolve `original` references, normalize indentation. Goal: optimized output reads like hand-written code.
 
 ### File layout
-- **`src/htmx.kernel.js`** — Lifecycle + DOM primitives. No HTTP awareness.
-- **`src/htmx.core.js`** — All behavior: ajax, parse, hx-* attributes, triggers, defaults.
+- **`src/htmx.kernel.js`** — Lifecycle + events + DOM primitives. No HTTP awareness.
+- **`src/htmx.core.js`** — All behavior: parse, swap, ajax, hx-* attributes, triggers, defaults, extended-selectors, inheritance, delay, throttle. All wraps declarative.
 - **`src/extensions/`** — Optional extensions.
-- **`tools/assembler/`** — Rust assembler. Inlines extensions at emit sites.
-- **`dist/htmx.js`** — Assembled output.
+- **`tools/assembler/`** — Rust assembler. Parses declarative wraps and event handlers, inlines at call sites. Single wrap extraction path.
+- **`dist/htmx.js`** — Assembled output (simple mode: register calls preserved).
+- **`dist/htmx.optimized.js`** — Assembled output (optimize mode: wraps inlined into functions, handlers at emit sites).
 
 ---
 
@@ -3096,4 +3416,3 @@ Ideas worth preserving for later consideration. Not committed to.
 | `element.checkVisibility()` | Modern JS | Replace `offsetWidth > 0 && offsetHeight > 0` hack for `revealed` trigger. Native visibility check.                                                                                                                                                                                                                        |
 | ~~Extension compiler~~      | Tooling   | ~~Implemented as ADR-085: assembler emit-site inlining.~~ |
 | Debug trace extension       | Debug     | Extension that visualizes the full execution path in console: wrapper chains, event handler invocations, detail mutations. Shows indented tree like `ajax() → swap-style-aliases wrapper → emit(htmx:before:swap) → [default-swap] handler`. More detailed than trace mode — shows wrappers too, not just events.             |
-
