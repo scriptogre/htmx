@@ -82,7 +82,8 @@ var htmx = (() => {
                 collectFormData: this.__collectFormData.bind(this),
                 handleHxVals: this.__handleHxVals.bind(this),
                 insertContent: this.__insertContent.bind(this),
-                morph: this.__morph.bind(this)
+                morph: this.__morph.bind(this),
+                isSoftMatch: this.__isSoftMatch.bind(this)
             };
             document.addEventListener("DOMContentLoaded", () => {
                 this.__initHistoryHandling();
@@ -92,13 +93,14 @@ var htmx = (() => {
 
         __initHtmxConfig() {
             this.config = {
-                version: '4.0.0-alpha6',
+                version: '4.0.0-alpha7',
                 logAll: false,
                 prefix: "",
                 transitions: false,
                 history: true,
                 mode: 'same-origin',
                 defaultSwap: "innerHTML",
+                defaultFocusScroll: false,
                 indicatorClass: "htmx-indicator",
                 requestClass: "htmx-request",
                 includeIndicatorCSS: true,
@@ -115,7 +117,8 @@ var htmx = (() => {
                 morphIgnore: ["data-htmx-powered"],
                 morphScanLimit: 10,
                 noSwap: [204, 304],
-                implicitInheritance: false
+                implicitInheritance: false,
+                defaultSettleDelay: 1
             }
             let metaConfig = document.querySelector('meta[name="htmx-config"]');
             if (metaConfig) {
@@ -1258,6 +1261,7 @@ var htmx = (() => {
 
                 if (type === 'partial') {
                     let target = templateElt.getAttribute(this.__prefix('hx-target')) || (templateElt.id ? '#' + CSS.escape(templateElt.id) : null);
+                    this.__processScripts(templateElt.content);
                     tasks.push({
                         type: 'partial',
                         fragment: templateElt.content.cloneNode(true),
@@ -1274,9 +1278,22 @@ var htmx = (() => {
             return tasks;
         }
 
+        __setFocus(elt, options, start, end) {
+            try {
+                if (start != null && elt.setSelectionRange) {
+                    elt.setSelectionRange(start, end);
+                }
+                elt.focus(options);
+            } catch (e) {
+                // setSelectionRange or Web component focus may fail so ignore
+            }
+        }
+
         __handleAutoFocus(elt) {
             let autofocus = this.find(elt, "[autofocus]");
-            autofocus?.focus?.()
+            if (autofocus) {
+                this.__setFocus(autofocus);
+            }
         }
 
         __handleScroll(swapSpec, target) {
@@ -1343,7 +1360,7 @@ var htmx = (() => {
             let swapPromises = [];
             let transitionTasks = [];
             for (let task of tasks) {
-                if (task.swapSpec?.transition ?? mainSwap?.transition) {
+                if (task.swapSpec?.transition ?? mainSwap?.transition ?? ctx.transition !== false) {
                     transitionTasks.push(task);
                 } else {
                     swapPromises.push(this.__insertContent(task));
@@ -1394,6 +1411,7 @@ var htmx = (() => {
 
         async __insertContent(task, cssTransition = true) {
             let {target, swapSpec, fragment} = task;
+            let swapStyle = swapSpec.style;
             if (typeof target === 'string') {
                 target = document.querySelector(target);
             }
@@ -1401,7 +1419,7 @@ var htmx = (() => {
             if (typeof swapSpec === 'string') {
                 swapSpec = this.__parseSwapSpec(swapSpec);
             }
-            if (swapSpec.style === 'none') return;
+            if (swapStyle === 'none') return;
             if (swapSpec.strip && fragment.firstElementChild) {
                 fragment = document.createDocumentFragment();
                 fragment.append(...(task.fragment.firstElementChild.content || task.fragment.firstElementChild).childNodes);
@@ -1412,7 +1430,7 @@ var htmx = (() => {
                 await this.timeout(task.swapSpec?.swap)
             }
 
-            if (swapSpec.style === 'delete') {
+            if (swapStyle === 'delete') {
                 if (target.parentNode) {
                     this.__cleanup(target);
                     target.parentNode.removeChild(target);
@@ -1420,45 +1438,58 @@ var htmx = (() => {
                 return;
             }
 
-            if (swapSpec.style === 'textContent') {
+            if (swapStyle === 'textContent') {
                 target.textContent = fragment.textContent;
                 target.classList.remove("htmx-swapping")
                 return;
             }
 
-            let pantry = this.__handlePreservedElements(fragment);
-            let parentNode = target.parentNode;
-            let newContent = [...fragment.childNodes]
+            // innerHTML/outerHTML swaps backup focus and handle CSS transitions
+            let focusInfo;
             let settleTasks = []
+            let settleDelay = swapSpec.settle ?? this.config.defaultSettleDelay;
+            let parentNode = target.parentNode;
+            if (swapStyle === 'innerHTML' || (swapStyle === 'outerHTML' && parentNode)) {
+                let activeElt = document.activeElement;
+                if (activeElt?.id) {
+                    focusInfo = {
+                        elt: activeElt,
+                        start: activeElt.selectionStart,
+                        end: activeElt.selectionEnd
+                    };
+                }
+                settleTasks = cssTransition && settleDelay ? this.__startCSSTransitions(fragment, target) : []
+            }
+
+            let pantry = this.__handlePreservedElements(fragment);
+            let newContent = [...fragment.childNodes]
             try {
-                if (swapSpec.style === 'innerHTML') {
-                    settleTasks = cssTransition ? this.__startCSSTransitions(fragment, target) : []
+                if (swapStyle === 'innerHTML') {
                     for (const child of target.children) {
                         this.__cleanup(child)
                     }
                     target.replaceChildren(...fragment.childNodes);
-                } else if (swapSpec.style === 'outerHTML') {
+                } else if (swapStyle === 'outerHTML') {
                     if (parentNode) {
-                        settleTasks = cssTransition ? this.__startCSSTransitions(fragment, target) : []
                         this.__insertNodes(parentNode, target, fragment);
                         this.__cleanup(target)
                         parentNode.removeChild(target);
                     }
-                } else if (swapSpec.style === 'innerMorph') {
+                } else if (swapStyle === 'innerMorph') {
                     this.__morph(target, fragment, true);
                     newContent = [...target.childNodes];
-                } else if (swapSpec.style === 'outerMorph') {
+                } else if (swapStyle === 'outerMorph') {
                     this.__morph(target, fragment, false);
                     newContent.push(target);
-                } else if (swapSpec.style === 'beforebegin') {
+                } else if (swapStyle === 'beforebegin') {
                     if (parentNode) {
                         this.__insertNodes(parentNode, target, fragment);
                     }
-                } else if (swapSpec.style === 'afterbegin') {
+                } else if (swapStyle === 'afterbegin') {
                     this.__insertNodes(target, target.firstChild, fragment);
-                } else if (swapSpec.style === 'beforeend') {
+                } else if (swapStyle === 'beforeend') {
                     this.__insertNodes(target, null, fragment);
-                } else if (swapSpec.style === 'afterend') {
+                } else if (swapStyle === 'afterend') {
                     if (parentNode) {
                         this.__insertNodes(parentNode, target.nextSibling, fragment);
                     }
@@ -1466,7 +1497,7 @@ var htmx = (() => {
                     let methods = this.__extMethods.get('handle_swap')
                     let handled = false;
                     for (const method of methods) {
-                        let result = method(swapSpec.style, target, fragment, swapSpec);
+                        let result = method(swapStyle, target, fragment, swapSpec);
                         if (result) {
                             handled = true;
                             if (Array.isArray(result)) {
@@ -1476,13 +1507,20 @@ var htmx = (() => {
                         }
                     }
                     if (!handled) {
-                        throw new Error(`Unknown swap style: ${swapSpec.style}`);
+                        throw new Error(`Unknown swap style: ${swapStyle}`);
                     }
                 }
             } finally {
                 target.classList.remove("htmx-swapping")
             }
             this.__restorePreservedElements(pantry);
+            if (focusInfo && !focusInfo.elt.isConnected) {
+                let newElt = document.getElementById(focusInfo.elt.id);
+                if (newElt) {
+                    let focusOptions = {preventScroll: swapSpec.focusScroll !== undefined ? !swapSpec.focusScroll : !this.config.defaultFocusScroll};
+                    this.__setFocus(newElt, focusOptions, focusInfo.start, focusInfo.end);
+                }
+            }
 
             this.__trigger(target, "htmx:before:settle", {task, newContent, settleTasks})
 
@@ -1490,9 +1528,9 @@ var htmx = (() => {
                 elt.classList?.add?.("htmx-added")
             }
 
-            if (cssTransition) {
+            if (cssTransition && settleTasks.length > 0) {
                 target.classList.add("htmx-settling")
-                await this.timeout(swapSpec.settle ?? 1);
+                await this.timeout(settleDelay);
                 // invoke settle tasks
                 for (let settleTask of settleTasks) {
                     settleTask()
@@ -1681,6 +1719,7 @@ var htmx = (() => {
                 } else {
                     this.ajax('GET', path, {
                         target: 'body',
+                        swap: 'innerHTML',
                         request: {headers: {'HX-History-Restore-Request': 'true'}}
                     });
                 }
@@ -1991,7 +2030,7 @@ var htmx = (() => {
             let pantry = document.createElement("div");
             pantry.hidden = true;
             document.body.after(pantry);
-            let ctx = {target: oldNode, idMap, persistentIds, pantry};
+            let ctx = {target: oldNode, idMap, persistentIds, pantry, futureMatches: new WeakSet()};
 
             if (innerHTML) {
                 this.__morphChildren(ctx, oldNode, fragment);
@@ -2018,7 +2057,12 @@ var htmx = (() => {
                             while (cursor && cursor !== bestMatch) {
                                 let tempNode = cursor;
                                 cursor = cursor.nextSibling;
-                                this.__removeNode(ctx, tempNode);
+                                // remove nodes unless they match upcoming content in which case move them to end for later use
+                                if (tempNode instanceof Element && (ctx.idMap.has(tempNode) || this.__matchesUpcomingSibling(ctx, tempNode, newChild))) {
+                                    this.__moveBefore(oldParent, tempNode, endPoint);
+                                } else {
+                                    this.__removeNode(ctx, tempNode);
+                                }
                             }
                         }
                         this.__morphNode(bestMatch, newChild, ctx);
@@ -2065,15 +2109,27 @@ var htmx = (() => {
             }
         }
 
+        __matchesUpcomingSibling(ctx, oldElt, startNode) {
+            if (ctx.futureMatches.has(oldElt)) return true;
+            for (let sibling = startNode.nextSibling, i = 0; sibling && i < this.config.morphScanLimit; sibling = sibling.nextSibling, i++) {
+                if (sibling instanceof Element && oldElt.isEqualNode(sibling)) {
+                    ctx.futureMatches.add(oldElt);
+                    return true;
+                }
+            }
+            return false;
+        }
+
         __findBestMatch(ctx, node, startPoint, endPoint) {
-            let softMatch = null, nextSibling = node.nextSibling, siblingMatchCount = 0, displaceMatchCount = 0,
-                scanLimit = this.config.morphScanLimit;
-            // Get ID count for this node to prioritize ID-based matches
+            if (!(node instanceof Element)) return null;
+            let softMatch = null, displaceMatchCount = 0, scanLimit = this.config.morphScanLimit;
             let newSet = ctx.idMap.get(node), nodeMatchCount = newSet?.size || 0;
+            // If node has a non-persistent ID, insert instead of soft matching
+            if (node.id && !newSet) return null;
             let cursor = startPoint;
             while (cursor && cursor != endPoint) {
                 let oldSet = ctx.idMap.get(cursor);
-                if (this.__isSoftMatch(cursor, node)) {
+                if (this.#internalAPI.isSoftMatch(cursor, node)) {
                     // Hard match: matching IDs found in both nodes
                     if (oldSet && newSet && [...oldSet].some(id => newSet.has(id))) return cursor;
                     if (!oldSet) {
@@ -2086,24 +2142,26 @@ var htmx = (() => {
                 // Stop if too many ID elements would be displaced
                 displaceMatchCount += oldSet?.size || 0;
                 if (displaceMatchCount > nodeMatchCount) break;
-                // Look ahead: if next siblings match exactly, abort to let them match instead
-                if (nextSibling && scanLimit > 0 && cursor.isEqualNode(nextSibling)) {
-                    siblingMatchCount++;
-                    nextSibling = nextSibling.nextSibling;
-                    if (siblingMatchCount >= 2) return null;
-                }
                 // Don't move elements containing focus
                 if (cursor.contains(document.activeElement)) break;
                 // Stop scanning if limit reached and no IDs to match
                 if (--scanLimit < 1 && nodeMatchCount === 0) break;
                 cursor = cursor.nextSibling;
             }
-            return softMatch || null;
+            // Only return fallback softMatch if it does not match upcoming content
+            if (softMatch && this.__matchesUpcomingSibling(ctx, softMatch, node)) return null;
+            return softMatch;
         }
 
         __isSoftMatch(oldNode, newNode) {
-            return oldNode.nodeType === newNode.nodeType && oldNode.tagName === newNode.tagName &&
-                (!oldNode.id || oldNode.id === newNode.id);
+            if (!(oldNode instanceof Element) || oldNode.tagName !== newNode.tagName) {
+                return false;
+            }
+            // If both have Alpine reactive ID bindings, ignore ID mismatch
+            if (oldNode._x_bindings?.id && newNode.matches?.('[\\:id], [x-bind\\:id]')) {
+                return true;
+            }
+            return !oldNode.id || oldNode.id === newNode.id;
         }
 
         __removeNode(ctx, node) {
@@ -2128,22 +2186,20 @@ var htmx = (() => {
         }
 
         __morphNode(oldNode, newNode, ctx) {
-            let type = newNode.nodeType;
+            if (this.config.morphSkip && oldNode.matches?.(this.config.morphSkip)) return;
 
-            if (type === 1) {
-                if (this.config.morphSkip && oldNode.matches?.(this.config.morphSkip)) return;
-                this.__copyAttributes(oldNode, newNode);
-                if (oldNode instanceof HTMLTextAreaElement && oldNode.defaultValue != newNode.defaultValue) {
-                    oldNode.value = newNode.value;
-                }
+            // Trigger extension hook - if returns false, skip morphing this node
+            if (!this.__triggerExtensions(oldNode, "htmx:before:morph:node", {oldNode, newNode})) return;
+
+            this.__copyAttributes(oldNode, newNode);
+            if (oldNode instanceof HTMLTextAreaElement && oldNode.defaultValue != newNode.defaultValue) {
+                oldNode.value = newNode.value;
             }
-
-            if ((type === 8 || type === 3) && oldNode.nodeValue !== newNode.nodeValue) {
-                oldNode.nodeValue = newNode.nodeValue;
-            }
-
             let skipChildren = this.config.morphSkipChildren && oldNode.matches?.(this.config.morphSkipChildren);
-            if (!skipChildren && !oldNode.isEqualNode(newNode)) this.__morphChildren(ctx, oldNode, newNode);
+            // isEqualNode does not detect template content diff so always morph templates
+            if (!skipChildren && (!oldNode.isEqualNode(newNode) || newNode.tagName === 'TEMPLATE' || newNode.querySelector?.('template'))) {
+                this.__morphChildren(ctx, oldNode, newNode);
+            }
         }
 
         __copyAttributes(destination, source) {

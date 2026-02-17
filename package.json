@@ -27,6 +27,9 @@
     "test:firefox": "web-test-runner --browsers firefox --config test/web-test-runner.config.mjs --playwright",
     "test:webkit": "web-test-runner --browsers webkit --config test/web-test-runner.config.mjs --playwright",
     "test:all": "web-test-runner --browsers chromium firefox webkit --config test/web-test-runner.config.mjs --playwright --concurrency 1",
+    "test:pw": "npx playwright test --config tests/playwright.config.mjs",
+    "test:pw:ui": "npx playwright test --ui --config tests/playwright.config.mjs",
+    "test:pw:headed": "npx playwright test --headed  --config tests/playwright.config.mjs",
     "test:manual": "node test/manual/server.js",
     "www": "bash scripts/www.sh",
     "site": "npm run site:css & npm run site:serve",
@@ -50,6 +53,7 @@
   "author": "Big Sky Software",
   "license": "BSD-0-Clause",
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@web/test-runner": "^0.20.2",
     "@web/test-runner-playwright": "^0.11.0",
     "brotli-cli": "^2.1.1",

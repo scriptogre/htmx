@@ -1,10 +1,94 @@
-# htmx 4.0 Refactor (alpha → beta)
+# htmx 4.0 Refactor — Design Journal
 
-> Architecture refactor from htmx 4.0-alpha (`src/htmx.js`) to 4.0-beta. Current inventory, proposed architecture, and decision log.
+> **This document is the design process, not the spec.** Many ideas below were explored and discarded. ADRs contradict each other as thinking evolved. The source of truth for the current architecture is the code itself: `src/htmx.core.js`, `src/htmx.defaults.js`, and `src/extensions/`. Read the code first, then come here for historical context on *why* decisions were made.
 
 ---
 
-## Current htmx 4.0 Inventory
+## Current Architecture (read the code)
+
+- **`src/htmx.core.js`** (~580 lines) — Complete engine: parse, find, attr, swap, ajax, init/cleanup, events, wrap, register, emit, on. Standalone-usable (no extensions needed for programmatic API).
+- **`src/htmx.defaults.js`** (~260 lines) — All standard behaviors in one file, 12 individual `htmx.register()` calls: hx-get/post/put/patch/delete, hx-swap, hx-target, hx-trigger, default-trigger, defaults (config, swap aliases, headers, timeout), delay, throttle.
+- **`src/extensions/`** (4 files) — Optional: extended-selectors, inheritance, parse-dot-path, boost.
+- **`dist/htmx.js`** — Always the assembled output. All extensions inlined, zero register() calls.
+- **`tools/assembler/`** — Rust assembler. Inlines boot handlers between markers, event handlers at `api.emit()` call sites. Zero `register()` calls in output. Validates handler params at build time.
+- **`dist/htmx.js`** — Assembled output with all extensions inlined.
+- Extensions register via `htmx.register(name, {on: {...}})` and receive `(detail, api)` in handlers.
+- Internal code calls through `api.*` so extension wraps take effect. Extensions wrap api functions via `api.wrap(name, fn)`. Public API uses getters that delegate to `api`.
+
+### Two-Level Interception Architecture
+
+The kernel is not a monolithic library with rigid encapsulation. It is a microkernel where internal consistency is delegated to extensions. Two distinct interception mechanisms operate at two architectural levels:
+
+**Level 1 — API-level wrapping** (cross-cutting concerns):
+
+Extensions wrap `api.*` functions at boot via `api.wrap(name, wrapper)`. The wrapper receives the original function as its first argument, followed by the caller's arguments — the Decorator pattern applied at function granularity. Internal code calls through `api.*`, so wraps take effect transparently at every call site. This is "Poor Man's Dependency Injection": the `api` object is scoped to the closure and handed only to registered extensions, not exposed globally.
+
+Current wraps:
+- `api.find` ← `extended-selectors`: adds named targets (`this`, `body`), traversal (`closest`, `next`, `previous`)
+- `api.attr` ← `inheritance`: adds ancestor walking with `:inherited` / `:append` suffixes
+- `api.parse` ← `parse-dot-path`: post-processes parsed objects to expand dot-notation keys
+- `api.on` ← `delay`: debounces handler when `options.delay` is set
+- `api.on` ← `throttle`: throttles handler when `options.throttle` is set
+
+Wraps compose as a decorator chain in registration order (last registered wraps outermost):
+```
+caller → parse-dot-path → kernel parse → result
+caller → inheritance → kernel attr → result
+caller → extended-selectors → kernel find → result
+caller → throttle → delay → kernel on → addEventListener
+```
+
+**Level 2 — Pipeline-level events** (phase-specific behavior):
+
+Extensions listen to lifecycle events to modify a specific pipeline execution. Three-phase convention per pipeline step:
+- `config:*` — extensions configure detail, set default strategies (Strategy pattern via handler replacement)
+- `before:*` — extensions can cancel (`return false` or `preventDefault`)
+- `after:*` — extensions observe results
+
+The handler-as-data pattern (Strategy pattern) is the core mechanism that makes a 550-line kernel possible. The kernel defines the pipeline shape, sets a sensible default handler, and lets extensions swap the strategy:
+
+```js
+detail.handler = async () => { /* default: fetch */ }
+api.emit(element, 'htmx:config:request', detail)  // extensions may replace handler
+await detail.handler()                              // execute whatever strategy won
+```
+
+This is strictly more powerful than `preventDefault` — instead of only saying "don't do the default," extensions can say "do this instead." This enables swapping fetch for WebSockets, mocking for testing, or custom transports, without the kernel knowing about any of them.
+
+**Why two levels?**
+
+These serve genuinely different architectural purposes:
+- **API wrapping** answers: "how does this operation work everywhere?" — global, call-site transparent
+- **Pipeline events** answer: "what happens during this particular execution?" — scoped to one pipeline run, detail-aware
+
+Collapsing them into one mechanism would lose expressiveness. API-level wrapping is for cross-cutting concerns (selector resolution, attribute inheritance). Pipeline events are for workflow-specific behavior (request headers, swap styles).
+
+**What this is not:**
+
+The architecture uses patterns formalized by AOP (Aspect-Oriented Programming) — Decorator for API wraps, Observer + Strategy for pipeline events — but it is not a formal AOP system. There is no pointcut language, no declarative join point selection, and no weaving step. Extensions explicitly name what they hook. This is intentional: for a ~550-line kernel with <20 extensions, explicit interception is more appropriate than a pointcut abstraction layer.
+
+---
+
+### Split defaults into individual extension files (stale)
+
+Previously extracted 17 extensions from `htmx.defaults.js` into `src/defaults/*.js`. Now stale after ADR-077: `load.js`, `every.js`, `once.js`, `from.js` were absorbed into `trigger-attrs`; `delay.js` and `throttle.js` were rewritten as `api.on` wraps; `trigger-attrs.js` was rewritten to use `detail.trigger.handler`. The split files need re-syncing with the current `htmx.defaults.js`.
+
+**Files:**
+- `src/defaults/` — 17 extension files (stale, need updating)
+- `tests/` — 7 test files (some will need updating)
+- `src/htmx.defaults.js` — canonical source of truth
+
+---
+
+*Everything below is the design journal — the messy history of how we got here.*
+
+---
+
+## Original htmx 4.0-alpha Inventory
+
+---
+
+## Original htmx 4.0-alpha Inventory
 
 ### Attributes
 
@@ -545,7 +629,9 @@ Core htmx behaviors are implemented as extensions. This dogfoods the extension s
 
 ---
 
-## Decisions
+## Decisions (Historical)
+
+> **These ADRs are historical.** They document the thinking process, not the final state. Many were superseded, some were partially implemented then reworked, and some were accepted in theory but the code went a different direction. If an ADR contradicts the code, the code wins.
 
 ### 001: Simplified Event Model — *Superseded by ADR-014*
 
@@ -1914,24 +2000,1072 @@ Extensions use `??=` so user overrides before boot are preserved.
 
 ---
 
-### 050: Open — Comma-Splitting vs Filter Bracket Awareness
-**Date:** 2026-02-10 | **Status:** Open
+### 051: `api.resolve(element)` — Attribute-Agnostic Element Config
+**Date:** 2026-02-11 | **Status:** Superseded
 
-**Context:** Core splits `hx-trigger` values on commas to support multiple triggers:
+**Context:** The core hardcoded attribute-to-method resolution in `createHandler`, meaning the pipeline knew about specific attributes (`hx-get`, `hx-post`, etc.). This coupled the core to specific attribute names and made it impossible for extensions to provide alternative config sources (e.g., `hx-action`/`hx-method`, data attributes, or JS-based config).
 
-```js
-(attr(element, 'hx-trigger') ?? '').split(/,(?![^\[]*\])/)
+**Rejected alternatives:**
+- **Config object on element state** — would require init to read all attributes upfront, losing JIT (just-in-time) resolution of dynamic attributes
+- **Passing raw attributes through the pipeline** — would push resolution responsibility to every extension
+
+**Decision:** Add `api.resolve(element)` as a wrappable function that reads element config at trigger time and returns an options object `{url, method, source, target, swap}` (or `null`). Default implementation reads the 8 `hx-*` attributes. Extensions can wrap `api.resolve` to support additional attribute schemes.
+
+**Consequences:**
+- `createHandler` is eliminated — the handler is a 3-line inline closure calling `resolve()` then `ajax()`
+- Attribute reading happens at trigger time (JIT preserved)
+- Extensions like `hx-action` can wrap `api.resolve` to add their own attribute reading
+- Exposed on public API as `htmx.resolve(element)` for programmatic use
+
+### 052: `ajax(options)` — Single Options Object
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** `ajax(url, options)` had a split signature — URL as a positional arg, everything else in an options object. This was inconsistent with `resolve()` returning a complete options object and required callers to destructure before passing.
+
+**Rejected alternatives:**
+- **Keep `ajax(url, options)`** — requires spreading: `ajax(opts.url, opts)`. Awkward.
+- **Named parameter with default** — `ajax({url, ...rest})` is what we chose
+
+**Decision:** Change to `ajax(options)` where options is `{url, method, source, target, swap, headers, body}`. The return value of `resolve()` can be passed directly: `ajax(resolve(element))`.
+
+**Consequences:**
+- Clean composition: handler is `const options = resolve(element); if (options) ajax(options)`
+- `target` is resolved early (string → element) and placed on `detail` so extensions can retarget during `htmx:before:request` or `htmx:after:response`
+- Swap uses `detail.target` and `detail.swap` (extensions can modify both)
+- `phase` field removed from detail — event names already identify the phase
+
+### 053: `source` Is Just an Element
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** `detail.source` was `{element, event}` — a wrapper object carrying both the source element and the triggering event. This complicated every emit call (`emit(source.element, ...)`) and every extension that needed the source element.
+
+**Rejected alternatives:**
+- **Keep `{element, event}`** — the event is available via the trigger closure, no need to thread it through the pipeline
+- **Add event to detail separately** — extra field with unclear lifecycle
+
+**Decision:** `source` is just the element. Pipeline events emit on `source` directly. The triggering event is a closure concern, not a pipeline concern.
+
+**Consequences:**
+- All `emit(source.element, ...)` simplifies to `emit(source, ...)`
+- `fail()` emits on `source` directly
+- Extensions access `detail.source` as an element (no `.element` unwrapping)
+- Default source for programmatic `ajax()` is `document.body` (element, not wrapper)
+
+### 054: Universal `parse(text)` — RelaxedJSON Grammar
+**Date:** 2026-02-11 | **Status:** Accepted | **Supersedes:** ADR-048
+
+**Context:** ADR-048 defined `parse()` as a single-object parser using `split(/\s+/)`. Too naive — didn't handle quoted values, type coercion, or real-world attribute syntax. The htmx 4.0 alpha had two separate parsers (`__parseTriggerSpecs` and `__parseConfig`) with overlapping responsibilities. We need one parser that handles any attribute value segment.
+
+**Rejected alternatives:**
+- **Character-by-character tokenizer (`scan`/`tokenize`)** — unnecessary; a single `matchAll` regex handles all core cases
+- **Separate `parseList()` function** — unnecessary API surface; comma-splitting is the caller's concern
+- **`parse()` returns an array** — unintuitive; parse handles one segment, callers split on commas when they need lists
+- **JSON passthrough (`{` → `JSON.parse`)** — RelaxedJSON is its own format; JSON support can be an extension
+- **Nesting-aware tokenizer in core** — extensions handle exotic nesting via protect-and-restore wrapping
+- **`htmx:parse:protect` event** — new mechanism when wrapping `api.parse` already works
+- **Reviver/replacer parameters** — per-call customization creates a second extensibility mechanism alongside wrapping; attribute-specific interpretation already happens in lifecycle events
+
+**Decision:** `parse(text)` takes a string, returns a single object.
+
+**Grammar:**
+```
+segment  = token (ws token)*
+token    = (key ":" value) | value
+key      = quoted | bare
+value    = quoted | bare
+bare     = [^\s,:]+
+quoted   = "..." | '...'
 ```
 
-The bracket-aware regex avoids splitting commas inside `[...]` filter expressions like `click[validate(event, this)]`. But if filters are a separate extension (`trigger-filters`), core shouldn't know about bracket syntax. A simple `.split(',')` would break legitimate filter expressions containing function calls with multiple arguments.
+**Behavior:**
+- First bare token (no colon) → `value` property
+- `key:value` tokens → named properties (first colon splits; subsequent colons are part of the value)
+- Bare tokens after first → boolean flags (`true`)
+- Type coercion on property values: `true`/`false` → boolean, `/^\d+(ms|s|m)?$/` → number (ms)
+- No coercion on the `value` property (always a string)
+- Quoted keys/values: `"..."` or `'...'` — protects spaces, commas, colons
+- Comma-splitting for multi-value attributes (like `hx-trigger`) is the caller's concern
 
-**Options under consideration:**
-1. **Accept bracket-aware regex in core** — core knows about filter syntax, pragmatic
-2. **Core = single trigger only** — a `multiple-triggers` extension owns all comma-splitting including bracket awareness. Core's `init()` passes the raw `hx-trigger` value to `parse()` as-is for a single trigger.
-3. **Disallow commas in filters** — simplifies splitting but limits expressiveness
-4. **Different delimiter** — use something other than comma for multiple triggers (breaking change)
+**Implementation:** One `matchAll` regex, ~20 lines total.
 
-**Tension:** Bracket-awareness in core means core implicitly knows about a feature (filters) that's supposed to be an extension. But without it, the extension can't fix things because the split already happened before it runs.
+**Exotic syntax — the protect-and-restore pattern:**
+
+Extensions wrap `api.parse` to handle syntax containing RelaxedJSON delimiters. The pattern is always the same — protect exotic regions with placeholders, delegate to the original parser, restore. No matter how exotic the input, the output is always a clean JSON-like object:
+
+```js
+// Extension wraps api.parse — same pattern every time:
+const original = api.parse
+api.parse = (text) => {
+    if (!text?.includes(MARKER)) return original(text)  // guard: fast no-op
+    const vault = []
+    const safe = text.replace(PATTERN, match => {
+        vault.push(match); return `__${vault.length}__`
+    })
+    const result = original(safe)
+    for (const key of Object.keys(result))
+        if (typeof result[key] === 'string')
+            result[key] = result[key].replace(/__(\d+)__/g, (_, i) => vault[i - 1])
+    return result
+}
+```
+
+Different extensions, different syntax, same pattern:
+```js
+text.replace(/\[([^\]]*)\]/g, ...)        // bracket expressions
+text.replace(/\$\{[^}]*\}/g, ...)         // template literals
+text.replace(/\/(?:[^/\\]|\\.)+\//g, ...) // regex literals
+text.replace(/\{\{[^}]*\}\}/g, ...)       // server-side templates
+```
+
+Each extension composes via `requires` ordering. Core stays ~20 lines forever.
+
+**Key discipline — protect globally, interpret locally:**
+
+Wrapping `api.parse` should only **protect** exotic regions (make them survive tokenization). It should NOT **interpret** what they mean. Interpretation happens in scoped lifecycle events:
+
+```js
+// api.parse wrap: PROTECT — safe globally
+// "click[ctrlKey] delay:300ms" → {value: "click[ctrlKey]", delay: 300}
+// Brackets survived tokenization, but parse didn't interpret them
+
+// htmx:setup:trigger handler: INTERPRET — scoped to triggers only
+if (trigger.value.includes('[')) {
+    trigger.filter = trigger.value.slice(trigger.value.indexOf('[') + 1, -1)
+    trigger.value = trigger.value.slice(0, trigger.value.indexOf('['))
+}
+```
+
+This ensures global wrapping never corrupts unrelated attributes. Same discipline as `inheritance` (wraps `api.attr` globally with guard) and `extended-selectors` (wraps `api.find` globally with guard).
+
+**Other changes:**
+- **Dot-path expansion** (`user.name:John` → `{user: {name: "John"}}`) is an extension in `htmx.defaults.js`
+- **`config.syntax` removed** — `api.parse` and `api.stringify` are the wrappable extension points
+
+**Consequences:**
+- One function, one object — simple, predictable
+- Regex-based: ~20 lines
+- `config.syntax` eliminated
+- Duration coercion baked in (number format, not htmx-specific)
+- Extensions compose by wrapping `api.parse` in registration order
+- Guard pattern (`includes` check) ensures zero cost for unaffected attributes
+- Parking lot items "Universal attribute parser" and "RelaxedJSON parser" are addressed
+
+### 055: Init/Cleanup Split — Tree vs Element Functions with Tree Events
+**Date:** 2026-02-11 | **Status:** Accepted | **Supersedes:** ADR-049 (config.initSelector)
+
+**Context:** `init(root)` walked a subtree and initialized each element inline. `cleanupTree(root)` walked descendants calling `cleanup(element)`. Naming was asymmetric (`init` vs `cleanupTree`), per-element init logic wasn't callable independently, and there was no event-based mechanism for extensions to discover elements when a subtree was added or removed. Extensions like `hx-ws` or `hx-on:*` need to find and process their own elements during tree initialization, but `config.initSelector` only covered core's elements.
+
+**Rejected alternatives:**
+- **Keep `config.initSelector` and let extensions append to it** — couples extension selectors to core's query; extensions can't do custom discovery logic
+- **Single `init` function with tree events but no `initElement` on api** — extensions that need to initialize a single element programmatically would have to call `init` on a wrapper, defeating the purpose
+- **`htmx:init:subtree` without before/after split** — inconsistent with the existing `htmx:before:init` / `htmx:after:init` per-element pattern (ADR-017)
+
+**Decision:**
+- `init(root)` — tree-level: emits `htmx:before:init:subtree` / `htmx:after:init:subtree` with `{root}`, runs `querySelectorAll` with hardcoded selector, calls `initElement` for each match
+- `initElement(element)` — per-element: emits `htmx:before:init` / `htmx:after:init` (unchanged), sets up triggers and listeners
+- `cleanup(root)` — tree-level (renamed from `cleanupTree`): emits `htmx:before:cleanup:subtree` / `htmx:after:cleanup:subtree` with `{root}`, calls `cleanupElement` on root and stateful descendants
+- `cleanupElement(element)` — per-element (renamed from `cleanup`): emits `htmx:before:cleanup` / `htmx:after:cleanup` (unchanged)
+- `config.initSelector` removed — hardcoded `const initSelector` in core; `config` starts as `{}` (extensions populate it)
+- `api.initElement` and `api.cleanupElement` added for extensions that need per-element operations
+
+**Consequences:**
+- Symmetric naming: `init`/`cleanup` (tree), `initElement`/`cleanupElement` (element)
+- Extensions can listen to `htmx:before:init:subtree` to discover their own elements via their own selectors
+- `config.initSelector` eliminated — core's selector is an implementation detail, not configurable
+- `config` starts empty — extensions own all configuration
+- Per-element events (`htmx:before:init`, `htmx:after:init`, etc.) unchanged — `default-trigger` and other extensions work without modification
+
+### 056: Extension Naming Convention and Trigger Setup Ownership
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** Extension names like `modifier-once` are ambiguous — is it a trigger modifier or a swap modifier? Additionally, core's `initElement` contained `setup.listeners[]` and `setup.cleanup[]` fields that only existed for specific extensions (`modifier-from` and `trigger-every`). Core shouldn't know about cross-element listener binding or extension-specific cleanup — those are extension concerns.
+
+**Rejected alternatives:**
+- **`setup.listeners[]` on setup object** — only exists for `modifier-from`; couples core to the cross-element binding concern
+- **`setup.cleanup[]` on setup object** — only exists for `trigger-every`; extensions can use `api.state.get(element).cleanup.push(fn)` directly
+- **`on()` with owner parameter** — adds complexity to a core function for a niche use case; `modifier-from` can handle its own cleanup via `api.state`
+- **`requires` for trigger modifier ordering** — would break independent registration (e.g., using `from` without `delay`); registration order in defaults.js is sufficient
+
+**Decision:**
+
+Extension naming convention by category:
+- `attr-*` — wraps `api.attr` (`attr-inheritance`)
+- `find-*` — wraps `api.find`/`api.findAll` (`find-extended-selectors`)
+- `parse-*` — wraps `api.parse` (`parse-dot-path`)
+- `default-*` — smart defaults (`default-swap`, `default-trigger`, `default-handler`, `default-headers`)
+- `swap-*` — swap methods and modifiers
+- `request-*` — request behavior (`request-timeout`)
+- `trigger-*` — trigger types (`trigger-load`, `trigger-every`)
+- `trigger-modifier-*` — trigger modifiers (`trigger-modifier-once`, `trigger-modifier-delay`, `trigger-modifier-throttle`, `trigger-modifier-from`)
+
+Trigger setup ownership:
+- `setup` object reduced to `{element, trigger, handler, options}` — no `listeners[]` or `cleanup[]`
+- Core binds one listener: `api.on(element, trigger.event, setup.handler, setup.options)`
+- `trigger-modifier-from` handles its own cross-element binding: nulls `setup.handler`, binds on targets via `api.on()`, tracks cleanup via `api.state`
+- `trigger-every` tracks its own interval cleanup via `api.state`
+- `trigger-modifier-from` must be registered after handler-wrapping modifiers (delay, throttle) — convention, not enforced by `requires`
+
+**Consequences:**
+- `initElement` simplified — one binding line instead of six
+- Extension names unambiguously scoped to their pipeline phase
+- Extensions fully own their special concerns (cross-element binding, interval cleanup)
+- Registration order matters for `trigger-modifier-from` — documented in defaults.js header
+
+### 057: Swap Refactoring — Core Styles, Options Object, Flat Detail
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** Swap styles (innerHTML, outerHTML, beforebegin, etc.) were in a `swap-methods` extension. The swap function had a positional signature. The swap detail nested things in a `context` object. We needed consistency with `ajax(options)` and clear naming (`style` for swap mode, `method` for HTTP verb).
+
+**Rejected alternatives:**
+- **Swap styles as extension** — swap styles are fundamental to htmx, not optional behavior
+- **`api.swapStyles` registry** — wrapping `api.swap` is more consistent with attr/find/parse wrapping pattern
+- **`fn` in swap detail** — too generic, resolved internally instead
+- **`method` for swap style** — clashes with HTTP method naming
+- **`context` in swap detail** — unclear origin; pipeline context passes through via spread instead
+
+**Decision:**
+- Swap styles built into core as local `swapStyles` map (not on api)
+- `swap(options)` takes a single options object: `{content, target, style, source}`
+- Swap events use flat detail: `{target, content, style, source, ...pipelineContext}`
+- `style` names swap mode; `method` reserved for HTTP verb
+- Extensions add custom styles by wrapping `api.swap` (e.g., `swap-style-aliases` maps `before`→`beforebegin`)
+- Swap events fire on source element (fallback to target if no source)
+- `api.fail()` for errors with `/`-delimited types: `swap/target`, `swap/style`
+- `default-swap` extension sets `detail.style ??= htmx.config.defaultSwap`
+
+**Consequences:**
+- `swap-methods` extension removed from defaults, replaced by `swap-style-aliases`
+- Programmatic `htmx.swap({...})` emits events — consistent behavior
+- Swap detail is flat; when called from ajax, request/response flow through via spread
+
+---
+
+### 058: `api.fail()` — Shared Error Utility
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** Error handling was inconsistent — ajax emitted errors manually, swap silently returned. We needed a shared pattern.
+
+**Rejected alternatives:**
+- **`:` delimiter for error types** — clashes with event name colons (`htmx:before:swap`)
+- **Single `'swap'` type for all swap errors** — too coarse, different failure modes need different types
+
+**Decision:**
+- `fail(element, detail, type, message, cause)` sets `detail.error = {type, message, cause?}` and emits `htmx:error`
+- Error types use `/` delimiter: `swap/target`, `swap/style`, `request`
+- In ajax, swap errors caught separately with type `'swap'`; fetch errors use type `'request'`
+
+**Consequences:**
+- Consistent error handling across all pipeline phases
+- Error type hierarchy via `/` enables pattern matching (e.g., `startsWith('swap/')`)
+
+---
+
+### 059: Consistent Request Lifecycle Detail
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** The event detail shape varied across lifecycle events. We needed a consistent shape that extensions can rely on.
+
+**Decision:**
+- All request lifecycle events share: `{source, request, swap, response, error}`
+- All fields present from the start with null defaults: `response: null, error: null`
+- `source` is top-level — it's the "who" alongside request (what HTTP), swap (what DOM mutation), response (what came back), error (what went wrong)
+- `swap: {style, target}` — target stays as a string through the lifecycle, resolved right before swap
+- Extensions can modify any field in any event; late resolution means target changes are respected
+
+**Consequences:**
+- Extensions can always destructure the same shape
+- Target resolution is late — happens after all events have had a chance to modify `detail.swap.target`
+
+---
+
+### 060: Settle Removal from Core
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** `htmx:before:settle` / `htmx:after:settle` were two events back-to-back with zero logic between them — empty ceremony from htmx 2.0.
+
+**Decision:** Remove settle events from core. Move to `htmx.compat.js` (planned, not yet implemented — see `PLAN-compat.md`).
+
+**Consequences:**
+- Core lifecycle simplified: init → trigger → request → response → swap
+- Existing code listening for settle events needs the compat layer
+
+---
+
+### 061: Core Bugfixes — emit fallback, parse(null), cancelled init
+**Date:** 2026-02-11 | **Status:** Accepted
+
+**Context:** Code review found several issues in core.
+
+**Decision:**
+1. **`emit()` fallback to `document.body`** — was `document`. Events on disconnected elements now bubble through body → document → window, so `document.body.addEventListener(...)` catches them.
+2. **`parse(null)` returns `null`** — was `{value: null}` (truthy). Now `if (detail.trigger)` correctly skips bindTrigger when no trigger is specified. `default-trigger` handles null via `detail.trigger?.value`.
+3. **Cancelled init deletes state** — `state.delete(element)` when `htmx:before:init` returns false. Element becomes re-initializable instead of permanently claimed.
+
+---
+
+### 062: find/findAll Redesign — IN PROGRESS
+**Date:** 2026-02-11 | **Status:** Proposed (not yet implemented)
+
+**Context:** `find(element, selector)` has conflicting semantics for target resolution. Plain CSS selectors (`#target`) need document-global search. Keyword selectors (`closest .card`) need element as context. Core's two-arg form does `element.querySelector(selector)` which scopes to element — wrong for `hx-target="#target"` when target is elsewhere in the document.
+
+**Rejected alternatives:**
+- **Separate `api.resolveTarget()` function** — adds surface area, user wants find to handle it
+- **Core find ignores element parameter** — dishonest function signature
+- **Late target resolution via events** — too indirect
+- **Core find always searches from document** — breaks the contract of the two-arg form
+- **Ajax uses one-arg find only** — keyword selectors lose context entirely
+
+**Leading proposal:**
+Core `find`/`findAll` are single-arg only — thin wrappers around `document.querySelector`:
+```js
+find: (selector) => document.querySelector(selector),
+findAll: (selector) => [...document.querySelectorAll(selector)],
+```
+Core swap uses single-arg: `if (typeof target === 'string') target = api.find(target)`.
+Ajax passes target as string to swap: `target: detail.swap.target || source`.
+`find-extended-selectors` extension does TWO things:
+1. Adds two-arg `api.find(context, selector)` with keyword support (closest, find, this, body)
+2. Wraps `api.swap` to resolve keyword targets using `options.source` before core swap sees them
+
+This means: core is correct without extensions (plain CSS always searches document). Keywords work when the extension is loaded. No ambiguous two-arg semantics in core.
+
+**Open questions:**
+- Should find/findAll even exist in core, or should core use `document.querySelector` directly?
+- If find is single-arg in core, the extension adds the two-arg overload — is that clean or surprising?
+
+### 063: Wrappers vs Events — Prefer Events When a Checkpoint Exists
+**Date:** 2026-02-12 | **Status:** Accepted
+
+**Context:** Several extensions used function wrapping (`api.swap = (options) => { ...; original(options) }`) when an event already existed at that point in the pipeline. Function wrapping has known costs:
+- Stack depth — each wrapper adds a frame
+- Debuggability — anonymous closures, can't inspect what a function "currently does"
+- Ordering — outer wrapper runs first, implicit dependency on registration order
+
+Event handlers are more debuggable (named checkpoints, loggable) and compose independently (each sees the same mutable detail).
+
+**Decision:** Principle: **wrap functions only when no corresponding event exists.** If there's already an event where `detail` is mutable and read after the emit, use an event handler instead.
+
+Applied: `swap-style-aliases` converted from `api.swap` wrapper to `htmx:before:swap` event handler. `detail.style` is already read after the emit, so remapping it in an event handler works identically.
+
+Remaining wrappers justified:
+- `attr-inheritance` wraps `api.attr` — no "attribute read" event exists; would fire hundreds of times
+- `find-extended-selectors` wraps `api.find`/`api.findAll` — no "element lookup" event; hot path
+- `parse-dot-path` wraps `api.parse` — no "parse" event; called for every attribute
+
+**Consequences:**
+- One fewer wrapper in defaults
+- Clear guideline for extension authors: events first, wrappers only for semantic changes to hot-path utilities with no event checkpoint
+
+### 064: Pipeline Detail Flows Through Swap — Polymorphic Dispatch
+**Date:** 2026-02-12 | **Status:** Accepted | **Supersedes:** ADR-057 (flat swap detail), resolves ADR-059 tension
+
+**Context:** ADR-057 gave `swap()` a flat detail (`{target, content, style, source, ...pipelineContext}`). ADR-059 said all pipeline events share `{source, request, swap, response, error}` with `swap: {style, target}`. These contradicted each other — swap events had `detail.style` (flat) while every other pipeline event used `detail.swap.style` (nested).
+
+The root cause: `ajax()` was destructuring its pipeline detail and re-packing it flat for `swap()`:
+```js
+api.swap({content: detail.response.text, target: swapTarget, style: detail.swap.style,
+          source, request: detail.request, response: detail.response})
+```
+
+This made swap create its own detail object, losing the identity of the pipeline detail that had been flowing through request → response events.
+
+**Decision:** The pipeline detail object flows through the entire lifecycle as one object. `ajax()` passes its detail directly to `swap()`:
+
+```js
+detail.swap.content = detail.response.text
+api.swap(detail)
+```
+
+`swap()` uses polymorphic dispatch — it accepts two shapes:
+
+1. **Pipeline shape** (from ajax): `{source, request, swap: {content, target, style}, response, error}` — detected by `detail.swap` being present
+2. **Standalone shape** (public API): `{content, target, style, source?}` — normalized to pipeline shape internally
+
+```js
+// Public API — clean, flat:
+htmx.swap({content: '<p>hi</p>', target: '#foo', style: 'innerHTML'})
+
+// Internal — ajax passes detail directly:
+api.swap(detail)
+```
+
+Target resolution also moves into `swap()`: string targets are resolved via `api.find(detail.source, selector)` with fallback to `detail.source`. This means target resolution happens late (after all response events) and in one place.
+
+All swap events fire with the full pipeline shape. Extensions always use `detail.swap.style`, `detail.swap.target`, `detail.swap.content`.
+
+**Consequences:**
+- One detail object flows through the entire lifecycle — no destructuring, no re-packing
+- `detail.swap.style` everywhere — consistent with ADR-059
+- `...pipelineContext` spread eliminated
+- Target resolution consolidated in `swap()` instead of split between `ajax()` and `swap()`
+- Standalone `htmx.swap()` public API stays clean — flat options normalized internally
+- Polymorphic dispatch is idiomatic JS (same pattern as `fetch(string|Request)`)
+
+### 065: Unified `find()` — Single Function with `{multiple}` Option
+**Date:** 2026-02-13 | **Status:** Accepted | **Supersedes:** ADR-062
+
+**Context:** Core had both `find(element, selector)` → Element and `findAll(element, selector)` → Element[]. Two functions for the same concept (selector resolution), different return types. Extensions wrapping selector resolution had to wrap both.
+
+**Decision:** Single `find(element, selector, options)` function. Pass `{multiple: true}` to get an array. Signature is overloaded: `find(selector)` uses `document` as default element.
+
+**Consequences:**
+- `findAll` removed from api and public surface
+- One wrapping point for extensions
+- `match()` helper inside find normalizes nullable single results for the return mode
+
+### 066: Extended Selectors in Kernel
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** Extended selectors (`this`, `body`, `closest X`, `next X`, `previous X`, etc.) were initially in a wrapping extension. But they're used universally — `hx-target` needs them, and they're fundamental to how htmx resolves element references.
+
+**Decision:** Full extended selector support built into kernel's `find()`:
+- Named targets: `this`, `body`, `document`, `window`
+- Immediate relatives: `next`, `previous`, `host`
+- Traversal: `closest X`, `next X`, `previous X`
+- Scoped search: `find X` (strips prefix, searches within element)
+- CSS selector fallback: `querySelector` / `querySelectorAll`
+
+Helper functions `scanForward` / `scanBackward` use `compareDocumentPosition` for `next X` / `previous X`.
+
+**Consequences:**
+- `find-extended-selectors` extension removed
+- Kernel is self-sufficient for all selector resolution
+- Extensions can still wrap `api.find` for custom selector syntax
+
+### 067: `config:*` / `before:*` Event Split
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** `config:trigger` existed because triggers have a real temporal gap — setup (once) vs firing (every time). For swap/request/init, both events fire once per call, but we added `config:*` for consistency. The question was: what's the semantic difference?
+
+**Decision:** All phases follow the same pattern:
+- `config:*` = **configure** — set handlers, modify options, fill defaults, push selectors
+- `before:*` = **observe/cancel** — last chance to inspect and cancel; don't modify
+
+Same detail object flows through both events. The handler is visible in `before:*` (same object) but convention says modify in `config`, cancel in `before`.
+
+Applied consistently:
+- `config:init` / `before:init` / `after:init`
+- `config:init:element` / `before:init:element` / `after:init:element`
+- `config:trigger` / (bind) ... `before:trigger` / `after:trigger`
+- `config:request` / `before:request` / `after:request`
+- `config:swap` / `before:swap` / `after:swap`
+
+Extensions moved from `before:*` to `config:*`: default-swap, swap-style-aliases, default-headers, timeout, method-attrs.
+
+**Consequences:**
+- Clear convention for extension authors: configure in `config`, gate in `before`
+- Consistent across all phases — one mental model
+- Prevents confusion when writing trigger extensions (where the distinction is temporal, not just semantic)
+
+### 068: `parse()` Accepts Options — `{as}` Rename Moved from `attr`
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** `attr()` did three things: getAttribute → parse → rename first token via `{as}`. The inheritance extension needed to wrap `attr` but work with raw strings for `:append` concatenation. This forced it to either add a new api function (`attrRaw`) or duplicate the parse + as-rename logic.
+
+**Decision:** Move `{as}` rename into `parse(text, options)`. Now `attr` is just:
+```js
+function attr(element, name, options) {
+    return api.parse(element.getAttribute(name), options)
+}
+```
+
+The inheritance extension wraps `api.attr`, resolves the raw string (with ancestor walking + append concatenation), then calls `api.parse(raw, options)` — no duplication, no new api function.
+
+**Consequences:**
+- `parse` is more useful standalone — can rename tokens without going through `attr`
+- `attr` is a one-liner
+- Inheritance extension has zero duplication with kernel logic
+
+### 069: Attribute Inheritance — Full Alpha Parity
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** The initial inheritance extension was simple parent-walking. The alpha (htmx.js) has a richer system with explicit inheritance markers and append concatenation.
+
+**Decision:** Inheritance extension matches alpha behavior:
+1. **Direct**: `hx-target` on element → use it
+2. **Inherited marker**: `hx-target:inherited` on element → use it
+3. **Append**: `hx-target:append` or `hx-target:inherited:append` → find ancestor's value, concatenate with comma
+4. **Walk up**: `closest()` to ancestor with `:inherited` or `:inherited:append`, recursively resolve
+
+Configurable via `htmx.config.inheritance`:
+- `mode: 'explicit' | 'implicit'` — explicit requires `:inherited` suffix; implicit also inherits plain attributes
+- `inheritSuffix: 'inherited'` — configurable marker suffix
+- `appendSuffix: 'append'` — configurable append suffix
+
+Implementation: loop-based (not recursive). Collects raw append chain walking upward, reverses, joins with comma, parses once via `api.parse(raw, options)`.
+
+**Consequences:**
+- Full alpha parity for inheritance behavior
+- Configurable suffixes — can change `:inherited` to any string
+- Mode switch — explicit (default, like alpha) or implicit (like htmx 1.x/2.x)
+- No new api functions — wraps `api.attr`, uses `api.parse`
+
+### 070: Swap Styles Stay in Kernel
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** Considered moving swap styles (innerHTML, outerHTML, etc.) out of the kernel into a default extension, for consistency with how triggers don't have built-in event names. Tried it — tests failed, and it made the kernel unable to swap without extensions.
+
+**Decision:** Swap styles stay in the kernel. They're "minimal substance" — the DOM mutation primitives that make the kernel actually do something. The kernel sets `detail.swap.handler` to a default that reads `detail.swap.style` lazily from a local map. Extensions can:
+- Modify `detail.swap.style` during `config:swap` (e.g., swap-style-aliases)
+- Replace `detail.swap.handler` entirely during `config:swap` (e.g., morphing, view transitions)
+
+**Consequences:**
+- Kernel is self-sufficient for swapping — works without any extensions
+- Swap styles map is internal to the handler closure, not exposed on detail or api
+- Consistent with trigger pattern: kernel provides default `bindHandler`, extensions configure it
+
+### 072: Expose Swap Styles as `api.swaps`
+**Date:** 2026-02-13 | **Status:** Accepted — *Supersedes ADR-070 consequence "swap styles map is internal"*
+
+**Context:** Swap styles lived as a local `swapStyles` object inside `swap()`. This worked but made the system's capabilities opaque — there was no way to enumerate available swap styles from devtools, tooling, or extensions. An event-only override model (`htmx:config:swap`) works for *modifying* swap behavior, but doesn't let you ask "what swaps exist?" or add a new style without writing an event handler.
+
+Considered:
+- **Formal Registry pattern** (`Map` + `registerSwap()` method) — too much ceremony, new pattern to learn
+- **Proxy on the object** (throw on duplicate assignment) — too clever, surprising behavior on plain assignment, awkward override ergonomics (`delete` then reassign)
+- **Plain object on `api`** — simple, enumerable, zero new patterns
+
+**Decision:** Promote `swapStyles` to `api.swaps`, a plain object. The `swap()` function's default handler reads from `api.swaps`. Extensions add styles via direct assignment:
+
+```js
+// In a morph extension's boot handler:
+api.swaps.morph = (target, content) => { /* morphdom logic */ }
+```
+
+No registration method, no Proxy. Second assignment wins — that's standard JavaScript and developers understand it.
+
+**Consequences:**
+- Introspectable: `Object.keys(api.swaps)` in devtools shows available styles
+- Extensions add swap styles with a single assignment instead of writing a `config:swap` event handler
+- `config:swap` events still work for context-dependent overrides (e.g., inspect response headers to decide swap strategy)
+- No new API pattern — it's just an object property
+
+---
+
+### 073: TreeWalker `hx-*` Init Discovery
+**Date:** 2026-02-13 | **Status:** Accepted — *Supersedes init detail shape from ADR-071*
+
+**Context:** The kernel's `init()` put a `selectors: []` array on the detail and had a default handler that joined them into a querySelectorAll call. Extensions pushed selectors during `htmx:config:init`. This baked a coordination protocol (the selectors array) into the kernel's event detail — the kernel prescribed CSS selectors as the discovery mechanism, even though it never contributed any selectors itself.
+
+This also meant extensions like `hx-boost` that use non-method attributes couldn't be discovered without explicitly adding their selectors.
+
+Considered:
+- **Init every element** — too wasteful, O(all DOM nodes)
+- **Keep selectors array** — bakes a protocol into kernel detail that extensions must conform to
+- **No-op default handler** — makes kernel useless without extensions, contradicts pragmatic kernel philosophy
+
+**Decision:** The kernel's default init handler uses a TreeWalker to discover elements with any `hx-*` prefixed attribute. The `selectors` array is removed from the detail. The detail shape is now `{root, handler}`.
+
+```js
+handler: () => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+    let node = root
+    while (node) {
+        for (let i = 0; i < node.attributes.length; i++) {
+            if (node.attributes[i].name.startsWith('hx-')) {
+                api.initElement(node)
+                break
+            }
+        }
+        node = walker.nextNode()
+    }
+}
+```
+
+**Noise reduction:** `initElement` checks after `config:init:element` whether any extension claimed the element (set `detail.url`, added triggers, or registered cleanup callbacks). If nothing was configured, state is deleted and `before/after` events are skipped — no debug noise from unclaimed elements.
+
+Benchmarked at ~300µs for 5000 elements (249 with hx-*) vs ~200µs for targeted selectors. The 100µs difference is imperceptible.
+
+**Consequences:**
+- Kernel discovers all `hx-*` elements without knowing specific attribute names
+- Extensions like boost work automatically — container with `hx-boost` gets discovered and init'd
+- No protocol on the detail — extensions that need custom discovery replace `detail.handler`
+- `method-attrs` extension no longer needs a `htmx:config:init` handler
+- Unclaimed elements are silently discarded — no WeakMap leak, no event noise
+
+---
+
+### 071: `initElement` Owns the Pipeline Wiring
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** After moving method attribute reading into an extension (`method-attrs`), the kernel's `initElement` had no visible connection to the pipeline — you couldn't see where `api.ajax` was called without reading `htmx.defaults.js`. This made the core pipeline invisible.
+
+**Rejected:** Adding an `api.process(element)` function — too vague, hides the pipeline behind another layer.
+
+**Decision:** `initElement` has a default `detail.handler` that wires `detail.url/method/swap/target/triggers` to `bindTrigger + ajax`. Extensions set these fields during `htmx:config:init:element`; the handler reads them. This keeps the pipeline connection visible in the kernel:
+
+```
+config:init:element → extensions set url, method, swap, target, triggers
+handler()           → for each trigger, bindTrigger(element, {handler: () => ajax(...)})
+```
+
+**Consequences:**
+- The kernel shows the full pipeline: init → initElement → bindTrigger → ajax → swap
+- `method-attrs` is simplified to just reading attributes onto detail — no pipeline logic
+- Other extensions can set url/method/etc. from non-attribute sources (JS API, data attributes, etc.)
+- Empty triggers fallback to `[{}]` so the handler always has something to iterate
+
+### 074: Extended Selectors Move from Kernel to Extension
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** The kernel's `find()` included extended selector logic (named targets like `this`/`body`/`document`/`window`, traversal keywords like `closest`/`next`/`previous`, scan helpers) that accounted for ~974 bytes minified / ~210 bytes brotli. This was the single biggest size optimization available. The kernel only needs `querySelector`/`querySelectorAll` for its own operations.
+
+**Rejected:** Keeping extended selectors in the kernel — they're convenience syntax, not core plumbing. No kernel code uses `closest`, `next`, `previous`, etc.
+
+**Decision:** Slim `find()` to just CSS selectors + Element/null passthrough. Move extended selectors to an `extended-selectors` extension in `htmx.defaults.js` that wraps `api.find` at boot, using the same pattern as `inheritance` wraps `api.attr`. Registered first (before `inheritance`) since other extensions may use `api.find` with extended syntax.
+
+**Consequences:**
+- Kernel `find()` is 8 lines instead of 52 — minimal CSS-only primitive
+- `scanForward`/`scanBackward` helpers move to the extension (closure-scoped)
+- Full feature parity preserved — all extended selector syntax works when defaults are loaded
+- Kernel-only users get a smaller footprint; they can add extended selectors back if needed
+
+### 075: Trigger Phase Redesign — No Trigger Lists in Kernel, Flat Detail, handler + bind
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** The standalone `addTrigger(element, trigger)` function had an unclear signature. The `trigger` argument was a mystery bag mixing the event callback, event name, modifier flags, and a `bindHandler` function. Extensions accessed nested properties like `detail.trigger.handler`, `detail.trigger.delay`, `detail.trigger.bindHandler` — mixing "what to do" with "when to do it" and "how to attach it." The kernel also iterated trigger lists, which is extension-to-extension data.
+
+**Rejected alternatives:**
+- Two separate events (`config:trigger` + `config:trigger:bind`) each with `detail.handler` — cleaner separation but added complexity; the bind event needed a bridge property to access the trigger handler from phase 1.
+- Three-arg function `onTrigger(element, callback, spec)` — the kernel shouldn't know about trigger specs; they're extension-to-extension data.
+- Plugin fan-out ("fork and cancel") — the multiplexing plugin calls `onTrigger` recursively from inside `config:trigger`, causing recursion issues.
+- Keeping trigger list iteration in the kernel — the kernel shouldn't know about trigger lists. That's an extension concern.
+
+**Decision:**
+1. Replace `addTrigger` with `createTrigger(element, callback)` — a factory that returns a trigger object with `handler` (lifecycle-wrapped) and `bind` (default addEventListener). Lifecycle events (before:trigger / after:trigger) are baked into handler and cannot be skipped.
+2. The kernel's `initElement` handler creates a single trigger via `api.createTrigger`, emits `config:trigger`, then calls `bind()`.
+3. Parsed trigger properties are spread flat onto the trigger (`trigger.eventName`, `trigger.delay`, etc.) — no nested `detail.trigger` bag.
+4. Split `method-attrs` — new `trigger-attrs` extension handles hx-trigger parsing AND multi-trigger multiplexing by replacing `detail.handler` during `config:init:element`. It uses `api.createTrigger` for each trigger, guaranteeing lifecycle.
+5. The kernel knows nothing about trigger lists or trigger specs. It just sets up one trigger per element. Multi-trigger is purely an extension concern.
+
+**Consequences:**
+- `createTrigger` replaces `addTrigger` on `api` — cleaner factory pattern
+- Lifecycle events are guaranteed — baked into handler by the factory, not by the caller
+- `config:trigger` detail is flat and clear — extensions read/write top-level properties
+- Two pluggable functions on the trigger, with distinct roles: `handler` (noun — the callback) vs `bind` (verb — the attachment action)
+- No trigger setup duplication — both kernel and `trigger-attrs` use `api.createTrigger`
+
+### 076: Formalize api.wrap — First-Class Decorator Pattern
+**Date:** 2026-02-13 | **Status:** Accepted
+
+**Context:** Three extensions (extended-selectors, inheritance, parse-dot-path) wrap api functions at boot using an ad-hoc pattern: capture `const original = api.fn`, replace `api.fn = (...) => { ...; original(...) }`. Each does this manually with slightly different styles. The pattern is the core mechanism for cross-cutting concerns, but nothing in the code signals "I am extending this function" vs "I am replacing it."
+
+**Rejected alternatives:**
+- Full AOP framework with pointcuts, formal advice types, weaving — overengineering for <20 extensions and a 550-line kernel.
+- Proxy-based interception on the api object — runtime overhead, debugging complexity, no meaningful benefit over explicit wrapping.
+- Do nothing — the manual pattern works, but inconsistency grows with each new wrapping extension.
+
+**Decision:** Add `api.wrap(name, wrapper)` to the kernel (3 lines). The wrapper receives the original function as its first argument, followed by the caller's arguments:
+
+```js
+function wrap(name, wrapper) {
+    const original = api[name]
+    api[name] = (...args) => wrapper(original, ...args)
+}
+```
+
+Refactored all three boot-time wrapping extensions to use it.
+
+**Consequences:**
+- Consistent pattern — no more manual `const original = api.X; api.X = ...` boilerplate
+- Explicit intent — `api.wrap('find', ...)` reads as "extending find," not "replacing find"
+- Foundation for future introspection (wrap chain tracking, debug tooling) without committing to it now
+- Does NOT add: unwrapping, ordering control, pointcut selection — those are AOP-framework features not needed at this scale
+
+### 077: Remove Trigger Abstraction — Shared Handler + Lightweight config:trigger
+**Date:** 2026-02-14 | **Status:** Accepted (supersedes ADR-075)
+
+**Context:** ADR-075 introduced `setupTrigger` as a kernel primitive — a factory that builds a trigger detail with `handler` + `bind`, emits `config:trigger`, and calls `bind()`. This created a "trigger" abstraction the kernel doesn't need. The kernel already has `api.on` (addEventListener + cleanup) and lifecycle events. Triggers are just "listen for an event, then run the pipeline."
+
+**Key insight:** The trigger handler (what runs when the event fires) is a shared concern — the kernel creates it once, and all triggers reuse it. The wiring (how to attach the listener) is a separate concern. These two responsibilities map cleanly to two detail properties: `detail.trigger.handler` and `detail.handler`.
+
+**Rejected alternatives:**
+- Keep `setupTrigger` but rename to `setupListener` — same abstraction, different name.
+- Remove `config:trigger` entirely — loses the handler-wrapping point needed for future features like `hx-confirm`.
+- Put `listenOn`, `delay`, `throttle` on the `config:init:element` detail — kernel shouldn't know about these; they're defaults-layer concerns.
+- Two named handler variables (`triggerHandler`/`initHandler`) — inconsistent with single `handler` pattern used in every other pipeline event.
+
+**Decision:**
+
+1. **Remove `setupTrigger` from the kernel.** No trigger factory, no `bind` function.
+
+2. **Keep `config:trigger` as a lightweight handler-wrapping point.** The kernel emits `htmx:config:trigger` with `detail.trigger` (containing `{element, handler}`). Extensions like a future `hx-confirm` can wrap `detail.trigger.handler` here. This is not a trigger abstraction — it's the same handler-as-data pattern used by every other pipeline phase.
+
+3. **`detail.trigger.handler`** — the kernel creates this once. It runs each time the event fires: `preventDefault`, emit `before:trigger`, call `api.ajax`, emit `after:trigger`. All triggers reuse this same handler, so lifecycle events and `config:trigger` wrapping apply uniformly.
+
+4. **`detail.handler`** — how to wire the listener. Default: one `api.on` call. `trigger-attrs` replaces this for multi-trigger, reusing `detail.trigger.handler` throughout. Zero duplication.
+
+5. **`api.on` becomes the fourth wrappable primitive**, alongside `find`, `attr`, `parse`:
+   ```
+   api.find  ← extended-selectors
+   api.attr  ← inheritance
+   api.parse ← parse-dot-path
+   api.on    ← delay, throttle
+   ```
+   Extensions wrap `api.on` to process custom options (e.g., `options.delay`).
+
+6. **`trigger-attrs`** replaces `detail.handler` and reuses `detail.trigger.handler`:
+   ```js
+   detail.handler = () => {
+       const handler = detail.trigger.handler  // reuse kernel's handler
+       for (const t of triggers) {
+           api.on(element, t.eventName, handler, {delay: t.delay, once: t.once})
+       }
+   }
+   ```
+   Handles `load` (queueMicrotask), `every` (setInterval), `from` (resolve target), `once` (native option).
+
+7. **Kernel `initElement` flow:**
+   ```js
+   detail.trigger = {element}
+   detail.trigger.handler = (event) => { /* preventDefault, before:trigger, ajax, after:trigger */ }
+   detail.handler = () => { if (detail.eventName) api.on(element, detail.eventName, detail.trigger.handler) }
+
+   emit('htmx:config:init:element', detail)  // extensions populate request, swap, eventName
+   emit('htmx:config:trigger', detail.trigger)  // extensions can wrap trigger.handler
+   detail.handler()  // wire it up
+   ```
+
+**Consequences:**
+- Kernel has no trigger abstraction. `setupTrigger` removed entirely.
+- `detail.trigger.handler` created once by kernel, reused by all triggers — zero duplication between kernel and `trigger-attrs`.
+- `config:trigger` survives as a thin handler-wrapping point (same pattern as `config:request`, `config:swap`).
+- `delay`/`throttle` wrap `api.on` — consistent with `find`/`attr`/`parse` wrapping pattern.
+- `load`/`every`/`from`/`once` handled by `trigger-attrs` — no separate extensions needed.
+- Each config event has exactly one `handler` — consistent naming throughout the pipeline.
+
+### 078: Rename Init/Cleanup Events — Unsuffixed = Element, `:all` = Subtree
+**Date:** 2026-02-14 | **Status:** Accepted
+
+**Context:** The events `htmx:config:init` (subtree walk) and `htmx:config:init:element` (single element) had counterintuitive naming. Users hearing "config:init" expect it to mean "an element is being initialized," not "the global tree-walking process is being configured." The `:element` suffix made the primary concept feel like a sub-concept. Same issue with `cleanup` / `cleanup:element`.
+
+**Rejected alternatives:**
+- Introduce new terms (`discover`/`sweep` for subtree, `init`/`cleanup` for element) — adds vocabulary. User preferred keeping concept count low.
+- Keep current naming — counterintuitive for users listening for events.
+
+**Decision:** Flip the suffix. The unsuffixed event is the intuitive one (element-level). The subtree walk gets `:all`:
+
+| Old name | New name | Meaning |
+|---|---|---|
+| `config:init` | `config:init:all` | Subtree walk |
+| `before:init` | `before:init:all` | Subtree walk |
+| `after:init` | `after:init:all` | Subtree walk |
+| `config:init:element` | `config:init` | Single element |
+| `before:init:element` | `before:init` | Single element |
+| `after:init:element` | `after:init` | Single element |
+| `config:cleanup` | `config:cleanup:all` | Subtree walk |
+| `before:cleanup` | `before:cleanup:all` | Subtree walk |
+| `after:cleanup` | `after:cleanup:all` | Subtree walk |
+| `before:cleanup:element` | `before:cleanup` | Single element |
+| `after:cleanup:element` | `after:cleanup` | Single element |
+
+Function names stay as-is: `init()` (subtree), `initElement()` (single element). The slight mismatch is fine — `init()` genuinely does both (discovers and initializes), and the events separate those phases.
+
+**Consequences:**
+- `htmx:config:init` now means what users expect — "an element is being initialized."
+- No new vocabulary. Same two terms (`init`, `cleanup`), just flipped suffix.
+- All defaults updated: `method-attrs`, `default-trigger`, `trigger-attrs`, `boost` now listen on `htmx:config:init` (element). `boost` subtree hook uses `htmx:after:init:all`.
+
+### 079: Universal Event Detail Contract — `{element, handler}`
+**Date:** 2026-02-14 | **Status:** Accepted
+
+**Context:** Event details had inconsistent structure across events. Subtree walk events used `detail.root`, ajax used `detail.source`, init used `detail.element`. Handler location varied: top-level on init events, nested on ajax phases (`detail.request.handler`, `detail.response.handler`, `detail.swap.handler`). No universal contract that an extension author could rely on.
+
+htmx 2.0 has the same problem (ad-hoc per event) but at least injects `detail.elt` into every event via `triggerEvent()`. We can do better.
+
+**Rejected alternatives:**
+- Per-phase detail objects (each ajax phase gets its own flat detail) — loses cross-phase visibility. Extensions in `config:swap` can't see request URL; `config:request` can't see swap target.
+- Flat everything (no grouping) — name collisions between request and response (`url`, `headers` mean different things).
+- Keep `source`/`root` for semantic clarity — breaks the universal contract, which is the whole point.
+
+**Decision:**
+
+Universal contract for all event details:
+- **`element`** — always present. The element this event concerns (was `root` in init:all, `source` in ajax).
+- **`handler`** — always present on `config:*` events, always top-level. Reassigned per phase in ajax. Modifiable only during `config:*` (convention — `before:*` is for cancellation, not configuration).
+- Everything else is phase-specific "kwargs" that specific extensions produce/consume.
+
+Phase data is grouped to avoid name collisions: `detail.request.url`, `detail.response.url`, `detail.swap.target`. Handler is the exception — always promoted to top level so extensions always do `detail.handler = ...` regardless of which phase.
+
+**Full event detail map:**
+
+```
+config:init:all     {element, handler}
+config:init         {element, handler, trigger: {element, eventName}, request: null, swap: null}
+config:trigger      {element, handler, trigger: {element, eventName}, request, swap}
+before:trigger      {element, event}
+after:trigger       {element, event}
+config:request      {element, handler, request: {url, method, headers, body}, swap: {...}}
+config:response     {element, handler, request: {...}, response: {raw, status, ok, ...}, swap: {...}}
+config:swap         {element, handler, request: {...}, response: {...}, swap: {content, target, style}}
+htmx:done           {element, handler, request, response, swap, error: null}
+htmx:error          {element, handler, request, response, swap, error: Error}
+htmx:finally        {element, handler, request, response, swap, error}
+config:cleanup:all  {element, handler}
+before:cleanup      {element}
+after:cleanup       {element}
+```
+
+*Updated by ADR-082: `trigger.handler` removed, `config:trigger` receives full detail, `htmx:done`/`htmx:error`/`htmx:finally` split (ADR-080).*
+
+**Consequences:**
+- Extension authors can rely on `detail.element` and `detail.handler` everywhere.
+- `detail.handler = myFn` works the same in `config:request`, `config:swap`, `config:init` — no need to remember `detail.request.handler` vs `detail.swap.handler`.
+- Ajax handler no longer needs to destructure itself out of `detail.request` for fetch — cleaner default handler.
+- `source` eliminated as a concept. `element` is "who this event concerns." `swap.target` is "where the response goes."
+- Phase data stays grouped (request, response, swap) — collision-free, semantically clear.
+
+### 080: Kernel Polish — Errors, Guards, Event Naming
+**Date:** 2026-02-14 | **Status:** Accepted
+
+**Context:** Several small inconsistencies accumulated: `=== false` checks were unexpressive, error handling was ad-hoc (mix of `new Error` and `new HtmxError`, inconsistent messages, no runtime error visibility), and the ajax pipeline had a single `htmx:done` event that carried both success and error — like responding 200 with an error body.
+
+**Decision:**
+
+1. **`canceled()` predicate** — `const canceled = (result) => result === false`. Every emit guard now reads `if (canceled(api.emit(...))) return`.
+
+2. **`HtmxError` convention** — follows standard `Error(message, options)` signature. Type goes in options: `new HtmxError('message', {type: 'SWAP_TARGET_MISSING'})`. Supports native `cause` chaining.
+
+3. **Error types** — descriptive, max 3 words: `EXTENSION_ALREADY_REGISTERED`, `EXTENSION_DEPENDENCY_MISSING`, `EVENT_NAME_MISSING`, `SWAP_TARGET_MISSING`, `SWAP_STYLE_UNKNOWN`, `REQUEST_URL_MISSING`, `WRAP_TARGET_MISSING`.
+
+4. **Two error mechanisms** (documented in file header):
+   - `throw HtmxError` — programmer error (bad args, misconfiguration). Crashes immediately. Inside ajax pipeline, caught and converted to htmx:error.
+   - `htmx:error` event — runtime error during ajax. Logged to console, available on `detail.error`.
+
+5. **Ajax outcome events** — map to try/catch/finally:
+   - `htmx:done` — success only (end of try)
+   - `htmx:error` — failure only (catch), `detail.error` set, `console.error` logged
+   - `htmx:finally` — always runs (finally)
+
+**Consequences:**
+- Every guard is self-documenting. The `=== false` distinction is explained once.
+- Error messages are consistent: plain English, no prefix, subject first.
+- Runtime errors are never silent — console.error + event.
+- Extensions can react to errors (`htmx:error`) or do cleanup (`htmx:finally`) without checking `detail.error` on a success event.
+
+---
+
+### 081: Swap/Ajax Public vs Internal Split
+**Date:** 2026-02-14 | **Status:** Accepted
+
+**Context:** `swap()` was polymorphic — it sniffed `options.swap` to guess whether it received flat public options or a pipeline detail. `ajax()` similarly mixed normalization with pipeline logic.
+
+**Decision:** Separate concerns:
+- **`api.swap(detail)` / `api.ajax(options)`** — internal pipeline functions. Accept pipeline-shaped detail. Wrappable by extensions via `api.wrap`.
+- **`htmx.swap(options)` / `htmx.ajax(options)`** — public API methods (not getters). Normalize flat user options to pipeline shape, then call `api.*`. Extra keys forwarded as modifiers (kwargs pattern): swap modifiers go to `detail.swap`, request modifiers go to `detail.request`.
+
+**Consequences:**
+- No more shape sniffing. Internal functions always get pipeline detail.
+- Extensions wrapping `api.swap`/`api.ajax` always see pipeline shape.
+- Public API supports kwargs: `htmx.swap({style: 'innerHTML', transition: true})`.
+- `htmx.ajax` accepts `swap` as string shorthand or object with modifiers.
+
+---
+
+### 082: Remove URL Gate, Flatten Handler, Inline Wiring
+**Date:** 2026-02-14 | **Status:** Accepted
+
+**Context:** `initElement` had `if (!detail.request?.url) return` — encoding "every htmx element does HTTP" into the kernel. This would block SSE/WebSocket extensions. Additionally, `detail.trigger.handler` (per-fire) and `detail.handler` (wiring) were two different concepts using the same name at different nesting levels.
+
+**Decision:**
+
+1. **Remove URL gate** — extensions cancel `config:init` if they don't want an element. The default wiring handler already no-ops when eventName is null. WeakMap state on unclaimed elements is cheap (GC'd automatically).
+
+2. **Flatten handler** — `detail.trigger.handler` promoted to `detail.handler`. One handler, always means "what runs when triggered." `detail.trigger` becomes pure data: `{element, eventName}`.
+
+3. **Inline wiring** — kernel wires inline after `config:trigger`:
+   ```js
+   if (detail.trigger.eventName) api.on(element, detail.trigger.eventName, detail.handler)
+   ```
+   Extensions that do their own wiring (trigger-attrs for multi-trigger) null `detail.trigger.eventName` to prevent default. Elements without DOM triggers (SSE, WebSockets) leave eventName null.
+
+4. **trigger-attrs moved to config:trigger** — reads `detail.handler` directly, does its own `api.on` calls, nulls eventName.
+
+**Consequences:**
+- Kernel is transport-agnostic. SSE/WebSocket extensions can participate in the full init lifecycle.
+- One `detail.handler` everywhere — always means "the strategy to execute."
+- `detail.trigger` is just config data, no nested handler.
+- `config:trigger` is where all trigger wiring happens (kernel default + extensions).
+
+### 083: Single Source File — Core Pipeline Inline, Extensions for Third Parties
+**Date:** 2026-02-15 | **Status:** Accepted
+
+**Context:** The kernel/standard split (two files) and `api.expose()` were over-engineering. htmx's value is simplicity. An ~600-line library doesn't need a microkernel + standard extension + API slots. The core pipeline functions (parse, find, attr, swap, ajax) are the engine — they should be inline code. The extension system (register, wrap, emit) is valuable for third-party extensions but the core shouldn't be forced through it.
+
+**Decision:**
+
+1. **One source file** (`src/htmx.js`, ~600 lines) with the complete engine: parse, find, attr, swap, ajax, init/cleanup, events, wrap, register, emit, on.
+2. **Extensions for behaviors** — method attrs, default triggers, trigger parsing, config defaults, delay, throttle, swap aliases, etc. are `htmx.register()` calls in `src/extensions/`.
+3. **Kill** kernel/standard split, `api.expose()`, API slots.
+4. **Keep** `register()`, `wrap()`, `emit()` for third-party and built-in extensions.
+
+**Consequences:**
+- Source IS the readable file — no "read the build artifact" indirection.
+- Extensions are individually replaceable — someone could use `data-action` instead of `hx-get`.
+- Assembler injects extensions into the single file for distribution.
+
+### 084: Extension Naming — Each Attribute Is a Separate Register Call
+**Date:** 2026-02-15 | **Status:** Accepted
+
+**Context:** Grouping behaviors under abstract names like "method-attrs" and "standard" made it unclear what each extension does. The name should be the documentation.
+
+**Decision:**
+
+Each `hx-*` attribute gets its own `htmx.register('hx-get', ...)` call. One file can contain multiple register calls (e.g., `hx-methods.js` has hx-get through hx-delete). Non-attribute defaults are grouped as `htmx.register('defaults', ...)`.
+
+Extension files:
+- `hx-methods.js` — hx-get, hx-post, hx-put, hx-patch, hx-delete
+- `hx-swap.js`, `hx-target.js`, `hx-trigger.js`, `default-trigger.js`
+- `defaults.js` — config, swap defaults/aliases, request defaults/timeout
+- `delay.js`, `throttle.js`
+- `extended-selectors.js`, `inheritance.js`, `parse-dot-path.js`, `boost.js`
+
+**Consequences:**
+- Looking at the extension list immediately tells you what htmx supports.
+- Each register call is self-contained and self-documenting.
+
+### 085: Assembler Emit-Site Inlining — No Register in Output
+**Date:** 2026-02-15 | **Status:** Accepted
+
+**Context:** The assembled output should contain zero `register()` calls. Built-in extension behavior should be inline code at the relevant call sites, not dispatched through the extension event loop.
+
+**Decision:**
+
+The assembler performs two types of inlining:
+
+1. **Boot handlers** — bodies injected between `// ── Extensions: Start` and `// ── Extensions: End` markers. These run at script load time (wraps, config setup).
+
+2. **Event handlers** — bodies injected at matching `api.emit()` call sites. A `before:init` handler body is placed right before `api.emit(element, 'htmx:before:init', detail)`. The emit still fires for third-party runtime extensions.
+
+Cancellation: `return false` in handler bodies is converted to `return` when inlined — exits the enclosing function, equivalent to emit-loop cancellation.
+
+**Parameter validation:** Handler params must be `(detail, api)` (or `_` if unused). The assembler validates this at build time with Rust-style error messages:
+```
+error: extension 'bad-ext' handler for 'htmx:before:init' has invalid parameter names
+  --> src/extensions/bad.js:3:5
+   |
+ 3 |     (d, a) => {
+   |     ^^^^^^
+   = help: first parameter 'd' — expected 'detail' (or '_' if unused)
+```
+
+**Consequences:**
+- Zero overhead for built-in extensions — they're inline code.
+- `register()` exists purely as the third-party runtime API.
+- Assembled output is readable — each inlined block is tagged with `[extension-name]`.
+- Behavioral equivalence: same semantics as register + emit loop, validated by running tests against both source and assembled builds.
+
+### 086: Remove `request`/`swap` from initElement Detail — JIT at Trigger Time
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** `initElement()` built a detail object with `request` and `swap` fields that extensions populated during `before:init`. These were captured in a closure and used later when the trigger fired. This had two problems: (1) it coupled the kernel to ajax concepts — WebSocket/WebTransport extensions don't use request/swap, so those fields are meaningless noise; (2) attribute values were frozen at init time, so dynamic attribute changes (e.g., `element.setAttribute('hx-get', '/new-url')`) had no effect. Continues the JIT direction from ADR-007.
+
+**Rejected alternatives:**
+- **Keep request/swap on init detail** — convenient closure, but couples kernel to HTTP and prevents dynamic attributes
+- **`api.resolve(element)` on the kernel** — wrappable JIT reader, but still makes the kernel aware of ajax-shaped config (superseded)
+
+**Decision:** Strip `request` and `swap` from the init detail. `initElement` only configures the trigger (`eventName`, `execute`, `init.execute`). The default `trigger.execute` emits `before:trigger` / `after:trigger` — nothing else. Core extensions hook `before:trigger` to read attributes JIT via `api.attr()` and call `api.ajax()`.
+
+**Consequences:**
+- Kernel has no knowledge of HTTP, requests, or response handling
+- WebSocket/SSE extensions use the same lifecycle without unused fields
+- Dynamic attribute changes work — attributes are read fresh each trigger fire
+- `ajax()` moves out of the kernel into core extensions (see ADR-087)
+
+---
+
+### 087: Move `ajax()` from Kernel to Core Extension
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** With ADR-086 removing request/swap from the init detail, the kernel's trigger.execute no longer calls ajax. The kernel has no HTTP awareness. Having `ajax()` defined in the kernel contradicts this — it's HTTP transport, not lifecycle.
+
+**Rejected alternatives:**
+- **Keep ajax in kernel** — convenient, but the kernel should be transport-agnostic. WebSocket and SSE are equally valid transports.
+
+**Decision:** Move `ajax()` to a core extension. Installed on `api.ajax` at boot time (same pattern as `api.parse`). The public `htmx.ajax()` getter exposes it. The kernel defines the lifecycle; core extensions define the transport.
+
+**Consequences:**
+- Kernel is purely lifecycle + DOM primitives (swap, init/cleanup, events, utilities)
+- `ajax` is a core extension that installs `api.ajax` at boot
+- Extensions that need HTTP call `api.ajax()` — still available, just not kernel-defined
+- Public API unchanged — `htmx.ajax()` still works via getter delegation
+
+---
+
+### 088: Remove Swap Styles Registry — Use `before:swap` Instead
+**Date:** 2026-02-17 | **Status:** Accepted (supersedes ADR-070, ADR-072)
+
+**Context:** The kernel had `api.swaps`, a plain object registry mapping style names to functions. This was a third extension mechanism alongside events (`before:*` → replace `execute()`) and wrappers (`api.wrap()`). Three mechanisms is two too many.
+
+**Rejected alternatives:**
+- **Keep `api.swaps` registry** — convenient one-liner to add styles, but it's a separate dispatch mechanism that duplicates what `before:swap` already provides
+
+**Decision:** Remove `api.swaps`. The kernel's default `swap.execute` handles the standard DOM insertion methods (innerHTML, outerHTML, beforebegin, afterbegin, beforeend, afterend, delete, none). Custom swap styles hook `before:swap`, check `detail.swap.style`, and replace `detail.swap.execute`. This is the same `before:*` → replace `execute()` pattern used by every other phase.
+
+**Consequences:**
+- One fewer concept in the kernel. Two extension mechanisms: events and wrappers.
+- Adding a morph swap: hook `before:swap`, check style, replace execute. Standard pattern.
+- Built-in styles live in the kernel's default execute — no registry lookup, just a switch/if-chain.
+
+### 089: Pipeline Context — Transport-Agnostic Detail with Namespaces
+**Date:** 2026-02-17 | **Status:** Accepted
+
+**Context:** `swap(detail)` received the full HTTP pipeline detail (`{element, request, response, swap}`). This coupled a kernel function to HTTP-specific fields. But swap genuinely needs access to upstream context — a morph extension reads `detail.response.headers` during `before:swap`, a logging extension might read connection info. The question: how does context flow through without coupling swap to a specific transport?
+
+**Rejected alternatives:**
+- **Flat options `swap({element, content, target, style})`** — clean signature, but loses pipeline context. Extensions at `before:swap` can't see upstream info (response headers, connection state). Would require ad-hoc workarounds.
+- **Separate context parameter `swap(options, context)`** — two args, unclear ownership, extensions would need to know which arg to modify.
+
+**Decision:** The detail is a **pipeline context** — a shared object that flows through the entire pipeline for a given action. Each transport owns its own namespace; the kernel only reads what it needs:
+
+```
+HTTP:          {element, request, response, swap: {content, target, style}}
+WebSocket:     {element, connection, message, swap: {content, target, style}}
+SSE:           {element, source, event, swap: {content, target, style}}
+Programmatic:  {element, swap: {content, target, style}}
+```
+
+The kernel's `swap()` reads `detail.element` and `detail.swap.*`. Everything else is pass-through context that extensions can read across namespaces. The kernel is transport-agnostic not because it ignores context, but because it doesn't define or require transport-specific namespaces.
+
+**Consequences:**
+- `swap(detail)` is the correct signature — detail is not "an HTTP detail", it's "a pipeline context"
+- Each transport defines its own namespaces (request/response for HTTP, connection/message for WebSocket)
+- Extensions can read across namespaces (morph reads `detail.response` at `before:swap`)
+- The kernel documents which namespaces it reads; everything else is pass-through
+- Same pattern applies to any future kernel function that participates in a pipeline
+
+---
+
+## Session State (2026-02-17) — Snapshot, may be stale
+
+### What's done
+- All previous work (ADRs 001-085)
+- **ADR-086**: Remove request/swap from initElement detail. JIT attribute reading at trigger time. Kernel has no HTTP awareness.
+- **ADR-087**: Move ajax() from kernel to core extension. Installed on api.ajax at boot (like api.parse).
+- **ADR-088**: Remove api.swaps registry. Custom swap styles use before:swap → replace execute(). Two extension mechanisms only: events and wrappers.
+- **ADR-089**: Pipeline context with namespaces. swap(detail) reads detail.element and detail.swap.*; transport-specific fields (request, response, connection, message) are pass-through for extensions.
+
+### Kernel scope (after ADRs 086-088)
+- **Lifecycle:** init, initElement, cleanup, cleanupElement, boot, MutationObserver
+- **DOM primitives:** swap (with built-in styles in default execute)
+- **Events:** emit, on
+- **Utilities:** find, attr, wrap
+- **State:** elements WeakMap, config, extensions
+
+NOT in kernel: ajax, parse, resolve, swap registry. These are core extensions.
+
+### Pending kernel changes
+- [ ] Strip request/swap from initElement detail, make default trigger.execute just emit before:trigger / after:trigger
+- [ ] Move ajax() to core extension (install on api.ajax at boot)
+- [ ] Remove api.swaps registry, move built-in styles into default swap.execute
+- [ ] Add execute() to cleanupElement for lifecycle uniformity
+- [ ] Move swap preprocessing (target resolution, content parsing) into swap.execute
+
+### File layout
+- **`src/htmx.kernel.js`** — Lifecycle + DOM primitives. No HTTP awareness.
+- **`src/htmx.core.js`** — All behavior: ajax, parse, hx-* attributes, triggers, defaults.
+- **`src/extensions/`** — Optional extensions.
+- **`tools/assembler/`** — Rust assembler. Inlines extensions at emit sites.
+- **`dist/htmx.js`** — Assembled output.
 
 ---
 
@@ -1945,14 +3079,14 @@ Ideas worth preserving for later consideration. Not committed to.
 | Chainable Layer 3 API       | API       | `htmx.on('#btn', 'click').get('/api', { target: '#result' })`. Declarative JS equivalent of attributes. Deferred until Layer 2 is designed.                                                                                                                                                                                |
 | `CANCELLED` sentinel        | Pipeline  | Symbol returned from pipeline to short-circuit without error. Cleaner than `return false` for "intentionally stopped."                                                                                                                                                                                                     |
 | `detail.waitUntil(promise)` | Pipeline  | Async extension hooks that delay the pipeline (e.g., confirm dialogs, async validation).                                                                                                                                                                                                                                   |
-| RelaxedJSON parser          | Parsing   | Dot notation in `hx-vals`/`hx-headers` (e.g., `hx-vals="user.name: 'John'"`).                                                                                                                                                                                                                                              |
+| ~~RelaxedJSON parser~~      | Parsing   | ~~Dot notation — addressed by ADR-054 (dot-path expansion extension)~~                                                                                                                                                                                                                                                      |
 | Reactive state → DOM sync   | State     | `element.state` changes auto-reflect to DOM attributes or text.                                                                                                                                                                                                                                                            |
 | `htmx.inspect(element)`     | Debug     | Returns all htmx state/config for an element.                                                                                                                                                                                                                                                                              |
 | `hx-debug`                  | Debug     | Per-element debug flag (registered feature, not kernel).                                                                                                                                                                                                                                                                   |
 | Trace mode                  | Debug     | Opt-in logging (`htmx.config.debug = true` or `['request', 'swap']`). Logs extension, detail, cancellations.                                                                                                                                                                                                               |
 | `hx-on` shorthands          | Attribute | `hx-on::init` maps to `htmx:before:init`, etc. (see ADR-017).                                                                                                                                                                                                                                                              |
 | `hx-on` unified syntax      | Attribute | `hx-on="click from:body throttle:500 => { handler() }; input => { other() }"`. Reuses trigger parser for event+modifiers, adds `=> {body}` and `;` separator. Enables modifier support (`from`, `throttle`, `debounce`, `once`) that `hx-on:event` can't express. Own MutationObserver since can't CSS-select `[hx-on:*]`. |
-| Universal attribute parser  | Parsing   | Single parser for all `hx-*` values (modifiers, selectors, expressions).                                                                                                                                                                                                                                                   |
+| ~~Universal attribute parser~~| Parsing | ~~Addressed by ADR-054 — universal `parse(text)` with protect-and-restore extensibility~~                                                                                                                                                                                                                                   |
 | View transitions queue      | Swap      | Coordinate multiple concurrent view transitions.                                                                                                                                                                                                                                                                           |
 | Configurable selectors      | Extension | Extensions register custom selector syntax (`closest`, `find`, `next`, `previous`).                                                                                                                                                                                                                                        |
 | Meta config dot-path        | Config    | `<meta name="htmx.config.swap.method" content="outerHTML">`.                                                                                                                                                                                                                                                               |
@@ -1960,4 +3094,6 @@ Ideas worth preserving for later consideration. Not committed to.
 | `AbortSignal.timeout()`     | Modern JS | Replace manual `setTimeout` + `AbortController` in timeout extension. Cleaner request timeout handling.                                                                                                                                                                                                                    |
 | `AbortSignal.any()`         | Modern JS | Combine user cancel + timeout signals in sync extension. Eliminates manual signal tracking.                                                                                                                                                                                                                                |
 | `element.checkVisibility()` | Modern JS | Replace `offsetWidth > 0 && offsetHeight > 0` hack for `revealed` trigger. Native visibility check.                                                                                                                                                                                                                        |
+| ~~Extension compiler~~      | Tooling   | ~~Implemented as ADR-085: assembler emit-site inlining.~~ |
+| Debug trace extension       | Debug     | Extension that visualizes the full execution path in console: wrapper chains, event handler invocations, detail mutations. Shows indented tree like `ajax() → swap-style-aliases wrapper → emit(htmx:before:swap) → [default-swap] handler`. More detailed than trace mode — shows wrappers too, not just events.             |
 
