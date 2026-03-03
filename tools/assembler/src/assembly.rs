@@ -892,7 +892,10 @@ fn find_emit_calls_recursive(node: Node, src: &[u8], source: &str, out: &mut Vec
 }
 
 /// Inject event handlers at `api.emit()` call sites within a text string.
-/// Used for define function bodies where emit sites aren't in the kernel source.
+/// Used for define function bodies and on-handler bodies where emit sites
+/// aren't in the kernel source. Recursively processes handler bodies so that
+/// nested emit sites (e.g. an on-handler that emits htmx:before:trigger)
+/// also get their handlers inlined.
 /// Returns the text with handler blocks inserted before each matching emit line.
 fn inject_handlers_in_text(
     text: &str,
@@ -900,6 +903,18 @@ fn inject_handlers_in_text(
     extensions: &[Extension],
     dash: &dyn Fn(&str) -> String,
 ) -> String {
+    inject_handlers_in_text_recursive(text, event_handlers, extensions, dash, 0)
+}
+
+fn inject_handlers_in_text_recursive(
+    text: &str,
+    event_handlers: &HashMap<String, Vec<(usize, usize)>>,
+    extensions: &[Extension],
+    dash: &dyn Fn(&str) -> String,
+    depth: usize,
+) -> String {
+    if depth > 4 { return text.to_string(); } // guard against infinite recursion
+
     let sites = find_emit_sites(text);
     if sites.is_empty() { return text.to_string(); }
 
@@ -933,7 +948,13 @@ fn inject_handlers_in_text(
             out.push_str(&format!("{}// ── {} {}\n", site.indent, tag, dash(&tag)));
             out.push_str(&format!("{}{}: {{\n", site.indent, label));
 
-            let body = convert_returns_for_label(&dedent(&handler.body), &label);
+            // Recursively inject handlers into this handler's body in case it
+            // contains api.emit() calls (e.g. hx-trigger emits htmx:before:trigger)
+            let dedented = dedent(&handler.body);
+            let processed = inject_handlers_in_text_recursive(
+                &dedented, event_handlers, extensions, dash, depth + 1,
+            );
+            let body = convert_returns_for_label(&processed, &label);
             let extra_indent = format!("{}    ", site.indent);
             out.push_str(&indent(&body, &extra_indent));
             out.push('\n');
@@ -2174,7 +2195,7 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
     }
 
     // ── Check for orphan handlers (no matching emit site) ─────────────
-    // Collect all known emit sites: kernel source + define function bodies
+    // Collect all known emit sites: kernel source + define function bodies + on handler bodies
     let mut all_emit_events: HashSet<String> = HashSet::new();
     for site in &emit_sites {
         all_emit_events.insert(site.event_name.clone());
@@ -2185,6 +2206,14 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
             .unwrap_or(&def.fn_text);
         for site in find_emit_sites(fn_text) {
             all_emit_events.insert(site.event_name);
+        }
+    }
+    // Also scan on-handler bodies for emit sites (handles recursive inlining)
+    for ext in extensions {
+        for handler in &ext.handlers {
+            for site in find_emit_sites(&handler.body) {
+                all_emit_events.insert(site.event_name);
+            }
         }
     }
     // Error on any handler event that has no emit site
@@ -2320,7 +2349,10 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
                     out.push_str(&format!("    // ── {} {}\n", tag, dash(&tag)));
                     out.push_str(&format!("    {}: {{\n", label));
 
-                    let body = convert_returns_for_label(&body_dedented, &label);
+                    let processed = inject_handlers_in_text(
+                        &body_dedented, &event_handlers, extensions, &dash,
+                    );
+                    let body = convert_returns_for_label(&processed, &label);
                     out.push_str(&indent(&body, "        "));
                     out.push('\n');
 
@@ -2343,7 +2375,12 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
                         out.push_str(&format!("{}// ── {} {}\n", site_indent, tag, dash(&tag)));
                         out.push_str(&format!("{}{}: {{\n", site_indent, label));
 
-                        let body = convert_returns_for_label(&dedent(&handler.body), &label);
+                        // Recursively inject handlers into this handler's body
+                        let dedented = dedent(&handler.body);
+                        let processed = inject_handlers_in_text(
+                            &dedented, &event_handlers, extensions, &dash,
+                        );
+                        let body = convert_returns_for_label(&processed, &label);
                         let extra_indent = format!("{}    ", site_indent);
                         out.push_str(&indent(&body, &extra_indent));
                         out.push('\n');
