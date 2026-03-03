@@ -5,9 +5,9 @@ const config = {
   <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>htmx Tests (Kernel+Core)</title>
+    <title>htmx Tests</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="htmx:config" content='{"logAll":false}'>
+    <meta name="htmx:config" content='{"logAll":false, "extensions": "hx-optimistic,preload"}'>
     <style>
         ::view-transition-group(*),
         ::view-transition-old(*),
@@ -22,8 +22,9 @@ const config = {
 
 <script src="node_modules/chai/chai.js"></script>
 <script src="test/lib/fetch-mock.js"></script>
-<script src="src/htmx.kernel.js"></script>
-<script src="src/htmx.core.js"></script>
+<script src="src/htmx.js"></script>
+<script src="../src/ext/hx-optimistic.js"></script>
+<script src="../src/ext/hx-preload.js"></script>
 
 <script class="mocha-init">
     window.should = window.chai.should()
@@ -41,7 +42,7 @@ const config = {
   nodeResolve: true,
   coverage: true,
   coverageConfig: {
-    include: ['src/htmx.kernel.js', 'src/htmx.core.js'],
+    include: ['src/htmx.js'],
   },
   files: ['test/tests/**/*.js'],
   reporters: [
