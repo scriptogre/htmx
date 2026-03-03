@@ -824,6 +824,75 @@ const publicApi = {
     requires: ['swaps', 'ajax'],
     on: {
         'htmx:boot': (detail, api) => {
+            // Aliases
+            htmx.process = htmx.init
+            htmx.trigger = htmx.emit
+
+            // findAll(selector) or findAll(root, selector)
+            htmx.findAll = (selectorOrRoot, selector) => {
+                if (selector === undefined) {
+                    return [...document.querySelectorAll(selectorOrRoot)]
+                }
+                const root = typeof selectorOrRoot === 'string'
+                    ? document.querySelector(selectorOrRoot) : selectorOrRoot
+                return root ? [...root.querySelectorAll(selector)] : []
+            }
+
+            // find override: support find(root, selector) two-arg form
+            const _kernelFind = htmx.find
+            htmx.find = (selectorOrRoot, selector) => {
+                if (selector === undefined) {
+                    return _kernelFind(selectorOrRoot)
+                }
+                const root = typeof selectorOrRoot === 'string'
+                    ? document.querySelector(selectorOrRoot) : selectorOrRoot
+                return root?.querySelector(selector) ?? null
+            }
+
+            // forEvent(name, timeout, target) — promise-based event waiting
+            htmx.forEvent = (event, timeout = 200, target = document) => {
+                return new Promise((resolve, reject) => {
+                    const handler = (evt) => {
+                        clearTimeout(timeoutId)
+                        target.removeEventListener(event, handler)
+                        resolve(evt)
+                    }
+                    const timeoutId = timeout > 0 ? setTimeout(() => {
+                        target.removeEventListener(event, handler)
+                        reject(new Error(`Timeout waiting for ${event}`))
+                    }, timeout) : null
+                    target.addEventListener(event, handler)
+                })
+            }
+
+            // timeout(ms) — promise-based delay
+            htmx.timeout = (ms) => new Promise(r => setTimeout(r, ms))
+
+            // parseInterval(str) — "150" → 150, "2s" → 2000, "1m" → 60000
+            htmx.parseInterval = (str) => {
+                if (typeof str === 'number') return str
+                if (!str) return undefined
+                const m = str.match(/^(\d+)(ms|s|m)?$/)
+                if (!m) return undefined
+                const [, n, unit] = m
+                return unit === 's' ? n * 1000 : unit === 'm' ? n * 60000 : +n
+            }
+
+            // onLoad(callback) — fires after walk:init
+            htmx.onLoad = (callback) => {
+                document.addEventListener('htmx:after:walk:init', (evt) => callback(evt.detail.element))
+            }
+
+            // takeClass(el, className, container)
+            htmx.takeClass = (el, className, container = el.parentElement) => {
+                for (const elt of container.querySelectorAll('.' + className)) elt.classList.remove(className)
+                el.classList.add(className)
+            }
+
+            // defineExtension — old-style adapter
+            htmx.defineExtension = (name, ext) => htmx.install(name, ext)
+
+            // swap/ajax/parse (existing functionality)
             htmx.swap = (options) => {
                 const {element, content, target, style, ...modifiers} = options
                 return api.swap(
