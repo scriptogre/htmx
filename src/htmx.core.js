@@ -1124,6 +1124,280 @@ const throttleEvents = {
 }
 
 
+// ── OOB Swap ───────────────────────────────────────────────────────────
+
+/**
+ * Processes out-of-band swaps from response content.
+ * Handles hx-swap-oob attributes on response elements and hx-select-oob on triggers.
+ */
+const oobSwap = {
+    requires: ['swaps'],
+    config: {attributeFilter: ['hx-select-oob']},
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            const content = detail.swap?.content
+            if (!(content instanceof DocumentFragment)) return
+
+            // Process hx-select-oob from the triggering element
+            const selectOOB = api.attr(detail.element, 'hx-select-oob')
+            if (selectOOB) {
+                for (const spec of selectOOB.split(',')) {
+                    const [selector, swapStyle = 'outerHTML'] = spec.trim().split(/:(.*)/s)
+                    for (const el of content.querySelectorAll(selector.trim())) {
+                        const target = el.id ? document.getElementById(el.id) : null
+                        if (target) {
+                            const frag = document.createDocumentFragment()
+                            frag.appendChild(el)
+                            api.swap({content: frag, style: swapStyle.trim(), target}, {element: detail.element})
+                        }
+                    }
+                }
+            }
+
+            // Process elements with hx-swap-oob attribute
+            for (const oobElt of [...content.querySelectorAll('[hx-swap-oob]')]) {
+                let oobValue = oobElt.getAttribute('hx-swap-oob')
+                oobElt.removeAttribute('hx-swap-oob')
+
+                let target = oobElt.id ? document.getElementById(oobElt.id) : null
+                let swapStyle = 'outerHTML'
+
+                if (oobValue && oobValue !== 'true') {
+                    // Parse "swapStyle:targetSelector" or just "swapStyle"
+                    if (oobValue.includes(':')) {
+                        const [style, sel] = oobValue.split(/:(.*)/s)
+                        swapStyle = style.trim()
+                        if (sel?.trim()) target = document.querySelector(sel.trim())
+                    } else {
+                        swapStyle = oobValue
+                    }
+                }
+
+                if (!target) continue
+                const frag = document.createDocumentFragment()
+                frag.appendChild(oobElt)
+                api.swap({content: frag, style: swapStyle, target}, {element: detail.element})
+            }
+        },
+    }
+}
+
+
+// ── Script Processing ──────────────────────────────────────────────────
+
+/**
+ * Re-creates script tags in swapped content to trigger execution.
+ */
+const scriptProcessing = {
+    on: {
+        'htmx:after:swap': (detail, api) => {
+            const target = detail.swap?.target
+            if (!target || !(target instanceof Element)) return
+
+            for (const oldScript of [...target.querySelectorAll('script')]) {
+                const newScript = document.createElement('script')
+                for (const attr of oldScript.attributes) {
+                    newScript.setAttribute(attr.name, attr.value)
+                }
+                if (api.config.inlineScriptNonce) {
+                    newScript.nonce = api.config.inlineScriptNonce
+                }
+                newScript.textContent = oldScript.textContent
+                oldScript.replaceWith(newScript)
+            }
+        },
+    }
+}
+
+
+// ── hx-confirm ─────────────────────────────────────────────────────────
+
+/**
+ * Show confirmation dialog before trigger.
+ */
+const hxConfirm = {
+    config: {attributeFilter: ['hx-confirm']},
+    on: {
+        'htmx:before:trigger': (detail, api) => {
+            const confirmMsg = api.attr(detail.element, 'hx-confirm')
+            if (confirmMsg && !window.confirm(confirmMsg)) return false
+        },
+    }
+}
+
+
+// ── hx-indicator ───────────────────────────────────────────────────────
+
+/**
+ * Manages loading indicator CSS classes with reference counting.
+ */
+const hxIndicator = {
+    config: {
+        attributeFilter: ['hx-indicator'],
+        indicatorClass: 'htmx-indicator',
+        requestClass: 'htmx-request',
+        includeIndicatorCSS: true,
+        inlineStyleNonce: null,
+    },
+    on: {
+        'htmx:boot': (detail, api) => {
+            if (api.config.includeIndicatorCSS !== false) {
+                const style = document.createElement('style')
+                style.textContent = `.${api.config.indicatorClass}{opacity:0;transition:opacity 200ms ease-in}.${api.config.requestClass} .${api.config.indicatorClass}{opacity:1}.${api.config.requestClass}.${api.config.indicatorClass}{opacity:1}`
+                if (api.config.inlineStyleNonce) style.nonce = api.config.inlineStyleNonce
+                document.head.appendChild(style)
+            }
+        },
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (!el) return
+            const selector = api.attr(el, 'hx-indicator')
+            const indicators = selector
+                ? (api.find(selector, {from: el, multiple: true}) || [])
+                : [el]
+
+            for (const ind of indicators) {
+                ind._htmxReqCount = (ind._htmxReqCount || 0) + 1
+                ind.classList.add(api.config.requestClass)
+            }
+            detail._indicators = indicators
+        },
+        'htmx:finally': (detail, api) => {
+            for (const ind of detail._indicators || []) {
+                ind._htmxReqCount = (ind._htmxReqCount || 1) - 1
+                if (ind._htmxReqCount <= 0) {
+                    ind._htmxReqCount = 0
+                    ind.classList.remove(api.config.requestClass)
+                }
+            }
+        },
+    }
+}
+
+
+// ── hx-disable ─────────────────────────────────────────────────────────
+
+/**
+ * Disables elements during request with reference counting.
+ */
+const hxDisable = {
+    config: {attributeFilter: ['hx-disable']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (!el) return
+            const selector = api.attr(el, 'hx-disable')
+            if (!selector) return
+            const elements = api.find(selector, {from: el, multiple: true}) || []
+            for (const elt of elements) {
+                elt._htmxDisableCount = (elt._htmxDisableCount || 0) + 1
+                elt.disabled = true
+            }
+            detail._disabledElements = elements
+        },
+        'htmx:finally': (detail, api) => {
+            for (const elt of detail._disabledElements || []) {
+                elt._htmxDisableCount = (elt._htmxDisableCount || 1) - 1
+                if (elt._htmxDisableCount <= 0) {
+                    elt._htmxDisableCount = 0
+                    elt.disabled = false
+                }
+            }
+        },
+    }
+}
+
+
+// ── hx-on:* ────────────────────────────────────────────────────────────
+
+/**
+ * Wire up inline JavaScript event handlers from hx-on:eventName attributes.
+ */
+const hxOn = {
+    on: {
+        'htmx:before:init': (detail, api) => {
+            const el = detail.element
+            const handlers = []
+            for (const attrName of el.getAttributeNames()) {
+                if (!attrName.startsWith('hx-on:') && !attrName.startsWith('hx-on-')) continue
+                const eventName = attrName.startsWith('hx-on:')
+                    ? attrName.slice(6).replace(/-/g, ':')
+                    : attrName.slice(6).replace(/-/g, ':')
+                const code = el.getAttribute(attrName)
+                handlers.push({eventName, code})
+            }
+            if (!handlers.length) return
+
+            const originalInit = detail.init.execute
+            detail.init.execute = () => {
+                originalInit()
+                for (const {eventName, code} of handlers) {
+                    api.on(el, eventName, (event) => {
+                        try {
+                            new Function('event', 'element', code).call(el, event, el)
+                        } catch (e) {
+                            console.error(`[htmx] hx-on:${eventName} error:`, e)
+                        }
+                    })
+                }
+            }
+        },
+    }
+}
+
+
+// ── hx-preserve ────────────────────────────────────────────────────────
+
+/**
+ * Preserves elements across swaps by saving and restoring them.
+ */
+const hxPreserve = {
+    config: {attributeFilter: ['hx-preserve']},
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            const content = detail.swap?.content
+            if (!(content instanceof DocumentFragment)) return
+            const target = detail.swap?.target
+            if (!(target instanceof Element)) return
+
+            // Find preserved elements in the target that need to be saved
+            const preserved = []
+            for (const newEl of content.querySelectorAll('[hx-preserve]')) {
+                if (!newEl.id) continue
+                const existing = document.getElementById(newEl.id)
+                if (!existing) continue
+                // Save existing element, replace new with placeholder
+                preserved.push({id: newEl.id, existing})
+                newEl.replaceWith(existing.cloneNode(true))
+            }
+            detail._preserved = preserved
+        },
+        'htmx:after:swap': (detail, api) => {
+            for (const {id, existing} of detail._preserved || []) {
+                const placeholder = document.getElementById(id)
+                if (placeholder && existing) {
+                    placeholder.replaceWith(existing)
+                }
+            }
+        },
+    }
+}
+
+
+// ── hx-ignore ──────────────────────────────────────────────────────────
+
+/**
+ * Prevents processing of elements within hx-ignore containers.
+ */
+const hxIgnore = {
+    on: {
+        'htmx:before:init': (detail, api) => {
+            if (detail.element.closest('[hx-ignore]')) return false
+        },
+    }
+}
+
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 /**
@@ -1258,5 +1532,13 @@ htmx.install('hx-swap', hxSwap)
 htmx.install('hx-target', hxTarget)
 htmx.install('swap-aliases', swapAliases)
 htmx.install('request-timeout', requestTimeout)
+htmx.install('oob-swap', oobSwap)
+htmx.install('script-processing', scriptProcessing)
+htmx.install('hx-confirm', hxConfirm)
+htmx.install('hx-indicator', hxIndicator)
+htmx.install('hx-disable', hxDisable)
+htmx.install('hx-on', hxOn)
+htmx.install('hx-preserve', hxPreserve)
+htmx.install('hx-ignore', hxIgnore)
 // htmx.install('hx-boost', hxBoost)
 htmx.install('public-api', publicApi)
