@@ -820,6 +820,14 @@ const hxBoost = {
             }
         },
 
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (el?.closest?.('[hx-boost]')) {
+                detail.request.headers = detail.request.headers || {}
+                detail.request.headers['HX-Boosted'] = 'true'
+            }
+        },
+
         'htmx:before:trigger': (detail, api) => {
             const el = detail.element
             if (!el.matches('a[href], form')) return
@@ -954,6 +962,183 @@ const requestTimeout = {
                     ? AbortSignal.any([detail.request.signal, timeoutSignal])
                     : timeoutSignal
             }
+        },
+    }
+}
+
+
+/**
+ * Request queue — manages concurrent requests per-element.
+ */
+class RequestQueue {
+    #current = null
+    #queue = []
+
+    issue(ctx, strategy) {
+        ctx._queueStrategy = strategy
+        if (!this.#current) {
+            this.#current = ctx
+            return true
+        }
+
+        if (strategy === 'replace' || (strategy !== 'abort' && this.#current._queueStrategy === 'abort')) {
+            this.#queue.forEach(c => c._dropped = true)
+            this.#queue = []
+            if (this.#current._abort) this.#current._abort()
+            this.#current = ctx
+            return true
+        } else if (strategy === 'queue all') {
+            this.#queue.push(ctx)
+        } else if (strategy === 'drop') {
+            ctx._dropped = true
+        } else if (strategy === 'queue last') {
+            this.#queue.forEach(c => c._dropped = true)
+            this.#queue = [ctx]
+        } else if (this.#queue.length === 0 && strategy !== 'abort') {
+            // default: queue first
+            this.#queue.push(ctx)
+        } else {
+            ctx._dropped = true
+        }
+        return false
+    }
+
+    finish() { this.#current = null }
+    next() { return this.#queue.shift() }
+    hasMore() { return this.#queue.length > 0 }
+}
+
+const requestQueueExt = {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-sync']},
+    wrap: {
+        ajax: (original, options) => {
+            const el = options?.element
+            if (!el) return original(options)
+
+            // Determine sync strategy from hx-sync attribute
+            let syncAttr = el.getAttribute?.('hx-sync')
+            let strategy = 'queue first'
+            let queueEl = el
+
+            if (syncAttr) {
+                if (syncAttr.includes(':')) {
+                    const [selector, strat] = syncAttr.split(':')
+                    strategy = strat.trim()
+                    const found = document.querySelector(selector.trim())
+                    if (found) queueEl = found
+                } else {
+                    strategy = syncAttr.trim()
+                }
+            }
+
+            // Get or create queue for the element
+            const queue = queueEl._htmxRequestQueue ||= new RequestQueue()
+
+            const ctx = {options}
+            if (!queue.issue(ctx, strategy)) return // dropped or queued
+
+            // Set up abort capability
+            const controller = new AbortController()
+            ctx._abort = () => controller.abort()
+            options.request.signal = options.request.signal
+                ? AbortSignal.any([options.request.signal, controller.signal])
+                : controller.signal
+
+            // Execute and handle queue
+            const result = original(options)
+            if (result && typeof result.then === 'function') {
+                result.finally(() => {
+                    queue.finish()
+                    const next = queue.next()
+                    if (next) {
+                        // Re-issue the queued request
+                        original(next.options)
+                    }
+                })
+            }
+            return result
+        },
+    }
+}
+
+/**
+ * History management — push/replace URL on successful requests, handle popstate.
+ */
+const historyMgmt = {
+    requires: ['ajax'],
+    config: {
+        history: true,
+        attributeFilter: ['hx-push-url', 'hx-replace-url'],
+    },
+    on: {
+        'htmx:boot': (detail, api) => {
+            if (!api.config.history) return
+            if (!history.state) {
+                history.replaceState({htmx: true}, '', location.pathname + location.search)
+            }
+            window.addEventListener('popstate', (event) => {
+                if (event.state?.htmx) {
+                    const path = location.pathname + location.search
+                    if (api.emit(document.body, 'htmx:before:restore:history', {path, cacheMiss: true})) {
+                        if (api.config.history === 'reload') {
+                            location.reload()
+                        } else {
+                            api.ajax({
+                                request: {
+                                    url: path,
+                                    method: 'GET',
+                                    headers: {'HX-History-Restore-Request': 'true'}
+                                },
+                                swap: {target: document.body, style: 'innerHTML'},
+                            })
+                        }
+                    }
+                }
+            })
+        },
+
+        'htmx:done': (detail, api) => {
+            if (!api.config.history) return
+            const el = detail.element
+
+            // Check attributes
+            let push = api.attr(el, 'hx-push-url')
+            let replace = api.attr(el, 'hx-replace-url')
+
+            // Check response headers
+            if (detail.hx?.push || detail.hx?.pushurl) push = push || detail.hx.push || detail.hx.pushurl
+            if (detail.hx?.replaceurl) replace = replace || detail.hx.replaceurl
+
+            // Boosted elements default to push
+            if (!push && !replace && el?.closest?.('[hx-boost]')) push = 'true'
+
+            const pathSource = push || replace
+            if (!pathSource || pathSource === 'false') return
+
+            let path = pathSource
+            if (path === 'true') {
+                path = detail.response?.url || detail.request?.url || location.href
+                try {
+                    const url = new URL(path, location.href)
+                    path = url.pathname + url.search
+                } catch {}
+            }
+
+            const type = push ? 'push' : 'replace'
+            const historyDetail = {history: {type, path}, element: el}
+
+            if (api.emit(document.body, 'htmx:before:history:update', historyDetail) === false) return
+
+            if (type === 'push') {
+                history.pushState({htmx: true}, '', path)
+                api.emit(document.body, 'htmx:after:push:into:history', {path})
+            } else {
+                history.replaceState({htmx: true}, '', path)
+                api.emit(document.body, 'htmx:after:replace:into:history', {path})
+            }
+
+            api.emit(document.body, 'htmx:after:history:update', historyDetail)
         },
     }
 }
@@ -1532,6 +1717,7 @@ htmx.install('hx-swap', hxSwap)
 htmx.install('hx-target', hxTarget)
 htmx.install('swap-aliases', swapAliases)
 htmx.install('request-timeout', requestTimeout)
+htmx.install('request-queue', requestQueueExt)
 htmx.install('oob-swap', oobSwap)
 htmx.install('script-processing', scriptProcessing)
 htmx.install('hx-confirm', hxConfirm)
@@ -1540,5 +1726,6 @@ htmx.install('hx-disable', hxDisable)
 htmx.install('hx-on', hxOn)
 htmx.install('hx-preserve', hxPreserve)
 htmx.install('hx-ignore', hxIgnore)
-// htmx.install('hx-boost', hxBoost)
+htmx.install('hx-boost', hxBoost)
+htmx.install('history', historyMgmt)
 htmx.install('public-api', publicApi)
