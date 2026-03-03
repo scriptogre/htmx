@@ -793,7 +793,7 @@ const hxSwap = {
     on: {
         'htmx:before:swap': (detail, api) => {
             // Skip nested OOB/partial swaps (they have their own style)
-            if (detail.swap?._oob) return
+            if (detail.swap?._oob || !detail.element) return
             const swapAttr = api.parse(api.attr(detail.element, 'hx-swap'), {as: 'style'})
             if (swapAttr) Object.assign(detail.swap, swapAttr)
         }
@@ -809,7 +809,7 @@ const hxTarget = {
     on: {
         'htmx:before:swap': (detail, api) => {
             // Skip nested OOB/partial swaps (they have their own target)
-            if (detail.swap?._oob) return
+            if (detail.swap?._oob || !detail.element) return
             const target = api.attr(detail.element, 'hx-target')
             if (target) {
                 detail.swap.target = api.find(target, {from: detail.element})
@@ -1392,7 +1392,7 @@ const inheritance = {
     },
     wrap: {
         attr: (original, element, name, options) => {
-            if (options?.inherit === false) return original(element, name, options)
+            if (!element || options?.inherit === false) return original(element, name, options)
 
             const {mode, inheritSuffix, appendSuffix} = htmx.config.inheritance
             const inherited = `${name}:${inheritSuffix}`
