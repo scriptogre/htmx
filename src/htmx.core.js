@@ -2165,7 +2165,7 @@ const metaCharacter = {
  * DOM morphing algorithm — intelligently patches existing DOM nodes to match
  * new content while preserving element identity, focus state, and animations.
  */
-let _morphFn = null // Closure reference for morph wrap to call the defined morph function
+let _morphFn
 const morph = {
     config: {
         morphScanLimit: 10,
@@ -2174,7 +2174,7 @@ const morph = {
         morphSkipChildren: null,
     },
     define: {
-        morph: (api) => { const fn = function morph(oldNode, fragment, innerHTML) {
+        morph: (api) => function morph(oldNode, fragment, innerHTML) {
             // ── Helpers ──
 
             function queryEltAndDescendants(elt, selector) {
@@ -2388,16 +2388,19 @@ const morph = {
                 morphChildren(ctx, oldNode.parentNode, fragment, oldNode, oldNode.nextSibling)
             }
             pantry.remove()
-        }; _morphFn = fn; return fn },
+        },
+    },
+    on: {
+        'htmx:boot': (detail, api) => { _morphFn = api.morph },
     },
     wrap: {
-        swap: (originalSwap, swapObj, options) => {
-            const style = swapObj?.style
+        swap: (original, swap, options) => {
+            const style = swap?.style
             if (style === 'innerMorph' || style === 'outerMorph') {
-                let target = swapObj.target || options?.element
+                let target = swap.target || options?.element
                 if (typeof target === 'string') target = document.querySelector(target)
                 if (!target) target = options?.element || document.body
-                let content = swapObj.content
+                let content = swap.content
                 if (typeof content === 'string') {
                     const template = document.createElement('template')
                     template.innerHTML = content
@@ -2409,7 +2412,7 @@ const morph = {
                     return
                 }
             }
-            return originalSwap(swapObj, options)
+            return original(swap, options)
         },
     },
 }
