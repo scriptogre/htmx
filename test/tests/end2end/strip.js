@@ -22,7 +22,7 @@ describe('Strip Modifier', function () {
     assert.equal(target.children[0].textContent, 'A')
     assert.equal(target.children[1].tagName, 'P')
     assert.equal(target.children[1].textContent, 'B')
-    assert.isUndefined(find('#target wrapper'))
+    assert.isNull(find('#target wrapper'))
   })
 
   it('Main swap with strip:false keeps wrapper', async function () {
@@ -68,7 +68,7 @@ describe('Strip Modifier', function () {
     const target = find('#target')
     assert.equal(target.children.length, 2)
     assert.equal(target.children[0].tagName, 'SPAN')
-    assert.isUndefined(find('#target .content'))
+    assert.isNull(find('#target .content'))
   })
 
   it('hx-select with default keeps selected element', async function () {
@@ -195,8 +195,8 @@ describe('Strip Modifier', function () {
     await forRequest()
 
     // Should replace #target with all children (no wrapper)
-    assert.isUndefined(find('#target'))
-    assert.isUndefined(find('wrapper'))
+    assert.isNull(find('#target'))
+    assert.isNull(find('wrapper'))
     const sections = playground().querySelectorAll('section')
     assert.equal(sections.length, 2)
     const aside = find('aside')
@@ -266,7 +266,7 @@ describe('Strip Modifier', function () {
     const target = find('#target')
     assert.equal(target.children.length, 2)
     assert.equal(target.children[0].tagName, 'SPAN')
-    assert.isUndefined(find('#target wrapper'))
+    assert.isNull(find('#target wrapper'))
   })
 
   it('Partial with strip:false keeps wrapper', async function () {
@@ -353,7 +353,7 @@ describe('Strip Modifier', function () {
     const target = find('#target')
     const inner = find('#target inner')
     assert.exists(inner)
-    assert.isUndefined(find('#target outer'))
+    assert.isNull(find('#target outer'))
     assert.equal(inner.children[0].tagName, 'P')
   })
 })

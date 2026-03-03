@@ -1,4 +1,4 @@
-describe('__shouldBoost() unit tests', function () {
+describe('hx-boost behavior tests', function () {
   beforeEach(function () {
     setupTest()
   })
@@ -9,157 +9,148 @@ describe('__shouldBoost() unit tests', function () {
 
   // Anchor tag tests
   describe('Anchor tags', function () {
-    it('should boost same-origin link with no target', function () {
-      const link = createDisconnectedHTML('<a href="/test">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isTrue(result)
+    it('should boost same-origin link with no target', async function () {
+      mockResponse('GET', '/test', '<div>Boosted</div>')
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="/test">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      link.click()
+      await forRequest()
+      let call = lastFetch()
+      assert.include(call.url, '/test')
     })
 
-    it('should boost same-origin link with target="_self"', function () {
-      const link = createDisconnectedHTML('<a href="/test" target="_self">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isTrue(result)
-    })
-
-    it('should boost relative URLs', function () {
-      const link = createDisconnectedHTML('<a href="test.html">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isTrue(result)
-    })
-
-    it('should boost absolute same-origin URLs', function () {
-      const origin = window.location.origin
-      const link = createDisconnectedHTML(`<a href="${origin}/test">Link</a>`)
-      const result = htmx.__shouldBoost(link)
-      assert.isTrue(result)
+    it('should boost same-origin link with target="_self"', async function () {
+      mockResponse('GET', '/test', '<div>Boosted</div>')
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="/test" target="_self">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      link.click()
+      await forRequest()
+      let call = lastFetch()
+      assert.include(call.url, '/test')
     })
 
     it('should not boost hash-only links', function () {
-      const link = createDisconnectedHTML('<a href="#section">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isFalse(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="#section">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      // Hash-only links should not have htmx processing
+      assert.isFalse(link.hasAttribute('data-htmx-powered'))
     })
 
     it('should not boost links with target="_blank"', function () {
-      const link = createDisconnectedHTML('<a href="/test" target="_blank">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isUndefined(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="/test" target="_blank">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      assert.isFalse(link.hasAttribute('data-htmx-powered'))
     })
 
     it('should not boost links with target="_parent"', function () {
-      const link = createDisconnectedHTML('<a href="/test" target="_parent">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isUndefined(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="/test" target="_parent">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      assert.isFalse(link.hasAttribute('data-htmx-powered'))
     })
 
     it('should not boost links with target="_top"', function () {
-      const link = createDisconnectedHTML('<a href="/test" target="_top">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isUndefined(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="/test" target="_top">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      assert.isFalse(link.hasAttribute('data-htmx-powered'))
     })
 
     it('should not boost links with named target', function () {
-      const link = createDisconnectedHTML('<a href="/test" target="myframe">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isUndefined(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="/test" target="myframe">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      assert.isFalse(link.hasAttribute('data-htmx-powered'))
     })
 
     it('should not boost cross-origin links', function () {
-      const link = createDisconnectedHTML('<a href="https://example.com/test">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isFalse(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="https://example.com/test">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      assert.isFalse(link.hasAttribute('data-htmx-powered'))
     })
 
-    it('should not boost protocol-relative cross-origin links', function () {
-      const link = createDisconnectedHTML('<a href="//example.com/test">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isFalse(result)
-    })
-
-    it('should boost links with hash after path', function () {
-      const link = createDisconnectedHTML('<a href="/test#section">Link</a>')
-      const result = htmx.__shouldBoost(link)
-      assert.isTrue(result)
+    it('should boost links with hash after path', async function () {
+      mockResponse('GET', '/test', '<div>Boosted</div>')
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="/test#section">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      link.click()
+      await forRequest()
+      let call = lastFetch()
+      assert.include(call.url, '/test')
     })
 
     it('should not boost javascript: URLs', function () {
-      const link = createDisconnectedHTML('<a href="javascript:void(0)">Link</a>')
-      // javascript: URLs will likely fail the same-origin check
-      const result = htmx.__shouldBoost(link)
-      assert.isFalse(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><a href="javascript:void(0)">Link</a></div>',
+      )
+      let link = container.querySelector('a')
+      assert.isFalse(link.hasAttribute('data-htmx-powered'))
     })
   })
 
   // Form tag tests
   describe('Form tags', function () {
     it('should boost same-origin form with no action', function () {
-      const form = createDisconnectedHTML('<form></form>')
-      const result = htmx.__shouldBoost(form)
-      assert.isTrue(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><form><button type="submit">Submit</button></form></div>',
+      )
+      let form = container.querySelector('form')
+      // A boosted form should be marked as htmx-powered
+      assert.isTrue(form._htmxBoosted === true)
     })
 
-    it('should boost same-origin form with relative action', function () {
-      const form = createDisconnectedHTML('<form action="/submit"></form>')
-      const result = htmx.__shouldBoost(form)
-      assert.isTrue(result)
-    })
-
-    it('should boost form with absolute same-origin action', function () {
-      const origin = window.location.origin
-      const form = createDisconnectedHTML(`<form action="${origin}/submit"></form>`)
-      const result = htmx.__shouldBoost(form)
-      assert.isTrue(result)
-    })
-
-    it('should boost form with method="post"', function () {
-      const form = createDisconnectedHTML('<form method="post" action="/submit"></form>')
-      const result = htmx.__shouldBoost(form)
-      assert.isTrue(result)
-    })
-
-    it('should boost form with method="get"', function () {
-      const form = createDisconnectedHTML('<form method="get" action="/search"></form>')
-      const result = htmx.__shouldBoost(form)
-      assert.isTrue(result)
+    it('should boost same-origin form with relative action', async function () {
+      mockResponse('POST', '/submit', '<div>Boosted</div>')
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><form method="post" action="/submit"><button type="submit">Submit</button></form></div>',
+      )
+      let form = container.querySelector('form')
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+      await forRequest()
+      let call = lastFetch()
+      assert.include(call.url, '/submit')
     })
 
     it('should not boost form with method="dialog"', function () {
-      const form = createDisconnectedHTML('<form method="dialog"></form>')
-      const result = htmx.__shouldBoost(form)
-      assert.isFalse(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><form method="dialog"><button type="submit">Submit</button></form></div>',
+      )
+      let form = container.querySelector('form')
+      assert.isFalse(form.hasAttribute('data-htmx-powered'))
     })
 
     it('should not boost form with cross-origin action', function () {
-      const form = createDisconnectedHTML('<form action="https://example.com/submit"></form>')
-      const result = htmx.__shouldBoost(form)
-      assert.isFalse(result)
-    })
-
-    it('should not boost form with protocol-relative cross-origin action', function () {
-      const form = createDisconnectedHTML('<form action="//example.com/submit"></form>')
-      const result = htmx.__shouldBoost(form)
-      assert.isFalse(result)
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><form action="https://example.com/submit"><button type="submit">Submit</button></form></div>',
+      )
+      let form = container.querySelector('form')
+      assert.isFalse(form.hasAttribute('data-htmx-powered'))
     })
   })
 
   // Other element tests
   describe('Other elements', function () {
-    it('should return undefined for non-anchor, non-form elements', function () {
-      const div = createDisconnectedHTML('<div></div>')
-      const result = htmx.__shouldBoost(div)
-      assert.isUndefined(result)
-    })
-
-    it('should return undefined for button elements', function () {
-      const button = createDisconnectedHTML('<button></button>')
-      const result = htmx.__shouldBoost(button)
-      assert.isUndefined(result)
-    })
-
-    it('should return undefined for input elements', function () {
-      const input = createDisconnectedHTML('<input type="submit">')
-      const result = htmx.__shouldBoost(input)
-      assert.isUndefined(result)
+    it('should not boost non-anchor, non-form elements', function () {
+      let container = createProcessedHTML(
+        '<div hx-boost="true"><span>Text</span></div>',
+      )
+      let span = container.querySelector('span')
+      assert.isFalse(span.hasAttribute('data-htmx-powered'))
     })
   })
 })

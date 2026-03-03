@@ -1,4 +1,4 @@
-describe('__extractHxHeaders unit tests', function () {
+describe('HX header extraction tests', function () {
   beforeEach(function () {
     setupTest()
   })
@@ -7,119 +7,103 @@ describe('__extractHxHeaders unit tests', function () {
     cleanupTest()
   })
 
-  it('extracts HX headers from response', function () {
-    let ctx = {
-      response: {
-        raw: {
-          headers: new Headers({
-            'HX-Trigger': 'myEvent',
-            'HX-Redirect': '/new-page',
-            'Content-Type': 'text/html',
-          }),
-        },
-      },
-    }
+  it('extracts HX-Trigger header from response', async function () {
+    mockResponse('GET', '/test', 'ok', {
+      headers: { 'HX-Trigger': 'myEvent' },
+    })
+    let div = createProcessedHTML('<div hx-get="/test" hx-swap="none">Click</div>')
 
-    htmx.__extractHxHeaders(ctx)
+    let triggerFired = false
+    div.addEventListener('myEvent', () => {
+      triggerFired = true
+    })
 
-    assert.equal(ctx.hx.trigger, 'myEvent')
-    assert.equal(ctx.hx.redirect, '/new-page')
-    assert.isUndefined(ctx.hx.contenttype)
+    div.click()
+    await forRequest()
+
+    assert.isTrue(triggerFired)
   })
 
-  it('converts header names to lowercase and removes hyphens', function () {
-    let ctx = {
-      response: {
-        raw: {
-          headers: new Headers({
-            'HX-Push-Url': '/new-url',
-            'HX-Replace-Url': '/replace-url',
-            'HX-Re-Swap': 'outerHTML',
-          }),
-        },
-      },
-    }
+  it('extracts HX headers and exposes them on htmx:after:request detail', async function () {
+    mockResponse('GET', '/test', 'ok', {
+      headers: { 'HX-Trigger': 'myEvent', 'HX-Reswap': 'outerHTML' },
+    })
+    let div = createProcessedHTML('<div hx-get="/test" hx-swap="none">Click</div>')
 
-    htmx.__extractHxHeaders(ctx)
+    let hxDetails = null
+    div.addEventListener('htmx:after:request', e => {
+      hxDetails = e.detail.hx
+    })
 
-    assert.equal(ctx.hx.pushurl, '/new-url')
-    assert.equal(ctx.hx.replaceurl, '/replace-url')
-    assert.equal(ctx.hx.reswap, 'outerHTML')
+    div.click()
+    await forRequest()
+
+    assert.isNotNull(hxDetails)
+    assert.equal(hxDetails.trigger, 'myEvent')
+    assert.equal(hxDetails.reswap, 'outerHTML')
   })
 
-  it('handles empty headers', function () {
-    let ctx = {
-      response: {
-        raw: {
-          headers: new Headers(),
-        },
+  it('does not extract non-HX headers', async function () {
+    mockResponse('GET', '/test', 'ok', {
+      headers: {
+        'HX-Trigger': 'myEvent',
+        'X-Custom-Header': 'value',
       },
-    }
+    })
+    let div = createProcessedHTML('<div hx-get="/test" hx-swap="none">Click</div>')
 
-    htmx.__extractHxHeaders(ctx)
+    let hxDetails = null
+    div.addEventListener('htmx:after:request', e => {
+      hxDetails = e.detail.hx
+    })
 
-    assert.deepEqual(ctx.hx, {})
+    div.click()
+    await forRequest()
+
+    assert.isNotNull(hxDetails)
+    assert.equal(hxDetails.trigger, 'myEvent')
+    assert.isUndefined(hxDetails['custom-header'])
   })
 
-  it('only extracts headers that start with HX-', function () {
-    let ctx = {
-      response: {
-        raw: {
-          headers: new Headers({
-            'HX-Trigger': 'myEvent',
-            'X-Custom-Header': 'value',
-            'Content-Type': 'text/html',
-            'HX-Refresh': 'true',
-          }),
-        },
-      },
-    }
+  it('handles responses with no HX headers', async function () {
+    mockResponse('GET', '/test', 'ok')
+    let div = createProcessedHTML('<div hx-get="/test" hx-swap="none">Click</div>')
 
-    htmx.__extractHxHeaders(ctx)
+    let afterRequestFired = false
+    div.addEventListener('htmx:after:request', e => {
+      afterRequestFired = true
+    })
 
-    assert.equal(ctx.hx.trigger, 'myEvent')
-    assert.equal(ctx.hx.refresh, 'true')
-    assert.isUndefined(ctx.hx.customheader)
-    assert.isUndefined(ctx.hx.contenttype)
+    div.click()
+    await forRequest()
+
+    assert.isTrue(afterRequestFired)
   })
 
-  it('handles case-insensitive HX- prefix', function () {
-    let ctx = {
-      response: {
-        raw: {
-          headers: new Headers({
-            'hx-trigger': 'lowercase',
-            'Hx-Redirect': 'mixedcase',
-            'HX-REFRESH': 'uppercase',
-          }),
-        },
-      },
-    }
+  it('extracts HX-Retarget header from response', async function () {
+    mockResponse('GET', '/test', '<span>content</span>', {
+      headers: { 'HX-Retarget': '#other' },
+    })
+    createProcessedHTML('<div id="other"></div><div id="target" hx-get="/test">original</div>')
+    let div = find('#target')
 
-    htmx.__extractHxHeaders(ctx)
+    let hxDetails = null
+    div.addEventListener('htmx:after:request', e => {
+      hxDetails = e.detail.hx
+    })
 
-    assert.equal(ctx.hx.trigger, 'lowercase')
-    assert.equal(ctx.hx.redirect, 'mixedcase')
-    assert.equal(ctx.hx.refresh, 'uppercase')
+    div.click()
+    await forRequest()
+
+    assert.isNotNull(hxDetails)
+    assert.equal(hxDetails.retarget, '#other')
   })
 
-  it('overwrites existing ctx.hx object', function () {
-    let ctx = {
-      hx: {
-        oldValue: 'should be removed',
-      },
-      response: {
-        raw: {
-          headers: new Headers({
-            'HX-Trigger': 'newEvent',
-          }),
-        },
-      },
-    }
-
-    htmx.__extractHxHeaders(ctx)
-
-    assert.equal(ctx.hx.trigger, 'newEvent')
-    assert.isUndefined(ctx.hx.oldValue)
+  // TODO: Testing HX-Redirect extraction causes actual page navigation because
+  // the responseHeaders extension sets location.href before DOM event listeners
+  // can preventDefault. This test would need a way to mock location.href in the
+  // test environment.
+  it.skip('extracts HX-Redirect header from response and exposes it on detail', async function () {
+    // Cannot test without causing page navigation
   })
 })

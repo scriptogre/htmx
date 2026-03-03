@@ -1,14 +1,14 @@
-describe('__findAllExt unit tests', function () {
+describe('htmx.findAllExt unit tests', function () {
   it('returns elements matching CSS selector', function () {
     createProcessedHTML('<div class="foo"></div><div class="bar"></div><div class="foo"></div>')
-    let results = htmx.__findAllExt(document, '.foo')
+    let results = htmx.findAllExt(document, '.foo')
     assert.equal(results.length, 2)
     assert.equal(results[0].className, 'foo')
   })
 
   it('returns multiple selectors separated by comma', function () {
     createProcessedHTML('<div class="foo"></div><div class="bar"></div>')
-    let results = htmx.__findAllExt(document, '.foo,.bar')
+    let results = htmx.findAllExt(document, '.foo,.bar')
     assert.equal(results.length, 2)
   })
 
@@ -16,7 +16,7 @@ describe('__findAllExt unit tests', function () {
     let child = createProcessedHTML(
       '<div class="parent"><div class="child"></div></div>',
     ).querySelector('.child')
-    let results = htmx.__findAllExt(child, 'closest .parent')
+    let results = htmx.findAllExt(child, 'closest .parent')
     assert.equal(results.length, 1)
     assert.equal(results[0].className, 'parent')
   })
@@ -24,7 +24,7 @@ describe('__findAllExt unit tests', function () {
   it('handles next keyword', function () {
     createProcessedHTML('<div id="a"></div><div id="b"></div>')
     let a = document.getElementById('a')
-    let results = htmx.__findAllExt(a, 'next')
+    let results = htmx.findAllExt(a, 'next')
     assert.equal(results.length, 1)
     assert.equal(results[0].id, 'b')
   })
@@ -32,7 +32,7 @@ describe('__findAllExt unit tests', function () {
   it('handles nextElementSibling keyword', function () {
     createProcessedHTML('<div id="a"></div><div id="b"></div>')
     let a = document.getElementById('a')
-    let results = htmx.__findAllExt(a, 'nextElementSibling')
+    let results = htmx.findAllExt(a, 'nextElementSibling')
     assert.equal(results.length, 1)
     assert.equal(results[0].id, 'b')
   })
@@ -40,7 +40,7 @@ describe('__findAllExt unit tests', function () {
   it('handles next with selector', function () {
     createProcessedHTML('<div id="a"></div><span></span><div class="target"></div>')
     let a = document.getElementById('a')
-    let results = htmx.__findAllExt(a, 'next .target')
+    let results = htmx.findAllExt(a, 'next .target')
     assert.equal(results.length, 1)
     assert.equal(results[0].className, 'target')
   })
@@ -48,7 +48,7 @@ describe('__findAllExt unit tests', function () {
   it('handles previous keyword', function () {
     createProcessedHTML('<div id="a"></div><div id="b"></div>')
     let b = document.getElementById('b')
-    let results = htmx.__findAllExt(b, 'previous')
+    let results = htmx.findAllExt(b, 'previous')
     assert.equal(results.length, 1)
     assert.equal(results[0].id, 'a')
   })
@@ -56,7 +56,7 @@ describe('__findAllExt unit tests', function () {
   it('handles previousElementSibling keyword', function () {
     createProcessedHTML('<div id="a"></div><div id="b"></div>')
     let b = document.getElementById('b')
-    let results = htmx.__findAllExt(b, 'previousElementSibling')
+    let results = htmx.findAllExt(b, 'previousElementSibling')
     assert.equal(results.length, 1)
     assert.equal(results[0].id, 'a')
   })
@@ -64,56 +64,56 @@ describe('__findAllExt unit tests', function () {
   it('handles previous with selector', function () {
     createProcessedHTML('<div class="target"></div><span></span><div id="a"></div>')
     let a = document.getElementById('a')
-    let results = htmx.__findAllExt(a, 'previous .target')
+    let results = htmx.findAllExt(a, 'previous .target')
     assert.equal(results.length, 1)
     assert.equal(results[0].className, 'target')
   })
 
   it('handles document keyword', function () {
     let div = createProcessedHTML('<div></div>')
-    let results = htmx.__findAllExt(div, 'document')
+    let results = htmx.findAllExt(div, 'document')
     assert.equal(results.length, 1)
     assert.equal(results[0], document)
   })
 
   it('handles window keyword', function () {
     let div = createProcessedHTML('<div></div>')
-    let results = htmx.__findAllExt(div, 'window')
+    let results = htmx.findAllExt(div, 'window')
     assert.equal(results.length, 1)
     assert.equal(results[0], window)
   })
 
   it('handles body keyword', function () {
     let div = createProcessedHTML('<div></div>')
-    let results = htmx.__findAllExt(div, 'body')
+    let results = htmx.findAllExt(div, 'body')
     assert.equal(results.length, 1)
     assert.equal(results[0], document.body)
   })
 
   it('handles root keyword', function () {
     let div = createProcessedHTML('<div></div>')
-    let results = htmx.__findAllExt(div, 'root')
+    let results = htmx.findAllExt(div, 'root')
     assert.equal(results.length, 1)
     assert.equal(results[0], document)
   })
 
   it('handles hyperscript-style selector', function () {
     createProcessedHTML('<div class="foo"></div>')
-    let results = htmx.__findAllExt(document, '<.foo/>')
+    let results = htmx.findAllExt(document, '<.foo/>')
     assert.equal(results.length, 1)
     assert.equal(results[0].className, 'foo')
   })
 
   it('handles hyperscript-style selector with comma inside', function () {
     createProcessedHTML('<div class="foo"></div><div class="bar"></div>')
-    let results = htmx.__findAllExt(document, '<.foo,.bar/>')
+    let results = htmx.findAllExt(document, '<.foo,.bar/>')
     assert.equal(results.length, 2)
   })
 
   it('handles mixed keywords and selectors', function () {
     createProcessedHTML('<div id="a"></div><div id="b"></div><div class="foo"></div>')
     let a = document.getElementById('a')
-    let results = htmx.__findAllExt(a, 'next,.foo')
+    let results = htmx.findAllExt(a, 'next,.foo')
     assert.equal(results.length, 2)
     assert.equal(results[0].id, 'b')
     assert.equal(results[1].className, 'foo')
@@ -122,41 +122,41 @@ describe('__findAllExt unit tests', function () {
   it('handles global prefix', function () {
     createProcessedHTML('<div class="foo"></div>')
     let div = document.querySelector('div')
-    let results = htmx.__findAllExt(div, 'global .foo')
+    let results = htmx.findAllExt(div, 'global .foo')
     assert.equal(results.length, 1)
     assert.equal(results[0].className, 'foo')
   })
 
   it('returns empty array when no matches', function () {
     createProcessedHTML('<div class="foo"></div>')
-    let results = htmx.__findAllExt(document, '.nonexistent')
+    let results = htmx.findAllExt(document, '.nonexistent')
     assert.equal(results.length, 0)
   })
 
   it('handles element as first parameter', function () {
     let div = createProcessedHTML('<div><span class="foo"></span></div>')
-    let results = htmx.__findAllExt(div, '.foo')
+    let results = htmx.findAllExt(div, '.foo')
     assert.equal(results.length, 1)
     assert.equal(results[0].className, 'foo')
   })
 
   it('handles string selector as first parameter', function () {
     createProcessedHTML('<div class="foo"></div>')
-    let results = htmx.__findAllExt('.foo')
+    let results = htmx.findAllExt('.foo')
     assert.equal(results.length, 1)
     assert.equal(results[0].className, 'foo')
   })
 
   it('returns null items as empty when keyword fails', function () {
     let div = createProcessedHTML('<div></div>')
-    let results = htmx.__findAllExt(div, 'next')
+    let results = htmx.findAllExt(div, 'next')
     assert.equal(results.length, 0)
   })
 
   it('handles multiple keywords', function () {
     createProcessedHTML('<div id="a"></div><div id="b"></div>')
     let a = document.getElementById('a')
-    let results = htmx.__findAllExt(a, 'next,document')
+    let results = htmx.findAllExt(a, 'next,document')
     assert.equal(results.length, 2)
     assert.equal(results[0].id, 'b')
     assert.equal(results[1], document)

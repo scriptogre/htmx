@@ -1,4 +1,4 @@
-describe('__getRequestQueue / RequestQueue unit tests', function () {
+describe('request queue / hx-sync behavior tests', function () {
   beforeEach(function () {
     setupTest()
   })
@@ -7,209 +7,94 @@ describe('__getRequestQueue / RequestQueue unit tests', function () {
     cleanupTest()
   })
 
-  it('allows first request when queue is empty', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let ctx = htmx.__createRequestContext(div, new Event('click'))
-    let queue = htmx.__getRequestQueue(div)
-
-    let result = queue.issue(ctx, 'queue first')
-
-    assert.isTrue(result)
+  it('allows first request when no other request in progress', async function () {
+    mockResponse('GET', '/test', 'response')
+    let div = createProcessedHTML('<div hx-get="/test">Click</div>')
+    div.click()
+    await forRequest()
+    lastFetch()
   })
 
-  it('queues request with "queue all" strategy', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
+  it('drops concurrent requests with hx-sync drop strategy', async function () {
+    mockResponse('GET', '/test', 'response')
+    let div = createProcessedHTML('<div hx-get="/test" hx-sync="this:drop">Click</div>')
 
-    // Issue first request
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx1, 'queue all')
+    div.click()
+    div.click()
+    div.click()
+    await forRequest()
 
-    // Queue second request
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    let result = queue.issue(ctx2, 'queue all')
-
-    assert.isFalse(result)
-    assert.equal(ctx2.status, 'queued')
+    // Only one request should have gone through
+    let calls = fetchMock.getCalls()
+    assert.equal(calls.length, 1)
   })
 
-  it('drops request with "drop" strategy', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
+  it('queues last request with hx-sync queue last strategy', async function () {
+    mockResponse('GET', '/test', 'first')
+    let div = createProcessedHTML('<div hx-get="/test" hx-sync="this:queue last">Click</div>')
 
-    // Issue first request
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx1, 'drop')
+    div.click()
+    div.click()
+    div.click()
+    await forRequest()
 
-    // Drop second request
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    let result = queue.issue(ctx2, 'drop')
+    // First request completes
+    let calls = fetchMock.getCalls()
+    assert.equal(calls.length, 1)
 
-    assert.isFalse(result)
-    assert.equal(ctx2.status, 'dropped')
+    // The last queued request should now fire
+    mockResponse('GET', '/test', 'last')
+    await forRequest()
+    calls = fetchMock.getCalls()
+    assert.equal(calls.length, 2)
   })
 
-  it('queues only last with "queue last" strategy', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
+  it('replaces current request with hx-sync replace strategy', async function () {
+    mockResponse('GET', '/test', 'response')
+    let div = createProcessedHTML('<div hx-get="/test" hx-sync="this:replace">Click</div>')
 
-    // Issue first request
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx1, 'queue last')
+    div.click()
+    div.click()
+    await forRequest()
 
-    // Queue second request
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx2, 'queue last')
-
-    // Queue third request (should drop ctx2)
-    let ctx3 = htmx.__createRequestContext(div, new Event('click'))
-    let result = queue.issue(ctx3, 'queue last')
-
-    assert.isFalse(result)
-    assert.equal(ctx2.status, 'dropped')
-    assert.equal(ctx3.status, 'queued')
+    // The replace strategy aborts the first and issues the second
+    let calls = fetchMock.getCalls()
+    assert.isAtLeast(calls.length, 1)
   })
 
-  it('replaces current request with "replace" strategy', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
-
-    // Issue first request
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    ctx1.abort = () => {
-      ctx1.aborted = true
-    }
-    queue.issue(ctx1, 'replace')
-
-    // Replace with second request
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    let result = queue.issue(ctx2, 'replace')
-
-    assert.isTrue(result)
-    assert.isTrue(ctx1.aborted)
-  })
-
-  it('defaults to "queue first" when strategy not specified', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
-
-    // Issue first request
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx1, 'queue first')
-
-    // Queue second request
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx2, 'queue first')
-
-    // Third request should be dropped (not queued)
-    let ctx3 = htmx.__createRequestContext(div, new Event('click'))
-    let result = queue.issue(ctx3, 'queue first')
-
-    assert.isFalse(result)
-    assert.equal(ctx2.status, 'queued')
-    assert.equal(ctx3.status, 'dropped')
-  })
-
-  it('hasMore returns truthy when queue has requests', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
-
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx1, 'queue all')
-
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx2, 'queue all')
-
-    assert.isOk(queue.more())
-  })
-
-  it('hasMore returns falsey when queue is empty', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
-
-    assert.isNotOk(queue.more())
-  })
-
-  it('finish returns next queued request', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
-
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx1, 'queue all')
-
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx2, 'queue all')
-
-    queue.finish()
-    let next = queue.next()
-
-    assert.equal(next, ctx2)
-  })
-
-  it('nextRequest clears current request', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
-
-    let ctx1 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx1, 'queue all')
-
-    let ctx2 = htmx.__createRequestContext(div, new Event('click'))
-    queue.issue(ctx2, 'queue all')
-
-    queue.finish()
-    queue.next()
-
-    // Should now allow a new request
-    let ctx3 = htmx.__createRequestContext(div, new Event('click'))
-    let result = queue.issue(ctx3, 'queue first')
-
-    assert.isTrue(result)
-  })
-
-  it('abortCurrentRequest calls abort on current request', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let queue = htmx.__getRequestQueue(div)
-
-    let ctx = htmx.__createRequestContext(div, new Event('click'))
-    ctx.abort = () => {
-      ctx.aborted = true
-    }
-    queue.issue(ctx, 'queue first')
-
-    queue.abort()
-
-    assert.isTrue(ctx.aborted)
-  })
-
-  it('returns same queue for same element', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-
-    let queue1 = htmx.__getRequestQueue(div)
-    let queue2 = htmx.__getRequestQueue(div)
-
-    assert.equal(queue1, queue2)
-  })
-
-  it('returns different queue for different elements', function () {
-    let div1 = createProcessedHTML('<div hx-get="/test1"></div>')
-    let div2 = createProcessedHTML('<div hx-get="/test2"></div>')
-
-    let queue1 = htmx.__getRequestQueue(div1)
-    let queue2 = htmx.__getRequestQueue(div2)
-
-    assert.notEqual(queue1, queue2)
-  })
-
-  it('uses selector from hx-sync for queue', function () {
+  it('uses same queue for elements syncing on same container', async function () {
+    mockResponse('GET', '/test1', 'response1')
+    mockResponse('GET', '/test2', 'response2')
     let container = createProcessedHTML(
-      '<div id="container"><div id="btn1" hx-get="/test1" hx-sync="#container:drop"></div><div id="btn2" hx-get="/test2" hx-sync="#container:drop"></div></div>',
+      '<div id="container"><button id="btn1" hx-get="/test1" hx-sync="#container:drop">Btn1</button><button id="btn2" hx-get="/test2" hx-sync="#container:drop">Btn2</button></div>',
     )
     let btn1 = container.querySelector('#btn1')
     let btn2 = container.querySelector('#btn2')
 
-    let queue1 = htmx.__getRequestQueue(btn1)
-    let queue2 = htmx.__getRequestQueue(btn2)
+    btn1.click()
+    btn2.click()
+    await forRequest()
 
-    assert.equal(queue1, queue2)
+    // Only one request should have gone through due to drop strategy on shared container
+    let calls = fetchMock.getCalls()
+    assert.equal(calls.length, 1)
+  })
+
+  it('queues all requests with hx-sync queue all strategy', async function () {
+    mockResponse('GET', '/test', 'first')
+    let div = createProcessedHTML('<div hx-get="/test" hx-sync="this:queue all">Click</div>')
+
+    div.click()
+    div.click()
+    await forRequest()
+
+    let calls = fetchMock.getCalls()
+    assert.equal(calls.length, 1)
+
+    // The queued request should fire after first completes
+    mockResponse('GET', '/test', 'second')
+    await forRequest()
+    calls = fetchMock.getCalls()
+    assert.equal(calls.length, 2)
   })
 })

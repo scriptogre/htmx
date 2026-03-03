@@ -1,4 +1,4 @@
-describe('__disableElements / __enableElements unit tests', function () {
+describe('disable/enable element behavior tests', function () {
   beforeEach(function () {
     setupTest()
   })
@@ -7,130 +7,106 @@ describe('__disableElements / __enableElements unit tests', function () {
     cleanupTest()
   })
 
-  it('disables element', function () {
-    let container = createProcessedHTML('<div><button class="disable-me"></button></div>')
-    let button = container.querySelector('button')
-
-    htmx.__disableElements(container, '.disable-me')
-
-    assert.isTrue(button.disabled)
-  })
-
-  it('enables element', function () {
-    let container = createProcessedHTML('<div><button class="disable-me"></button></div>')
-    let button = container.querySelector('button')
-
-    let elements = htmx.__disableElements(container, '.disable-me')
-    htmx.__enableElements(elements)
-
-    assert.isFalse(button.disabled)
-  })
-
-  it('increments counter on multiple disables', function () {
-    let container = createProcessedHTML('<div><button class="disable-me"></button></div>')
-    let button = container.querySelector('button')
-
-    htmx.__disableElements(container, '.disable-me')
-    htmx.__disableElements(container, '.disable-me')
-
-    assert.equal(button._htmxDisableCount, 2)
-    assert.isTrue(button.disabled)
-  })
-
-  it('decrements counter on enable', function () {
-    let container = createProcessedHTML('<div><button class="disable-me"></button></div>')
-    let button = container.querySelector('button')
-
-    let elements1 = htmx.__disableElements(container, '.disable-me')
-    let elements2 = htmx.__disableElements(container, '.disable-me')
-    htmx.__enableElements(elements1)
-
-    assert.equal(button._htmxDisableCount, 1)
-    assert.isTrue(button.disabled)
-  })
-
-  it('enables only when counter reaches zero', function () {
-    let container = createProcessedHTML('<div><button class="disable-me"></button></div>')
-    let button = container.querySelector('button')
-
-    let elements1 = htmx.__disableElements(container, '.disable-me')
-    let elements2 = htmx.__disableElements(container, '.disable-me')
-    htmx.__enableElements(elements1)
-    htmx.__enableElements(elements2)
-
-    assert.isFalse(button.disabled)
-    assert.isUndefined(button._htmxDisableCount)
-  })
-
-  it('handles multiple elements', function () {
+  it('disables element during request', async function () {
+    mockResponse('GET', '/test', 'response')
     let container = createProcessedHTML(
-      '<div><button class="disable-me"></button><input class="disable-me"></div>',
+      '<div><button hx-get="/test" hx-disable=".disable-me">Click</button><input class="disable-me"></div>',
     )
-    let button = container.querySelector('button')
     let input = container.querySelector('input')
+    let btn = container.querySelector('button')
 
-    htmx.__disableElements(container, '.disable-me')
+    let wasDisabled = false
+    btn.addEventListener('htmx:before:request', () => {
+      wasDisabled = input.disabled
+    })
 
-    assert.isTrue(button.disabled)
-    assert.isTrue(input.disabled)
+    btn.click()
+    await forRequest()
+
+    assert.isTrue(wasDisabled)
   })
 
-  it('does nothing when selector is null', function () {
-    let container = createProcessedHTML('<div><button class="disable-me"></button></div>')
-    let button = container.querySelector('button')
-
-    htmx.__disableElements(container, null)
-
-    assert.isFalse(button.disabled)
-  })
-
-  it('includes element itself', function () {
-    let button = createProcessedHTML('<button class="disable-me"></button>')
-
-    htmx.__disableElements(button, '.disable-me')
-
-    assert.isTrue(button.disabled)
-  })
-
-  it('handles enable without prior disable gracefully', function () {
-    let container = createProcessedHTML('<div><button class="disable-me"></button></div>')
-    let button = container.querySelector('button')
-
-    htmx.__enableElements([button])
-
-    assert.isFalse(button.disabled)
-    assert.isUndefined(button._htmxDisableCount)
-  })
-
-  it('works with nested elements', function () {
+  it('enables element after request completes', async function () {
+    mockResponse('GET', '/test', 'response')
     let container = createProcessedHTML(
-      '<div class="disable-me"><button class="disable-me"></button></div>',
+      '<div><button hx-get="/test" hx-disable=".disable-me">Click</button><input class="disable-me"></div>',
+    )
+    let input = container.querySelector('input')
+    let btn = container.querySelector('button')
+
+    btn.click()
+    await forRequest()
+
+    assert.isFalse(input.disabled)
+  })
+
+  it('handles multiple disabled elements', async function () {
+    mockResponse('GET', '/test', 'response')
+    let container = createProcessedHTML(
+      '<div><button hx-get="/test" hx-disable=".disable-me">Click</button><input class="disable-me"><select class="disable-me"></select></div>',
+    )
+    let input = container.querySelector('input')
+    let select = container.querySelector('select')
+    let btn = container.querySelector('button')
+
+    let inputDisabled = false
+    let selectDisabled = false
+    btn.addEventListener('htmx:before:request', () => {
+      inputDisabled = input.disabled
+      selectDisabled = select.disabled
+    })
+
+    btn.click()
+    await forRequest()
+
+    assert.isTrue(inputDisabled)
+    assert.isTrue(selectDisabled)
+  })
+
+  it('does not disable when no hx-disable is set', async function () {
+    mockResponse('GET', '/test', 'response')
+    let container = createProcessedHTML(
+      '<div><button hx-get="/test">Click</button><input class="disable-me"></div>',
+    )
+    let input = container.querySelector('input')
+    let btn = container.querySelector('button')
+
+    btn.click()
+    await forRequest()
+
+    assert.isFalse(input.disabled)
+  })
+
+  it('includes element itself when it matches selector', async function () {
+    mockResponse('GET', '/test', 'response')
+    let btn = createProcessedHTML(
+      '<button class="disable-me" hx-get="/test" hx-disable=".disable-me">Click</button>',
+    )
+
+    let wasDisabled = false
+    btn.addEventListener('htmx:before:request', () => {
+      wasDisabled = btn.disabled
+    })
+
+    btn.click()
+    await forRequest()
+
+    assert.isTrue(wasDisabled)
+  })
+
+  it('re-enables all elements after request completes for nested elements', async function () {
+    mockResponse('GET', '/test', 'response')
+    let container = createProcessedHTML(
+      '<div class="disable-me"><button hx-get="/test" hx-disable=".disable-me">Click</button><input class="disable-me"></div>',
     )
     let outer = container
-    let inner = container.querySelector('button')
+    let input = container.querySelector('input')
+    let btn = container.querySelector('button')
 
-    let elements = htmx.__disableElements(container, '.disable-me')
-
-    assert.isTrue(outer.disabled)
-    assert.isTrue(inner.disabled)
-
-    htmx.__enableElements(elements)
+    btn.click()
+    await forRequest()
 
     assert.isFalse(outer.disabled)
-    assert.isFalse(inner.disabled)
-  })
-
-  it('maintains separate counts for separate elements', function () {
-    let container = createProcessedHTML(
-      '<div><button class="disable-me"></button><input class="disable-me"></div>',
-    )
-    let button = container.querySelector('button')
-    let input = container.querySelector('input')
-
-    htmx.__disableElements(container, 'button.disable-me')
-    htmx.__disableElements(container, '.disable-me')
-
-    assert.equal(button._htmxDisableCount, 2)
-    assert.equal(input._htmxDisableCount, 1)
+    assert.isFalse(input.disabled)
   })
 })

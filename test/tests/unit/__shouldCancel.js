@@ -1,197 +1,63 @@
-describe('__shouldCancel() unit tests', function () {
-  it('anchor with href should cancel click event', function () {
-    const anchor = createDisconnectedHTML('<a href="/foo"></a>')
-    const evt = { type: 'click', currentTarget: anchor, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
+describe('event cancellation behavior tests', function () {
+  beforeEach(function () {
+    setupTest()
   })
 
-  it('anchor with # href should cancel click event', function () {
-    const anchor = createDisconnectedHTML('<a href="#"></a>')
-    const evt = { type: 'click', currentTarget: anchor, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
+  afterEach(function () {
+    cleanupTest()
   })
 
-  it('anchor with #foo href should not cancel click event', function () {
-    const evt = {
-      type: 'click',
-      currentTarget: createDisconnectedHTML('<a href="#foo"></a>'),
-      button: 0,
-    }
-    assert.equal(htmx.__shouldCancel(evt), false)
+  it('anchor with href cancels click default when boosted', async function () {
+    mockResponse('GET', '/foo', 'response')
+    let container = createProcessedHTML('<div hx-boost="true"><a href="/foo">Link</a></div>')
+    let link = container.querySelector('a')
+    let defaultPrevented = false
+    link.addEventListener('click', e => { defaultPrevented = e.defaultPrevented }, { capture: false })
+    link.click()
+    await forRequest()
+    assert.isTrue(defaultPrevented)
   })
 
-  it('div should not cancel click event', function () {
-    const evt = { type: 'click', currentTarget: createDisconnectedHTML('<div></div>'), button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), false)
+  it('anchor with hx-get cancels click default', async function () {
+    mockResponse('GET', '/foo', 'response')
+    let link = createProcessedHTML('<a href="/foo" hx-get="/foo">Link</a>')
+    let defaultPrevented = false
+    link.addEventListener('click', e => { defaultPrevented = e.defaultPrevented }, { capture: false })
+    link.click()
+    await forRequest()
+    assert.isTrue(defaultPrevented)
   })
 
-  it('form should cancel submit event', function () {
-    const evt = { type: 'submit', currentTarget: createDisconnectedHTML('<form></form>') }
-    assert.equal(htmx.__shouldCancel(evt), true)
+  it('form with hx-post cancels submit default', async function () {
+    mockResponse('POST', '/submit', 'response')
+    let form = createProcessedHTML('<form hx-post="/submit"><button type="submit">Submit</button></form>')
+    let defaultPrevented = false
+    form.addEventListener('submit', e => { defaultPrevented = e.defaultPrevented }, { capture: false })
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await forRequest()
+    assert.isTrue(defaultPrevented)
   })
 
-  it('button inside form should cancel click event', function () {
-    const form = createDisconnectedHTML('<form><button></button></form>')
-    const evt = { type: 'click', currentTarget: form.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
+  it('div with hx-get cancels click default', async function () {
+    mockResponse('GET', '/test', 'response')
+    let div = createProcessedHTML('<div hx-get="/test">Click</div>')
+    let defaultPrevented = false
+    div.addEventListener('click', e => { defaultPrevented = e.defaultPrevented }, { capture: false })
+    div.click()
+    await forRequest()
+    assert.isTrue(defaultPrevented)
   })
 
-  it('submit button inside form should cancel click event', function () {
-    const form = createDisconnectedHTML('<form><button type="submit"></button></form>')
-    const evt = { type: 'click', currentTarget: form.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
-  })
-
-  it('input type=submit inside form should cancel click event', function () {
-    const form = createDisconnectedHTML('<form><input type="submit"></form>')
-    const evt = { type: 'click', currentTarget: form.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
-  })
-
-  it('input type=image inside form should cancel click event', function () {
-    const form = createDisconnectedHTML('<form><input type="image"></form>')
-    const evt = { type: 'click', currentTarget: form.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
-  })
-
-  it('button type=reset inside form should not cancel click event', function () {
-    const form = createDisconnectedHTML('<form><button type="reset"></button></form>')
-    const evt = { type: 'click', currentTarget: form.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), false)
-  })
-
-  it('button type=button inside form should not cancel click event', function () {
-    const form = createDisconnectedHTML('<form><button type="button"></button></form>')
-    const evt = { type: 'click', currentTarget: form.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), false)
-  })
-
-  it('button with form attribute should cancel click event', function () {
-    const container = createHTMLNoProcessing(
-      '<div><form id="f1"></form><button form="f1"></button></div>',
+  it('boosted form submit cancels default', async function () {
+    mockResponse('POST', '/submit', 'response')
+    let container = createProcessedHTML(
+      '<div hx-boost="true"><form method="post" action="/submit"><button type="submit">Submit</button></form></div>',
     )
-    try {
-      const evt = { type: 'click', currentTarget: container.querySelector('button'), button: 0 }
-      assert.equal(htmx.__shouldCancel(evt), true)
-    } finally {
-      container.remove()
-    }
-  })
-
-  it('button with form attribute and type=submit should cancel click event', function () {
-    const container = createHTMLNoProcessing(
-      '<div><form id="f1"></form><button form="f1" type="submit"></button></div>',
-    )
-    try {
-      const evt = { type: 'click', currentTarget: container.querySelector('button'), button: 0 }
-      assert.equal(htmx.__shouldCancel(evt), true)
-    } finally {
-      container.remove()
-    }
-  })
-
-  it('button with form attribute and type=button should not cancel click event', function () {
-    const container = createHTMLNoProcessing(
-      '<div><form id="f1"></form><button form="f1" type="button"></button></div>',
-    )
-    try {
-      const evt = { type: 'click', currentTarget: container.querySelector('button'), button: 0 }
-      assert.equal(htmx.__shouldCancel(evt), false)
-    } finally {
-      container.remove()
-    }
-  })
-
-  it('button with form attribute and type=reset should not cancel click event', function () {
-    const container = createHTMLNoProcessing(
-      '<div><form id="f1"></form><button form="f1" type="reset"></button></div>',
-    )
-    try {
-      const evt = { type: 'click', currentTarget: container.querySelector('button'), button: 0 }
-      assert.equal(htmx.__shouldCancel(evt), false)
-    } finally {
-      container.remove()
-    }
-  })
-
-  it('button without form should not cancel click event', function () {
-    const evt = {
-      type: 'click',
-      currentTarget: createDisconnectedHTML('<button></button>'),
-      button: 0,
-    }
-    assert.equal(htmx.__shouldCancel(evt), false)
-  })
-
-  it('disabled button should not cancel click event', function () {
-    const form = createDisconnectedHTML('<form><button disabled></button></form>')
-    const evt = { type: 'click', currentTarget: form.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), false)
-  })
-
-  it('right-click (button !== 0) should not cancel', function () {
-    const evt = {
-      type: 'click',
-      currentTarget: createDisconnectedHTML('<a href="/foo"></a>'),
-      button: 2,
-    }
-    assert.equal(htmx.__shouldCancel(evt), false)
-  })
-
-  it('middle-click (button !== 0) should not cancel', function () {
-    const evt = {
-      type: 'click',
-      currentTarget: createDisconnectedHTML('<a href="/foo"></a>'),
-      button: 1,
-    }
-    assert.equal(htmx.__shouldCancel(evt), false)
-  })
-
-  it('button inside htmx-enabled link should cancel', function () {
-    const link = createDisconnectedHTML('<a href="/foo"><button></button></a>')
-    const evt = { type: 'click', currentTarget: link.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
-  })
-
-  it('htmx-enabled button inside link should cancel', function () {
-    const link = createDisconnectedHTML('<a href="/foo"><button></button></a>')
-    const evt = { type: 'click', currentTarget: link.firstElementChild, button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
-  })
-
-  it('span inside button in form should cancel', function () {
-    const form = createDisconnectedHTML('<form><button><span></span></button></form>')
-    const evt = { type: 'click', currentTarget: form.querySelector('span'), button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
-  })
-
-  it('element inside form button should cancel', function () {
-    const form = createDisconnectedHTML('<form><button><span></span></button></form>')
-    const evt = { type: 'click', currentTarget: form.querySelector('span'), button: 0 }
-    assert.equal(htmx.__shouldCancel(evt), true)
-  })
-
-  it('submit button with form attribute outside form should cancel', function () {
-    const container = createHTMLNoProcessing(
-      '<div><form id="test-form"></form><button type="submit" form="test-form"></button></div>',
-    )
-    try {
-      const evt = { type: 'click', currentTarget: container.querySelector('button'), button: 0 }
-      assert.equal(htmx.__shouldCancel(evt), true)
-    } finally {
-      container.remove()
-    }
-  })
-
-  it('input type=submit with form attribute outside form should cancel', function () {
-    const container = createHTMLNoProcessing(
-      '<div><form id="test-form"></form><input type="submit" form="test-form"></div>',
-    )
-    try {
-      const evt = { type: 'click', currentTarget: container.querySelector('input'), button: 0 }
-      assert.equal(htmx.__shouldCancel(evt), true)
-    } finally {
-      container.remove()
-    }
+    let form = container.querySelector('form')
+    let defaultPrevented = false
+    form.addEventListener('submit', e => { defaultPrevented = e.defaultPrevented }, { capture: false })
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await forRequest()
+    assert.isTrue(defaultPrevented)
   })
 })

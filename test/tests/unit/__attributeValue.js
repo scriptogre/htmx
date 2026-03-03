@@ -1,4 +1,4 @@
-describe('__atributeValue() unit tests', function () {
+describe('htmx.attr() unit tests', function () {
   it(':append modifier appends to inherited value', function () {
     const container = createDisconnectedHTML(
       '<div hx-include:inherited=".parent">' +
@@ -6,13 +6,13 @@ describe('__atributeValue() unit tests', function () {
         '</div>',
     )
     const button = container.querySelector('button')
-    const result = htmx.__attributeValue(button, 'hx-include')
+    const result = htmx.attr(button, 'hx-include')
     assert.equal(result, '.parent,.child')
   })
 
   it(':append modifier works without inherited value', function () {
     const button = createDisconnectedHTML('<button hx-include:append=".child">Test</button>')
-    const result = htmx.__attributeValue(button, 'hx-include')
+    const result = htmx.attr(button, 'hx-include')
     assert.equal(result, '.child')
   })
 
@@ -25,7 +25,7 @@ describe('__atributeValue() unit tests', function () {
         '</div>',
     )
     const button = container.querySelector('button')
-    const result = htmx.__attributeValue(button, 'hx-vals')
+    const result = htmx.attr(button, 'hx-vals')
     assert.equal(result, '{"a":1},{"b":2}')
   })
 
@@ -34,7 +34,7 @@ describe('__atributeValue() unit tests', function () {
       '<div hx-include:inherited=".parent">' + '  <button>Test</button>' + '</div>',
     )
     const button = container.querySelector('button')
-    const result = htmx.__attributeValue(button, 'hx-include')
+    const result = htmx.attr(button, 'hx-include')
     assert.equal(result, '.parent')
   })
 
@@ -45,7 +45,7 @@ describe('__atributeValue() unit tests', function () {
         '</div>',
     )
     const button = container.querySelector('button')
-    const result = htmx.__attributeValue(button, 'hx-include')
+    const result = htmx.attr(button, 'hx-include')
     assert.equal(result, '.direct')
   })
 
@@ -58,7 +58,7 @@ describe('__atributeValue() unit tests', function () {
         '</div>',
     )
     const button = container.querySelector('button')
-    const result = htmx.__attributeValue(button, 'hx-include')
+    const result = htmx.attr(button, 'hx-include')
     assert.equal(result, '.grandparent,.parent,.child')
   })
 
@@ -67,7 +67,7 @@ describe('__atributeValue() unit tests', function () {
       '<div hx-include:inherited:append=".parent">' + '  <button>Test</button>' + '</div>',
     )
     const button = container.querySelector('button')
-    const result = htmx.__attributeValue(button, 'hx-include')
+    const result = htmx.attr(button, 'hx-include')
     assert.equal(result, '.parent')
   })
 })

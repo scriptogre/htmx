@@ -14,10 +14,11 @@ describe('on() unit tests', function () {
     assert.isTrue(called)
   })
 
-  it('returns the callback', function () {
+  it('returns an unsubscribe function', function () {
     let callback = () => {}
     let returned = htmx.on('custom', callback)
-    assert.equal(returned, callback)
+    // In htmx 4.0, on() returns an off/unsubscribe function, not the callback
+    assert.isFunction(returned)
   })
 
   it('receives event object', function () {

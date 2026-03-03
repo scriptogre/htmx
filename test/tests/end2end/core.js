@@ -34,7 +34,7 @@ describe('Basic Functionality', () => {
     find('#b1').click()
     await forRequest()
 
-    assert.isUndefined(find('#target'))
+    assert.isNull(find('#target'))
     assertTextContentIs('#result', 'Success!')
   })
 
@@ -50,7 +50,7 @@ describe('Basic Functionality', () => {
     find('#b1').click()
     await forRequest()
 
-    assert.isUndefined(find('#target'))
+    assert.isNull(find('#target'))
     assertTextContentIs('#result', 'Success!')
   })
 

@@ -10,9 +10,9 @@ describe('Out of Band Swaps', function () {
       '/demo',
       new MockResponse(
         `<div id="result">Success!</div>
-                   <htmx-action type="partial" hx-target="#d2">
+                   <hx-partial hx-target="#d2">
                       <div id="d3">Success OOB!<p></p></div>
-                   </htmx-action>`,
+                   </hx-partial>`,
       ),
     )
     // Create test button

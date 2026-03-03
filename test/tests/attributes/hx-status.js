@@ -15,7 +15,7 @@ describe('hx-status attribute tests', function () {
     let button = find('button')
     button.click()
     await forRequest()
-    assert.isUndefined(find('#target'))
+    assert.isNull(find('#target'))
     assert.equal(find('#result').innerText, 'Error')
   })
 

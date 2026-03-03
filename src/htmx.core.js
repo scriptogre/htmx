@@ -50,11 +50,33 @@ const ajax = {
             try {
                 // ── Request phase ────────────────────────────────────
                 detail.request.execute = async () => {
-                    const {url, execute, ...fetchOptions} = detail.request
+                    const {url, execute, values, source, ...fetchOptions} = detail.request
                     return await fetch(url, fetchOptions)
                 }
 
                 if (api.emit(element, 'htmx:before:request', detail) === false) return
+
+                // Merge programmatic values into request body/URL
+                if (detail.request.values && typeof detail.request.values === 'object') {
+                    const method = detail.request.method?.toUpperCase()
+                    const usesQuery = /GET|DELETE/.test(method)
+                    if (usesQuery) {
+                        const url = new URL(detail.request.url, document.baseURI)
+                        for (const [k, v] of Object.entries(detail.request.values)) {
+                            url.searchParams.set(k, v)
+                        }
+                        detail.request.url = url.origin === location.origin
+                            ? url.pathname + url.search : url.href
+                    } else {
+                        const params = detail.request.body instanceof URLSearchParams
+                            ? detail.request.body : new URLSearchParams(detail.request.body || '')
+                        for (const [k, v] of Object.entries(detail.request.values)) {
+                            params.set(k, v)
+                        }
+                        detail.request.body = params
+                    }
+                    delete detail.request.values
+                }
 
                 const response = await detail.request.execute()
 
@@ -171,9 +193,30 @@ const swaps = {
                     detail.swap.content = template.content
                 }
 
+                // Parse swap style to extract modifiers (e.g. "innerHTML ignoreTitle:true")
+                detail.swap.style ??= htmx.config.defaultSwap || 'innerHTML'
+                if (detail.swap.style && detail.swap.style.includes(' ')) {
+                    const parts = detail.swap.style.trim().split(/\s+/)
+                    detail.swap.style = parts[0]
+                    for (let i = 1; i < parts.length; i++) {
+                        const colonIdx = parts[i].indexOf(':')
+                        if (colonIdx > 0) {
+                            const key = parts[i].slice(0, colonIdx)
+                            let val = parts[i].slice(colonIdx + 1)
+                            if (val === 'true') val = true
+                            else if (val === 'false') val = false
+                            detail.swap[key] = val
+                        }
+                    }
+                }
+
                 // Dispatch on swap style
                 const target = detail.swap.target
                 const content = detail.swap.content
+
+                // Track inserted nodes for script processing
+                const insertedNodes = [...content.childNodes]
+
                 switch (detail.swap.style) {
                     case 'innerHTML':
                         target.innerHTML = '';
@@ -202,11 +245,32 @@ const swaps = {
                     default:
                         throw new HtmxError(`Unknown swap style "${detail.swap.style}"`, {type: 'SWAP_STYLE_UNKNOWN'})
                 }
+
+                // Store inserted nodes on detail for script processing
+                detail.swap._insertedNodes = insertedNodes
             }
 
             if (api.emit(emitOn, 'htmx:before:swap', detail) === false) return
-            detail.swap.execute()
-            api.emit(emitOn, 'htmx:after:swap', detail)
+
+            const doSwap = () => {
+                detail.swap.execute()
+                // If the element was removed from the DOM by the swap (e.g. outerHTML),
+                // dispatch after:swap on document so listeners can still observe it
+                const afterSwapTarget = emitOn?.isConnected ? emitOn : document
+                api.emit(afterSwapTarget, 'htmx:after:swap', detail)
+                api.emit(afterSwapTarget, 'htmx:after:restore', detail)
+            }
+
+            // View transition support
+            if (detail.swap.transition && document.startViewTransition) {
+                if (api.emit(emitOn, 'htmx:before:viewTransition', detail) === false) return
+                const transition = document.startViewTransition(() => doSwap())
+                return transition.finished.then(() => {
+                    api.emit(emitOn, 'htmx:after:viewTransition', detail)
+                })
+            } else {
+                doSwap()
+            }
         },
     }
 }
@@ -351,8 +415,23 @@ const hxHeaders = {
         'htmx:before:request': (detail, api) => {
             const headersAttr = api.attr(detail.element, 'hx-headers')
             if (!headersAttr) return
+            let headers
             try {
-                const headers = JSON.parse(headersAttr)
+                // Try javascript: prefix first
+                if (headersAttr.startsWith('javascript:')) {
+                    let code = headersAttr.slice(11).trim()
+                    if (!code.startsWith('{')) code = '{' + code + '}'
+                    const result = new Function('return (' + code + ')')()
+                    headers = {}
+                    for (const [k, v] of Object.entries(result)) {
+                        headers[k] = String(v)
+                    }
+                } else {
+                    // Try parsing as JSON (with or without braces)
+                    let jsonStr = headersAttr.trim()
+                    if (!jsonStr.startsWith('{')) jsonStr = '{' + jsonStr + '}'
+                    headers = JSON.parse(jsonStr)
+                }
                 detail.request.headers = {...detail.request.headers, ...headers}
             } catch (e) {
                 console.error('[htmx] Failed to parse hx-headers:', e)
@@ -481,12 +560,32 @@ const fragmentParsing = {
             const titleEl = fragment.querySelector('title')
             if (titleEl) title = titleEl.textContent
 
+            // Strip <head> content (and standalone title when no <head>/<body> wrapper)
+            const head = fragment.querySelector('head')
+            if (head) {
+                head.remove()
+            } else if (titleEl && !fragment.querySelector('body')) {
+                titleEl.remove()
+            }
+
             // Handle full HTML doc responses — extract body content
             const body = fragment.querySelector('body')
             if (body) {
                 const newFrag = document.createDocumentFragment()
                 while (body.childNodes.length > 0) newFrag.appendChild(body.childNodes[0])
                 fragment = newFrag
+            }
+
+            // Convert <hx-partial> to <template hx type="partial">
+            for (const partial of [...fragment.querySelectorAll('hx-partial')]) {
+                const tmpl = document.createElement('template')
+                tmpl.setAttribute('hx', '')
+                tmpl.setAttribute('type', 'partial')
+                for (const attr of partial.attributes) {
+                    tmpl.setAttribute(attr.name, attr.value)
+                }
+                tmpl.innerHTML = partial.innerHTML
+                partial.replaceWith(tmpl)
             }
 
             return {fragment, title}
@@ -502,8 +601,8 @@ const fragmentParsing = {
             }
         },
         'htmx:after:swap': (detail, api) => {
-            // Set document title from response
-            if (detail.swap?.title) {
+            // Set document title from response (unless ignoreTitle is set)
+            if (detail.swap?.title && !detail.swap?.ignoreTitle) {
                 document.title = detail.swap.title
             }
         },
@@ -693,6 +792,8 @@ const hxSwap = {
     config: {attributeFilter: ['hx-swap']},
     on: {
         'htmx:before:swap': (detail, api) => {
+            // Skip nested OOB/partial swaps (they have their own style)
+            if (detail.swap?._oob) return
             const swapAttr = api.parse(api.attr(detail.element, 'hx-swap'), {as: 'style'})
             if (swapAttr) Object.assign(detail.swap, swapAttr)
         }
@@ -707,6 +808,8 @@ const hxTarget = {
     config: {attributeFilter: ['hx-target']},
     on: {
         'htmx:before:swap': (detail, api) => {
+            // Skip nested OOB/partial swaps (they have their own target)
+            if (detail.swap?._oob) return
             const target = api.attr(detail.element, 'hx-target')
             if (target) {
                 detail.swap.target = api.find(target, {from: detail.element})
@@ -747,7 +850,20 @@ const hxTrigger = {
                 const element = detail.element
 
                 for (const t of triggers) {
-                    const eventName = t.eventName || defaultEventName
+                    let eventName = t.eventName || defaultEventName
+
+                    // Extract filter expression from bracket notation (e.g. "evt[foo]")
+                    let filterExpr = null
+                    if (eventName) {
+                        const openIdx = eventName.indexOf('[')
+                        if (openIdx !== -1) {
+                            const closeIdx = eventName.indexOf(']', openIdx)
+                            if (closeIdx !== -1) {
+                                filterExpr = eventName.slice(openIdx + 1, closeIdx)
+                                eventName = eventName.slice(0, openIdx)
+                            }
+                        }
+                    }
 
                     const options = {}
                     if (t.delay !== undefined) options.delay = t.delay
@@ -780,14 +896,52 @@ const hxTrigger = {
 
                     if (!eventName) continue
 
+                    // Build a filtered+consume-aware handler wrapping execute
+                    const targetFilter = t.target || null
+                    const consume = !!t.consume
+                    const handler = (event) => {
+                        // Evaluate filter expression against the event
+                        // Properties of the event are available as bare names (e.g. [ctrlKey], [foo])
+                        if (filterExpr !== null) {
+                            try {
+                                const result = new Function('event', 'with(event) { return (' + filterExpr + ') }').call(event, event)
+                                if (!result) return
+                            } catch {
+                                return
+                            }
+                        }
+                        // Check target filter (e.g. target:#d3)
+                        if (targetFilter) {
+                            const targetEl = event.target
+                            if (!targetEl?.matches?.(targetFilter)) return
+                        }
+                        // Consume modifier: stop propagation
+                        if (consume) {
+                            event.stopPropagation()
+                        }
+                        execute(event)
+                    }
+
                     // Resolve listen target (from modifier)
                     if (t.from) {
-                        for (const target of api.find(t.from, {from: element, multiple: true})) {
-                            const off = api.on(target, eventName, execute, options)
+                        for (const fromTarget of api.find(t.from, {from: element, multiple: true})) {
+                            // For from: triggers, only preventDefault when the event
+                            // originated directly on the from-element, not on children
+                            // bubbling through it (e.g. from:body should not preventDefault
+                            // on clicks of unrelated input elements)
+                            const fromHandler = (event) => {
+                                const origPreventDefault = event.preventDefault.bind(event)
+                                if (event.target !== fromTarget) {
+                                    event.preventDefault = () => {} // no-op for bubbled events
+                                }
+                                handler(event)
+                                event.preventDefault = origPreventDefault
+                            }
+                            const off = api.on(fromTarget, eventName, fromHandler, options)
                             api.state.elements(element).cleanup.push(off)
                         }
                     } else {
-                        api.on(element, eventName, execute, options)
+                        api.on(element, eventName, handler, options)
                     }
                 }
             }
@@ -807,46 +961,51 @@ const hxBoost = {
     on: {
         'htmx:after:walk:init': (detail, api) => {
             const root = detail.element
+            const boostSel = '[hx-boost],[hx-boost\\:inherited]'
             const containers = [
-                ...(root.matches?.('[hx-boost]') ? [root] : []),
-                ...root.querySelectorAll('[hx-boost]')
+                ...(root.matches?.(boostSel) ? [root] : []),
+                ...root.querySelectorAll(boostSel)
             ]
             for (const container of containers) {
                 const boost = api.attr(container, 'hx-boost')
                 if (!boost || boost === 'false') continue
-                for (const el of container.querySelectorAll('a[href], form')) {
-                    api.initElement(el)
+                // Include the container itself if it's a boostable element (form/anchor)
+                const boostable = [
+                    ...(container.matches('a[href], form') ? [container] : []),
+                    ...container.querySelectorAll('a[href], form'),
+                ]
+                for (const el of boostable) {
+                    if (el._htmxBoosted) continue
+                    el._htmxBoosted = true
+                    const eventType = el.matches('a') ? 'click' : 'submit'
+                    el.addEventListener(eventType, (evt) => {
+                        let url, method
+                        if (el.matches('a[href]')) {
+                            url = el.getAttribute('href')
+                            method = 'GET'
+                            // Don't boost anchors with fragment-only hrefs (e.g. #section)
+                            if (url && url.startsWith('#') && url.length > 1) return
+                        } else {
+                            const submitter = evt.submitter
+                            // Don't boost dialog forms or buttons with formmethod="dialog"
+                            const resolvedMethod = submitter?.getAttribute('formmethod')
+                                || el.getAttribute('method') || 'GET'
+                            if (resolvedMethod.toLowerCase() === 'dialog') return
+                            url = submitter?.getAttribute('formaction')
+                                || el.getAttribute('action') || ''
+                            method = resolvedMethod.toUpperCase()
+                        }
+                        evt.preventDefault()
+                        const swap = api.attr(el, 'hx-swap') || null
+                        const targetSel = api.attr(el, 'hx-target')
+                        const target = targetSel ? api.find(targetSel, {from: el}) : null
+                        api.ajax({
+                            element: el,
+                            request: {url, method, headers: {'HX-Boosted': 'true'}},
+                            swap: {style: swap, target: target || null},
+                        })
+                    })
                 }
-            }
-        },
-
-        'htmx:before:request': (detail, api) => {
-            const el = detail.element
-            if (el?.closest?.('[hx-boost]')) {
-                detail.request.headers = detail.request.headers || {}
-                detail.request.headers['HX-Boosted'] = 'true'
-            }
-        },
-
-        'htmx:before:trigger': (detail, api) => {
-            const el = detail.element
-            if (!el.matches('a[href], form')) return
-
-            const boosted = el.closest('[hx-boost]')
-            if (!boosted) return
-            const boost = api.attr(boosted, 'hx-boost')
-            if (!boost || boost === 'false') return
-
-            if (el.matches('a[href]')) {
-                api.ajax({element: el, request: {url: el.getAttribute('href'), method: 'GET'}})
-            } else {
-                api.ajax({
-                    element: el,
-                    request: {
-                        url: el.getAttribute('action') || '',
-                        method: (el.getAttribute('method') || 'GET').toUpperCase(),
-                    },
-                })
             }
         },
     }
@@ -864,8 +1023,16 @@ const defaultTrigger = {
             // Don't override if another extension already set up trigger
             if (detail.trigger) return
 
-            // Default trigger based on element type
+            // Only wire a default trigger for elements that have a request action.
+            // Elements with only inherited/config attrs (e.g. hx-boost:inherited)
+            // should not get a click handler that calls preventDefault().
             const el = detail.element
+            const hasAction = api.attr(el, 'hx-get') || api.attr(el, 'hx-post')
+                || api.attr(el, 'hx-put') || api.attr(el, 'hx-patch')
+                || api.attr(el, 'hx-delete') || api.attr(el, 'hx-trigger')
+            if (!hasAction) return
+
+            // Default trigger based on element type
             let eventName
             if (el.matches('form')) eventName = 'submit'
             else if (el.matches('input:not([type=button]), select, textarea')) eventName = 'change'
@@ -874,7 +1041,15 @@ const defaultTrigger = {
             detail.trigger = {
                 eventName,
                 execute: (event) => {
-                    event?.preventDefault()
+                    // Don't preventDefault for anchors with real fragment identifiers
+                    // (e.g. href="#section"), only prevent for bare "#" or non-fragment hrefs
+                    if (event) {
+                        const href = el.getAttribute?.('href')
+                        const isFragmentLink = href && href.startsWith('#') && href.length > 1
+                        if (!isFragmentLink) {
+                            event.preventDefault()
+                        }
+                    }
                     if (api.emit(el, 'htmx:before:trigger', {element: el, event}) === false) return
                     api.emit(el, 'htmx:after:trigger', {element: el, event})
                 },
@@ -1111,7 +1286,7 @@ const historyMgmt = {
             if (detail.hx?.replaceurl) replace = replace || detail.hx.replaceurl
 
             // Boosted elements default to push
-            if (!push && !replace && el?.closest?.('[hx-boost]')) push = 'true'
+            if (!push && !replace && api.attr(el, 'hx-boost')) push = 'true'
 
             const pathSource = push || replace
             if (!pathSource || pathSource === 'false') return
@@ -1245,7 +1420,15 @@ const inheritance = {
                 const base = original(ancestor, inherited, options)
                     ?? (mode === 'implicit' ? original(ancestor, name, options) : null)
                 if (base !== null) {
-                    chain.push(base)
+                    // When "this" is inherited from an ancestor, resolve it to a
+                    // `closest` selector so api.find() targets the declaring element
+                    // rather than the requesting element.
+                    if (base === 'this') {
+                        const attrName = ancestor.hasAttribute(inherited) ? inherited : name
+                        chain.push(`closest [${CSS.escape(attrName)}="this"]`)
+                    } else {
+                        chain.push(base)
+                    }
                     break
                 }
 
@@ -1309,6 +1492,103 @@ const throttleEvents = {
 }
 
 
+// ── hx-select ──────────────────────────────────────────────────────────
+
+/**
+ * Filter response content to only include elements matching the hx-select selector.
+ */
+const hxSelect = {
+    requires: ['swaps'],
+    config: {attributeFilter: ['hx-select']},
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            // Skip nested (OOB/partial) swaps
+            if (detail.swap?._oob) return
+            const selectAttr = detail.swap?.select || (detail.element ? api.attr(detail.element, 'hx-select') : null)
+            if (!selectAttr) return
+
+            const content = detail.swap?.content
+            if (!(content instanceof DocumentFragment)) return
+
+            // Find matching elements in the fragment
+            const matches = content.querySelectorAll(selectAttr)
+
+            // Replace content with only matched elements
+            const newFrag = document.createDocumentFragment()
+            for (const match of matches) {
+                newFrag.appendChild(match)
+            }
+
+            // Clear the fragment and replace with filtered content
+            while (content.firstChild) content.removeChild(content.firstChild)
+            content.appendChild(newFrag)
+        },
+    }
+}
+
+
+/**
+ * Parse an hx-swap-oob attribute value into { style, target, swap, ... }.
+ * Supports:
+ *   "true" → { style: 'outerHTML' }
+ *   "innerHTML" → { style: 'innerHTML' }
+ *   "innerHTML:#selector" → legacy format { style: 'innerHTML', target: '#selector' }
+ *   "innerHTML target:#sel swap:100ms" → new format with modifiers
+ *   'innerHTML target:".foo .bar"' → quoted multi-word selector
+ */
+function parseSwapOobValue(value) {
+    const result = {style: 'outerHTML', target: null, swap: null}
+    if (!value || value === 'true') return result
+
+    // Tokenize respecting quoted strings
+    const tokens = []
+    let current = ''
+    let inQuote = null
+    for (let i = 0; i < value.length; i++) {
+        const ch = value[i]
+        if (inQuote) {
+            if (ch === inQuote) {
+                inQuote = null
+            } else {
+                current += ch
+            }
+        } else if (ch === '"' || ch === "'") {
+            inQuote = ch
+        } else if (/\s/.test(ch)) {
+            if (current) { tokens.push(current); current = '' }
+        } else {
+            current += ch
+        }
+    }
+    if (current) tokens.push(current)
+    if (!tokens.length) return result
+
+    // First token: swapStyle or swapStyle:targetSelector (legacy)
+    const firstPart = tokens[0]
+    const colonIdx = firstPart.indexOf(':')
+    if (colonIdx > 0) {
+        result.style = firstPart.slice(0, colonIdx)
+        const sel = firstPart.slice(colonIdx + 1)
+        if (sel) result.target = sel
+    } else {
+        result.style = firstPart
+    }
+
+    // Remaining tokens: key:value modifiers
+    for (let i = 1; i < tokens.length; i++) {
+        const modColonIdx = tokens[i].indexOf(':')
+        if (modColonIdx > 0) {
+            const key = tokens[i].slice(0, modColonIdx)
+            const val = tokens[i].slice(modColonIdx + 1)
+            if (key === 'target') result.target = val
+            else if (key === 'swap') result.swap = val
+            else result[key] = val === 'true' ? true : val === 'false' ? false : val
+        }
+    }
+
+    return result
+}
+
 // ── OOB Swap ───────────────────────────────────────────────────────────
 
 /**
@@ -1322,25 +1602,105 @@ const oobSwap = {
         'htmx:before:swap': (detail, api) => {
             const content = detail.swap?.content
             if (!(content instanceof DocumentFragment)) return
+            // Skip nested OOB/partial swaps
+            if (detail.swap?._oob) return
 
             // Process hx-select-oob from the triggering element
-            const selectOOB = api.attr(detail.element, 'hx-select-oob')
+            const selectOOB = detail.element ? api.attr(detail.element, 'hx-select-oob') : null
             if (selectOOB) {
+                // Split on commas but not inside CSS escape sequences
+                // Each spec can be:
+                //   #selector                          → outerHTML swap to matching element by id
+                //   #selector:swapStyle                → specific swap style
+                //   #selector:swapStyle:#target        → legacy format: swap style + target selector
+                //   #selector:swapStyle modifiers      → new format with space-separated modifiers like target:#x strip:false
                 for (const spec of selectOOB.split(',')) {
-                    const [selector, swapStyle = 'outerHTML'] = spec.trim().split(/:(.*)/s)
-                    for (const el of content.querySelectorAll(selector.trim())) {
-                        const target = el.id ? document.getElementById(el.id) : null
-                        if (target) {
-                            const frag = document.createDocumentFragment()
-                            frag.appendChild(el)
-                            api.swap({content: frag, style: swapStyle.trim(), target}, {element: detail.element})
+                    const trimmed = spec.trim()
+                    if (!trimmed) continue
+
+                    let selector, swapStyle = 'outerHTML', targetSelector = null, modifiers = {}
+
+                    // Check if there's a space (new format with modifiers)
+                    const spaceIdx = trimmed.indexOf(' ')
+                    if (spaceIdx > 0) {
+                        // Parse: selector:swapStyle modifier1 modifier2...
+                        const selectorPart = trimmed.slice(0, spaceIdx)
+                        const modifiersPart = trimmed.slice(spaceIdx + 1)
+
+                        // Split selector part on first colon (respecting CSS escapes)
+                        const colonMatch = selectorPart.match(/^((?:[^:\\]|\\.)*)(?::(.*))?$/)
+                        if (colonMatch) {
+                            selector = colonMatch[1]
+                            if (colonMatch[2]) swapStyle = colonMatch[2]
+                        } else {
+                            selector = selectorPart
                         }
+
+                        // Parse space-separated modifiers
+                        for (const mod of modifiersPart.split(/\s+/)) {
+                            const colonIdx = mod.indexOf(':')
+                            if (colonIdx > 0) {
+                                const key = mod.slice(0, colonIdx)
+                                let val = mod.slice(colonIdx + 1)
+                                if (val === 'true') val = true
+                                else if (val === 'false') val = false
+                                if (key === 'target') targetSelector = val
+                                else modifiers[key] = val
+                            } else {
+                                modifiers[mod] = true
+                            }
+                        }
+                    } else {
+                        // No spaces — could be simple selector, selector:style, or selector:style:target (legacy)
+                        // Split on colons, respecting CSS escapes (backslash-colon)
+                        const parts = []
+                        let current = ''
+                        for (let i = 0; i < trimmed.length; i++) {
+                            if (trimmed[i] === '\\' && i + 1 < trimmed.length) {
+                                current += trimmed[i] + trimmed[i + 1]
+                                i++
+                            } else if (trimmed[i] === ':') {
+                                parts.push(current)
+                                current = ''
+                            } else {
+                                current += trimmed[i]
+                            }
+                        }
+                        parts.push(current)
+
+                        selector = parts[0]
+                        if (parts.length > 1 && parts[1]) swapStyle = parts[1]
+                        if (parts.length > 2 && parts[2]) targetSelector = parts[2]
+                    }
+
+                    if (!selector) continue
+
+                    // Find matching elements in the response fragment
+                    for (const el of [...content.querySelectorAll(selector)]) {
+                        // Determine target: explicit target selector, or match by id in the document
+                        let target
+                        if (targetSelector) {
+                            target = document.querySelector(targetSelector)
+                        } else {
+                            target = el.id ? document.getElementById(el.id) : null
+                        }
+                        if (!target) continue
+
+                        const frag = document.createDocumentFragment()
+                        frag.appendChild(el)
+                        const swapOpts = {content: frag, style: swapStyle, target, _oob: true, ...modifiers}
+                        // Default strip:true for non-outerHTML OOB swaps
+                        if (swapOpts.strip === undefined && swapStyle !== 'outerHTML') swapOpts.strip = true
+                        api.swap(swapOpts, {element: detail.element})
                     }
                 }
             }
 
             // Process elements with hx-swap-oob attribute
-            for (const oobElt of [...content.querySelectorAll('[hx-swap-oob]')]) {
+            const oobElts = [...content.querySelectorAll('[hx-swap-oob]')]
+            for (const oobElt of oobElts) {
+                // Remove from main content first
+                oobElt.parentNode?.removeChild(oobElt)
                 let oobValue = oobElt.getAttribute('hx-swap-oob')
                 oobElt.removeAttribute('hx-swap-oob')
 
@@ -1348,20 +1708,57 @@ const oobSwap = {
                 let swapStyle = 'outerHTML'
 
                 if (oobValue && oobValue !== 'true') {
-                    // Parse "swapStyle:targetSelector" or just "swapStyle"
-                    if (oobValue.includes(':')) {
-                        const [style, sel] = oobValue.split(/:(.*)/s)
-                        swapStyle = style.trim()
-                        if (sel?.trim()) target = document.querySelector(sel.trim())
-                    } else {
-                        swapStyle = oobValue
+                    const parsed = parseSwapOobValue(oobValue)
+                    swapStyle = parsed.style
+                    if (parsed.target) target = document.querySelector(parsed.target)
+
+                    if (parsed.swap) {
+                        const delay = htmx.parseInterval?.(parsed.swap) ?? parseInt(parsed.swap, 10)
+                        if (delay > 0) {
+                            const delayedTarget = target
+                            const delayedStyle = swapStyle
+                            const delayedOobElt = oobElt
+                            setTimeout(() => {
+                                const frag = document.createDocumentFragment()
+                                frag.appendChild(delayedOobElt)
+                                api.swap({content: frag, style: delayedStyle, target: delayedTarget, _oob: true}, {element: detail.element})
+                            }, delay)
+                            target = null // skip immediate swap
+                        }
                     }
                 }
 
                 if (!target) continue
                 const frag = document.createDocumentFragment()
                 frag.appendChild(oobElt)
-                api.swap({content: frag, style: swapStyle, target}, {element: detail.element})
+                // Extract extra modifiers from parsed (exclude style/target/swap which are handled above)
+                const {style: _s, target: _t, swap: _sw, ...oobModifiers} = (oobValue && oobValue !== 'true')
+                    ? parseSwapOobValue(oobValue) : {}
+                const swapOpts = {content: frag, style: swapStyle, target, _oob: true, ...oobModifiers}
+                // Default strip:true for non-outerHTML OOB swaps
+                if (swapOpts.strip === undefined && swapStyle !== 'outerHTML') swapOpts.strip = true
+                api.swap(swapOpts, {element: detail.element})
+            }
+
+            // Process hx-partial elements (converted to <template hx type="partial"> by makeFragment)
+            const partialElts = [...content.querySelectorAll('template[hx][type="partial"]')]
+            for (const partial of partialElts) {
+                partial.parentNode?.removeChild(partial)
+                const targetSel = partial.getAttribute('hx-target')
+                const swapStyleAttr = partial.getAttribute('hx-swap')
+                const partialTarget = targetSel ? document.querySelector(targetSel) : null
+                if (!partialTarget) continue
+                // Template elements store children in .content
+                const partialFrag = partial.content || document.createDocumentFragment()
+                api.swap(
+                    {content: partialFrag, style: swapStyleAttr || 'innerHTML', target: partialTarget, _oob: true},
+                    {element: detail.element}
+                )
+            }
+
+            // If all content was extracted as OOB/partials, skip the main swap
+            if (content.childNodes.length === 0 && (oobElts.length > 0 || partialElts.length > 0)) {
+                detail.swap.style = 'none'
             }
         },
     }
@@ -1376,10 +1773,32 @@ const oobSwap = {
 const scriptProcessing = {
     on: {
         'htmx:after:swap': (detail, api) => {
-            const target = detail.swap?.target
-            if (!target || !(target instanceof Element)) return
+            // Collect all scripts to process
+            const scripts = []
 
-            for (const oldScript of [...target.querySelectorAll('script')]) {
+            // For innerHTML/afterbegin/beforeend, scripts are inside the target
+            const target = detail.swap?.target
+            if (target instanceof Element) {
+                scripts.push(...target.querySelectorAll('script'))
+            }
+
+            // For outerHTML/beforebegin/afterend, scripts may be in inserted nodes (siblings)
+            const insertedNodes = detail.swap?._insertedNodes
+            if (insertedNodes) {
+                for (const node of insertedNodes) {
+                    if (node.nodeName === 'SCRIPT') {
+                        scripts.push(node)
+                    } else if (node instanceof Element) {
+                        scripts.push(...node.querySelectorAll('script'))
+                    }
+                }
+            }
+
+            // Deduplicate and process
+            const seen = new Set()
+            for (const oldScript of scripts) {
+                if (seen.has(oldScript)) continue
+                seen.add(oldScript)
                 const newScript = document.createElement('script')
                 for (const attr of oldScript.attributes) {
                     newScript.setAttribute(attr.name, attr.value)
@@ -1398,14 +1817,73 @@ const scriptProcessing = {
 // ── hx-confirm ─────────────────────────────────────────────────────────
 
 /**
- * Show confirmation dialog before trigger.
+ * Show confirmation dialog before trigger, with full event protocol:
+ * - htmx:config:request fires first (ctx.confirm can be modified/nullified)
+ * - htmx:confirm fires with detail.ctx and detail.issueRequest
+ * - Supports js: prefix for custom evaluation
+ * - Supports async custom confirmation UI via issueRequest callback
  */
 const hxConfirm = {
     config: {attributeFilter: ['hx-confirm']},
     on: {
         'htmx:before:trigger': (detail, api) => {
-            const confirmMsg = api.attr(detail.element, 'hx-confirm')
-            if (confirmMsg && !window.confirm(confirmMsg)) return false
+            const el = detail.element
+            // Bypass confirm on re-trigger from issueRequest
+            if (el._htmxConfirmBypass) return
+
+            const confirmMsg = api.attr(el, 'hx-confirm')
+            if (!confirmMsg) return
+
+            const ctx = {confirm: confirmMsg}
+
+            // Fire htmx:config:request so listeners can modify ctx.confirm
+            el.dispatchEvent(new CustomEvent('htmx:config:request', {
+                detail: {element: el, ctx},
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+            }))
+
+            // If ctx.confirm was nullified, skip confirmation entirely
+            if (ctx.confirm == null) return
+
+            // Check for js: prefix — evaluate expression
+            if (ctx.confirm.startsWith('js:')) {
+                const expr = ctx.confirm.slice(3)
+                try {
+                    const result = new Function('element', `return ${expr}`).call(el, el)
+                    if (!result) return false
+                } catch (e) {
+                    console.error('[htmx] hx-confirm js: evaluation error:', e)
+                    return false
+                }
+                return
+            }
+
+            // issueRequest support for async custom confirmation
+            const issueRequest = (confirmed) => {
+                if (confirmed) {
+                    el._htmxConfirmBypass = true
+                    if (api.emit(el, 'htmx:before:trigger', {element: el, event: detail.event}) !== false) {
+                        api.emit(el, 'htmx:after:trigger', {element: el, event: detail.event})
+                    }
+                    el._htmxConfirmBypass = false
+                }
+            }
+
+            // Fire htmx:confirm event on the element
+            const dispatched = el.dispatchEvent(new CustomEvent('htmx:confirm', {
+                detail: {element: el, ctx, issueRequest},
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+            }))
+
+            // If htmx:confirm was prevented, the listener will call issueRequest later
+            if (!dispatched) return false
+
+            // Default behavior: window.confirm
+            if (!window.confirm(ctx.confirm)) return false
         },
     }
 }
@@ -1464,6 +1942,7 @@ const hxIndicator = {
 
 /**
  * Disables elements during request with reference counting.
+ * Disabling is synchronous (htmx:before:request); re-enabling is async (htmx:finally).
  */
 const hxDisable = {
     config: {attributeFilter: ['hx-disable']},
@@ -1473,21 +1952,30 @@ const hxDisable = {
             if (!el) return
             const selector = api.attr(el, 'hx-disable')
             if (!selector) return
-            const elements = api.find(selector, {from: el, multiple: true}) || []
-            for (const elt of elements) {
-                elt._htmxDisableCount = (elt._htmxDisableCount || 0) + 1
-                elt.disabled = true
+            // Support comma-separated extended selectors (e.g. "find input, find button")
+            const targets = []
+            for (const part of selector.split(',')) {
+                const found = api.find(part.trim(), {from: el, multiple: true}) || []
+                targets.push(...found)
             }
-            detail._disabledElements = elements
+            for (const t of targets) {
+                t._htmxDisableCount = (t._htmxDisableCount || 0) + 1
+                t.disabled = true
+            }
+            el._htmxDisabledElements = (el._htmxDisabledElements || []).concat(targets)
         },
         'htmx:finally': (detail, api) => {
-            for (const elt of detail._disabledElements || []) {
-                elt._htmxDisableCount = (elt._htmxDisableCount || 1) - 1
-                if (elt._htmxDisableCount <= 0) {
-                    elt._htmxDisableCount = 0
-                    elt.disabled = false
+            const el = detail.element
+            if (!el) return
+            const targets = el._htmxDisabledElements || []
+            for (const t of targets) {
+                t._htmxDisableCount = (t._htmxDisableCount || 1) - 1
+                if (t._htmxDisableCount <= 0) {
+                    t._htmxDisableCount = 0
+                    t.disabled = false
                 }
             }
+            el._htmxDisabledElements = []
         },
     }
 }
@@ -1514,12 +2002,22 @@ const hxOn = {
             if (!handlers.length) return
 
             const originalInit = detail.init.execute
+            const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
             detail.init.execute = () => {
                 originalInit()
                 for (const {eventName, code} of handlers) {
                     api.on(el, eventName, (event) => {
                         try {
-                            new Function('event', 'element', code).call(el, event, el)
+                            const find = (selectorOrRoot, selector) => {
+                                if (selector === undefined) {
+                                    return api.find(selectorOrRoot, {from: el})
+                                }
+                                const root = typeof selectorOrRoot === 'string'
+                                    ? document.querySelector(selectorOrRoot) : selectorOrRoot
+                                return api.find(selector, {from: root})
+                            }
+                            const timeout = (ms) => new Promise(r => setTimeout(r, ms))
+                            new AsyncFunction('event', 'element', 'find', 'timeout', code).call(el, event, el, find, timeout)
                         } catch (e) {
                             console.error(`[htmx] hx-on:${eventName} error:`, e)
                         }
@@ -1540,28 +2038,31 @@ const hxPreserve = {
     config: {attributeFilter: ['hx-preserve']},
     on: {
         'htmx:before:swap': (detail, api) => {
-            const content = detail.swap?.content
-            if (!(content instanceof DocumentFragment)) return
-            const target = detail.swap?.target
-            if (!(target instanceof Element)) return
+            const originalExecute = detail.swap?.execute
+            if (!originalExecute) return
 
-            // Find preserved elements in the target that need to be saved
-            const preserved = []
-            for (const newEl of content.querySelectorAll('[hx-preserve]')) {
-                if (!newEl.id) continue
-                const existing = document.getElementById(newEl.id)
-                if (!existing) continue
-                // Save existing element, replace new with placeholder
-                preserved.push({id: newEl.id, existing})
-                newEl.replaceWith(existing.cloneNode(true))
-            }
-            detail._preserved = preserved
-        },
-        'htmx:after:swap': (detail, api) => {
-            for (const {id, existing} of detail._preserved || []) {
-                const placeholder = document.getElementById(id)
-                if (placeholder && existing) {
-                    placeholder.replaceWith(existing)
+            detail.swap.execute = () => {
+                // Resolve target to find preserved elements before the swap
+                const target = typeof detail.swap.target === 'string'
+                    ? api.find(detail.swap.target)
+                    : detail.swap.target ?? detail.element
+
+                const preserved = new Map()
+                if (target) {
+                    for (const el of target.querySelectorAll('[hx-preserve]')) {
+                        if (el.id) preserved.set(el.id, el)
+                    }
+                }
+
+                // Execute the original swap
+                originalExecute()
+
+                // Restore preserved elements
+                for (const [id, original] of preserved) {
+                    const replacement = document.getElementById(id)
+                    if (replacement) {
+                        replacement.replaceWith(original)
+                    }
                 }
             }
         },
@@ -1664,6 +2165,7 @@ const metaCharacter = {
  * DOM morphing algorithm — intelligently patches existing DOM nodes to match
  * new content while preserving element identity, focus state, and animations.
  */
+let _morphFn = null // Closure reference for morph wrap to call the defined morph function
 const morph = {
     config: {
         morphScanLimit: 10,
@@ -1672,7 +2174,7 @@ const morph = {
         morphSkipChildren: null,
     },
     define: {
-        morph: (api) => function morph(oldNode, fragment, innerHTML) {
+        morph: (api) => { const fn = function morph(oldNode, fragment, innerHTML) {
             // ── Helpers ──
 
             function queryEltAndDescendants(elt, selector) {
@@ -1886,16 +2388,23 @@ const morph = {
                 morphChildren(ctx, oldNode.parentNode, fragment, oldNode, oldNode.nextSibling)
             }
             pantry.remove()
-        },
+        }; _morphFn = fn; return fn },
     },
     wrap: {
         swap: (originalSwap, swapObj, options) => {
             const style = swapObj?.style
             if (style === 'innerMorph' || style === 'outerMorph') {
-                const target = swapObj.target || options?.element
-                const content = swapObj.content
+                let target = swapObj.target || options?.element
+                if (typeof target === 'string') target = document.querySelector(target)
+                if (!target) target = options?.element || document.body
+                let content = swapObj.content
+                if (typeof content === 'string') {
+                    const template = document.createElement('template')
+                    template.innerHTML = content
+                    content = template.content
+                }
                 if (content instanceof DocumentFragment) {
-                    htmx.morph(target, content, style === 'innerMorph')
+                    _morphFn(target, content, style === 'innerMorph')
                     htmx.init(target)
                     return
                 }
@@ -1913,12 +2422,50 @@ const morph = {
  */
 const publicApi = {
     requires: ['swaps', 'ajax'],
+    wrap: {
+        // on() — flexible public signature:
+        //   on(eventName, handler)          → listen on document
+        //   on('#sel', eventName, handler)  → listen on querySelector result
+        //   on(element, eventName, handler)  → listen on element (passthrough)
+        on: (original, element, eventName, handler, options) => {
+            if (typeof element === 'string' && typeof eventName === 'function') {
+                // on(eventName, handler)
+                return original(document, element, eventName, handler)
+            }
+            if (typeof element === 'string' && typeof eventName === 'string') {
+                // on('#selector', eventName, handler)
+                const el = document.querySelector(element)
+                if (!el) return () => {}
+                return original(el, eventName, handler, options)
+            }
+            return original(element, eventName, handler, options)
+        },
+    },
     on: {
         'htmx:boot': (detail, api) => {
             // Aliases
             htmx.process = htmx.init
-            htmx.trigger = htmx.emit
-
+            // trigger(element, eventName, detail, bubbles) — enhanced emit
+            // Supports: string selectors, optional bubbles param (4th arg)
+            htmx.trigger = (elementOrSelector, eventName, detail, bubbles) => {
+                let element = elementOrSelector
+                if (typeof element === 'string') {
+                    element = document.querySelector(element)
+                    if (!element) return true
+                }
+                if (bubbles === false) {
+                    // Dispatch directly without bubbling, bypass emit which always bubbles
+                    const dispatchTarget = element?.isConnected ? element : document
+                    return dispatchTarget.dispatchEvent(
+                        new CustomEvent(eventName, {
+                            detail: detail || {},
+                            bubbles: false,
+                            cancelable: true,
+                            composed: true,
+                        }))
+                }
+                return api.emit(element, eventName, detail || {})
+            }
             // findAll(selector) or findAll(root, selector)
             htmx.findAll = (selectorOrRoot, selector) => {
                 if (selector === undefined) {
@@ -1950,20 +2497,24 @@ const publicApi = {
                     }
                     const timeoutId = timeout > 0 ? setTimeout(() => {
                         target.removeEventListener(event, handler)
-                        reject(new Error(`Timeout waiting for ${event}`))
+                        resolve(null)
                     }, timeout) : null
                     target.addEventListener(event, handler)
                 })
             }
 
-            // timeout(ms) — promise-based delay
-            htmx.timeout = (ms) => new Promise(r => setTimeout(r, ms))
+            // timeout(ms) — promise-based delay, supports string format via parseInterval
+            htmx.timeout = (ms) => {
+                if (typeof ms === 'string') ms = htmx.parseInterval(ms)
+                if (!ms || ms <= 0) return undefined
+                return new Promise(r => setTimeout(r, ms))
+            }
 
             // parseInterval(str) — "150" → 150, "2s" → 2000, "1m" → 60000
             htmx.parseInterval = (str) => {
                 if (typeof str === 'number') return str
                 if (!str) return undefined
-                const m = str.match(/^(\d+)(ms|s|m)?$/)
+                const m = str.match(/^(\d+\.?\d*)(ms|s|m)?$/)
                 if (!m) return undefined
                 const [, n, unit] = m
                 return unit === 's' ? n * 1000 : unit === 'm' ? n * 60000 : +n
@@ -1983,30 +2534,528 @@ const publicApi = {
             // defineExtension — old-style adapter
             htmx.defineExtension = (name, ext) => htmx.install(name, ext)
 
-            // swap/ajax/parse (existing functionality)
+            // resolveTarget(elt, selector) — resolve a target element from a selector
+            htmx.resolveTarget = (elt, selector) => {
+                if (selector instanceof Element) return selector
+                if (!selector) return elt
+                return api.find(selector, {from: elt}) ?? elt
+            }
+
+            // findAllExt(eltOrSelector, maybeSelector) — extended selector find returning array
+            htmx.findAllExt = (eltOrSelector, maybeSelector) => {
+                let selector = maybeSelector ?? eltOrSelector
+                let elt = maybeSelector
+                    ? (typeof eltOrSelector === 'string' ? document.querySelector(eltOrSelector) : eltOrSelector)
+                    : document
+
+                if (typeof selector !== 'string') return []
+
+                // Handle 'global' prefix
+                let global = false
+                if (selector.startsWith('global ')) {
+                    global = true
+                    selector = selector.slice(7)
+                }
+
+                // Hyperscript-style: protect commas inside <.../> from splitting
+                let parts = selector.replace(/<[^>]+\/>/g, m => m.replace(/,/g, '\x00'))
+                    .split(',').map(p => p.replace(/\x00/g, ','))
+
+                let result = []
+                let unprocessedParts = []
+
+                for (let part of parts) {
+                    part = part.trim()
+                    // Strip hyperscript-style wrapper
+                    if (part.startsWith('<') && part.endsWith('/>')) part = part.slice(1, -2)
+
+                    let item
+                    if (part === 'root') {
+                        item = document
+                    } else if (part === 'nextElementSibling') {
+                        item = elt?.nextElementSibling
+                    } else if (part === 'previousElementSibling') {
+                        item = elt?.previousElementSibling
+                    } else {
+                        // Delegate to api.find for standard extended selectors
+                        let found = api.find(part, {from: elt, multiple: true})
+                        if (Array.isArray(found)) {
+                            result.push(...found)
+                        } else if (found) {
+                            result.push(found)
+                        }
+                        continue
+                    }
+
+                    if (item) result.push(item)
+                }
+
+                return [...new Set(result)]
+            }
+
+            // swap(options) — public swap API
+            // Accepts: {target, text|content, swap|style, element, ...modifiers}
             htmx.swap = (options) => {
-                const {element, content, target, style, ...modifiers} = options
+                const {element, content, text, target, style, swap, ...modifiers} = options
                 return api.swap(
-                    {content, target, style: style || null, ...modifiers},
+                    {content: content || text, target, style: style || swap || null, ...modifiers},
                     {element: element || null},
                 )
             }
-            htmx.ajax = (options) => {
-                const {element, url, method, headers, body, target, swap, ...requestModifiers} = options
+
+            // ajax(method, url, options) or ajax(options)
+            // 3-arg form: ajax('GET', '/url', {target, swap, values, headers, ...})
+            // 3-arg form: ajax('GET', '/url', '#selector') — target shorthand
+            // 1-arg form: ajax({method, url, target, swap, ...})
+            htmx.ajax = (methodOrOptions, url, options) => {
+                let method, element, headers, body, target, swap, values, source, select, rest
+                if (typeof methodOrOptions === 'string') {
+                    method = methodOrOptions.toUpperCase()
+                    if (typeof options === 'string') {
+                        options = {target: options}
+                    }
+                    options = options || {}
+                    ;({element, headers, body, target, swap, values, source, select, ...rest} = options)
+                } else {
+                    ;({method, url, element, headers, body, target, swap, values, source, select, ...rest} = methodOrOptions)
+                    method = (method || 'GET').toUpperCase()
+                }
+                // Resolve source element
+                let sourceEl = null
+                if (source) {
+                    sourceEl = typeof source === 'string' ? document.querySelector(source) : source
+                    if (!sourceEl) throw new Error('Source not found: ' + source)
+                }
+                // Resolve target
+                let targetEl = null
+                if (target) {
+                    targetEl = typeof target === 'string' ? document.querySelector(target) : target
+                    if (!targetEl) throw new Error('Target not found: ' + target)
+                } else if (sourceEl) {
+                    targetEl = sourceEl
+                }
                 const swapObj = typeof swap === 'string' ? {style: swap} : (swap || {})
+                const ajaxElement = sourceEl || targetEl || document.body
                 return api.ajax({
-                    element: element || null,
+                    element: ajaxElement,
                     request: {
                         url,
-                        method: method || 'GET',
+                        method,
                         headers: headers || {},
-                        body: body ?? null, ...requestModifiers
+                        body: body ?? null,
+                        values: values || null,
+                        ...rest,
                     },
-                    swap: {style: null, target: target || null, ...swapObj},
+                    swap: {style: null, target: targetEl || null, select: select || null, ...swapObj},
                 })
             }
             htmx.parse = (text, options) => api.parse(text, options)
+
+            // normalizeSwapStyle — maps shorthand swap names to insertAdjacentHTML positions
+            htmx.normalizeSwapStyle = (style) => {
+                const map = {before: 'beforebegin', after: 'afterend', prepend: 'afterbegin', append: 'beforeend'}
+                return map[style] || style
+            }
+
+            // makeFragment — parses HTML string into a DocumentFragment
+            htmx.makeFragment = (html) => api.makeFragment(html)
+
+            // parseSwap — parses a swap specification string into an object
+            htmx.parseSwap = (str) => {
+                if (!str) return {style: htmx.config.defaultSwap}
+                // Tokenize: match key:"quoted value", key:'quoted value', or bare words
+                const tokens = []
+                const re = /(\S+?):"([^"]*)"|(\S+?):'([^']*)'|(\S+)/g
+                let m
+                while ((m = re.exec(str.trim())) !== null) {
+                    if (m[1] !== undefined) tokens.push(m[1] + ':' + m[2])
+                    else if (m[3] !== undefined) tokens.push(m[3] + ':' + m[4])
+                    else tokens.push(m[5])
+                }
+                if (!tokens.length) return {style: htmx.config.defaultSwap}
+                const map = {before: 'beforebegin', after: 'afterend', prepend: 'afterbegin', append: 'beforeend'}
+                // Check if first token has a colon (it's a modifier, not a style)
+                let styleToken, startIdx
+                if (tokens[0].includes(':')) {
+                    styleToken = htmx.config.defaultSwap
+                    startIdx = 0
+                } else {
+                    styleToken = tokens[0]
+                    startIdx = 1
+                }
+                const result = {style: map[styleToken] || styleToken}
+                for (let i = startIdx; i < tokens.length; i++) {
+                    const colonIdx = tokens[i].indexOf(':')
+                    if (colonIdx === -1) continue
+                    const key = tokens[i].slice(0, colonIdx)
+                    let value = tokens[i].slice(colonIdx + 1)
+                    // Parse boolean values
+                    if (value === 'true') value = true
+                    else if (value === 'false') value = false
+                    result[key] = value
+                }
+                return result
+            }
+            htmx.__parseSwap = htmx.parseSwap
+
+            // parseTriggerSpecs — parses trigger specification strings
+            htmx.parseTriggerSpecs = (str) => {
+                if (!str || !str.trim()) return []
+                const specs = []
+                // Split on commas, but not inside brackets
+                const parts = []
+                let current = ''
+                let depth = 0
+                for (const ch of str) {
+                    if (ch === '[') depth++
+                    else if (ch === ']') depth--
+                    if (ch === ',' && depth === 0) {
+                        parts.push(current.trim())
+                        current = ''
+                    } else {
+                        current += ch
+                    }
+                }
+                if (current.trim()) parts.push(current.trim())
+
+                for (const part of parts) {
+                    if (!part) continue
+                    const tokens = []
+                    // Tokenize: split on whitespace but preserve bracket contents
+                    let token = ''
+                    let bd = 0
+                    for (const ch of part) {
+                        if (ch === '[') bd++
+                        else if (ch === ']') bd--
+                        if (/\s/.test(ch) && bd === 0) {
+                            if (token) tokens.push(token)
+                            token = ''
+                        } else {
+                            token += ch
+                        }
+                    }
+                    if (token) tokens.push(token)
+                    if (tokens.length === 0) continue
+
+                    // Check for unterminated bracket
+                    const full = tokens.join(' ')
+                    const openCount = (full.match(/\[/g) || []).length
+                    const closeCount = (full.match(/\]/g) || []).length
+                    if (openCount !== closeCount) throw new Error('Unterminated filter in trigger spec: ' + part)
+
+                    // First token is the event name (may include filter like click[ctrlKey])
+                    const spec = {name: tokens[0]}
+                    for (let i = 1; i < tokens.length; i++) {
+                        const t = tokens[i]
+                        if (t.includes(':')) {
+                            const [key, ...rest] = t.split(':')
+                            spec[key] = rest.join(':')
+                        } else {
+                            spec[t] = true
+                        }
+                    }
+                    specs.push(spec)
+                }
+                return specs
+            }
+
+            // extractFilter — extracts event filter from bracket notation
+            htmx.extractFilter = (str) => {
+                if (!str) return [str, null]
+                const openIdx = str.indexOf('[')
+                if (openIdx === -1) return [str, null]
+                const closeIdx = str.indexOf(']', openIdx)
+                if (closeIdx === -1) return [str, null]
+                return [str.slice(0, openIdx), str.slice(openIdx + 1, closeIdx)]
+            }
+
+            // selectAll — querySelectorAll that also includes the root if it matches
+            htmx.selectAll = (elt, selector) => {
+                const results = []
+                if (elt.matches && elt.matches(selector)) results.push(elt)
+                results.push(...elt.querySelectorAll(selector))
+                return results
+            }
         }
+    }
+}
+
+
+// ── hx-action ──────────────────────────────────────────────────────────
+
+/**
+ * hx-action attribute — auto-detects HTTP method from element type.
+ * GET for links/buttons, POST for forms, or from hx-config method override.
+ */
+const hxAction = {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-action']},
+    on: {
+        'htmx:after:walk:init': (detail, api) => {
+            const root = detail.element
+            const actionSel = '[hx-action]'
+            const elements = [
+                ...(root.matches?.(actionSel) ? [root] : []),
+                ...root.querySelectorAll(actionSel)
+            ]
+            for (const el of elements) {
+                if (el._htmxActionBound) continue
+                el._htmxActionBound = true
+                const url = el.getAttribute('hx-action')
+                if (!url) continue
+                const isForm = el.matches('form')
+                const eventType = isForm ? 'submit' : 'click'
+                const method = isForm ? 'POST' : 'GET'
+                el.addEventListener(eventType, (evt) => {
+                    evt.preventDefault()
+                    api.ajax({element: el, request: {url, method}})
+                })
+            }
+        },
+    }
+}
+
+
+// ── hx-config ──────────────────────────────────────────────────────────
+
+/**
+ * hx-config attribute — per-element configuration overrides merged into request context.
+ * Supports JSON values with optional + prefix for merging object properties.
+ */
+const hxConfig = {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-config']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (!el) return
+            const configAttr = api.attr(el, 'hx-config')
+            if (!configAttr) return
+
+            let parsed
+            try { parsed = JSON.parse(configAttr) } catch { return }
+
+            // Apply parsed config to detail.request
+            for (let key in parsed) {
+                let val = parsed[key]
+                let merge = false
+                if (key.startsWith('+')) {
+                    merge = true
+                    key = key.slice(1)
+                }
+
+                if (key === 'action') {
+                    detail.request.url = val
+                    detail.request.shouldActivate = val
+                } else if (key === 'method') {
+                    detail.request.method = val
+                } else if (merge && val && typeof val === 'object' && !Array.isArray(val)
+                    && detail.request[key] && typeof detail.request[key] === 'object') {
+                    Object.assign(detail.request[key], val)
+                } else {
+                    detail.request[key] = val
+                }
+            }
+
+            // Fire htmx:config:request event with ctx
+            const ctx = {request: detail.request}
+            el.dispatchEvent(new CustomEvent('htmx:config:request', {
+                detail: {element: el, ctx},
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+            }))
+        },
+    }
+}
+
+
+// ── hx-status:NNN ──────────────────────────────────────────────────────
+
+/**
+ * hx-status:NNN attribute — per-status-code swap overrides.
+ * Supports exact matches (hx-status:404), 2-digit wildcards (hx-status:50x),
+ * and 1-digit wildcards (hx-status:5xx).
+ */
+const hxStatus = {
+    requires: ['ajax'],
+    on: {
+        'htmx:before:response': (detail, api) => {
+            if (!detail.response?.raw) return
+            const status = detail.response.raw.status
+            const el = detail.element
+            if (!el) return
+
+            const str = status + ''
+            // Try patterns: exact (404), 2-digit wildcard (40x), 1-digit wildcard (4xx)
+            for (const pattern of [str, str.slice(0, 2) + 'x', str[0] + 'xx']) {
+                const attrName = 'hx-status:' + pattern
+                const statusValue = el.getAttribute(attrName)
+                if (statusValue != null) {
+                    // Parse and store overrides for application during swap
+                    const overrides = {}
+                    const tokens = statusValue.trim().split(/\s+/)
+                    for (const token of tokens) {
+                        const colonIdx = token.indexOf(':')
+                        if (colonIdx > 0) {
+                            const key = token.slice(0, colonIdx)
+                            let val = token.slice(colonIdx + 1)
+                            if (val === 'true') val = true
+                            else if (val === 'false') val = false
+                            overrides[key] = val
+                        }
+                    }
+
+                    // Handle push/replace-url immediately (needs element attribute change)
+                    if (overrides.push === false || overrides.push === 'false') {
+                        el.removeAttribute('hx-push-url')
+                    }
+
+                    // Store overrides on swap object (persists into before:swap detail)
+                    detail.swap = detail.swap || {}
+                    detail.swap._statusOverrides = overrides
+                    return // First match wins
+                }
+            }
+        },
+
+        'htmx:before:swap': (detail, api) => {
+            // Apply status overrides stored during before:response on the swap object
+            const overrides = detail.swap?._statusOverrides
+            if (!overrides) return
+
+            if (overrides.swap) {
+                detail.swap.style = overrides.swap
+            }
+            if (overrides.target) {
+                detail.swap.target = api.find(overrides.target, {from: detail.element})
+            }
+            if (overrides.select) {
+                // Re-filter content with the status-specific selector
+                const content = detail.swap?.content
+                if (content instanceof DocumentFragment) {
+                    const matches = content.querySelectorAll(overrides.select)
+                    const newFrag = document.createDocumentFragment()
+                    for (const match of matches) newFrag.appendChild(match)
+                    while (content.firstChild) content.removeChild(content.firstChild)
+                    content.appendChild(newFrag)
+                }
+            }
+        },
+    }
+}
+
+
+// ── strip modifier ─────────────────────────────────────────────────────
+
+/**
+ * strip:true swap modifier — extracts children from top-level wrapper elements.
+ * For each top-level element child in the content fragment, replaces it with its children.
+ */
+const stripModifier = {
+    requires: ['swaps'],
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            if (!detail.swap) return
+
+            // Check if strip is set directly (from hxSwap parse or OOB swap)
+            let shouldStrip = detail.swap.strip
+
+            // Also check if strip is embedded in the style string (from partials)
+            if (shouldStrip === undefined && detail.swap.style && typeof detail.swap.style === 'string' && detail.swap.style.includes('strip:')) {
+                const match = detail.swap.style.match(/\bstrip:(true|false)\b/)
+                if (match) {
+                    shouldStrip = match[1] === 'true'
+                    // Pre-parse the style to remove the strip modifier (so execute() doesn't re-process)
+                    detail.swap.strip = shouldStrip
+                    detail.swap.style = detail.swap.style.replace(/\s*strip:(true|false)\b/, '').trim()
+                }
+            }
+
+            if (!shouldStrip) return
+            const content = detail.swap.content
+            if (!(content instanceof DocumentFragment)) return
+
+            // For each top-level element child, replace with its children
+            for (const child of [...content.childNodes]) {
+                if (child.nodeType === Node.ELEMENT_NODE) {
+                    const childNodes = [...child.childNodes]
+                    child.replaceWith(...childNodes)
+                }
+            }
+        },
+    }
+}
+
+
+// ── hx-validate ─────────────────────────────────────────────────────────
+
+/**
+ * Form validation — check form validity before issuing a request.
+ * When hx-validate="true", the enclosing form must pass checkValidity()
+ * and reportValidity() before the request proceeds.
+ */
+const hxValidate = {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-validate']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (!el) return
+            const validate = api.attr(el, 'hx-validate')
+            if (validate === 'false') return
+            if (!validate) return
+
+            const form = el.closest?.('form')
+            if (!form) return
+
+            if (!form.checkValidity()) {
+                form.reportValidity()
+                return false // cancel the request
+            }
+        },
+    }
+}
+
+
+// ── Swap Modifiers ─────────────────────────────────────────────────────
+
+/**
+ * Handles scroll and delay modifiers on swap specifications.
+ */
+const swapModifiers = {
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            const swap = detail.swap
+            if (!swap) return
+
+            // Non-blocking swap delay: swap:Nms with transition:false
+            if (swap.swap && swap.transition === false) {
+                const ms = parseInt(swap.swap, 10)
+                if (ms > 0) {
+                    const originalExecute = swap.execute
+                    swap.execute = () => {
+                        setTimeout(() => originalExecute(), ms)
+                    }
+                }
+            }
+        },
+        'htmx:after:swap': (detail, api) => {
+            const swap = detail.swap
+            if (!swap) return
+
+            const target = swap.target
+            if (!(target instanceof Element)) return
+
+            // scroll:top modifier
+            if (swap.scroll === 'top') {
+                target.scrollTop = 0
+            }
+            // scroll:bottom modifier
+            if (swap.scroll === 'bottom') {
+                target.scrollTop = target.scrollHeight
+            }
+        },
     }
 }
 
@@ -2030,10 +3079,12 @@ htmx.install('default-trigger', defaultTrigger)
 htmx.install('default-swap', defaultSwap)
 htmx.install('default-headers', defaultHeaders)
 htmx.install('form-data', formData)
+htmx.install('hx-validate', hxValidate)
 htmx.install('hx-vals', hxVals)
 htmx.install('hx-headers', hxHeaders)
 htmx.install('response-headers', responseHeaders)
 htmx.install('no-swap', noSwap)
+htmx.install('hx-confirm', hxConfirm)
 htmx.install('hx-trigger', hxTrigger)
 htmx.install('hx-get', hxGet)
 htmx.install('hx-post', hxPost)
@@ -2041,19 +3092,24 @@ htmx.install('hx-put', hxPut)
 htmx.install('hx-patch', hxPatch)
 htmx.install('hx-delete', hxDelete)
 htmx.install('hx-swap', hxSwap)
+htmx.install('swap-modifiers', swapModifiers)
 htmx.install('hx-target', hxTarget)
 htmx.install('swap-aliases', swapAliases)
 htmx.install('request-timeout', requestTimeout)
 htmx.install('request-queue', requestQueueExt)
 htmx.install('oob-swap', oobSwap)
+htmx.install('hx-select', hxSelect)
 htmx.install('script-processing', scriptProcessing)
-htmx.install('hx-confirm', hxConfirm)
 htmx.install('hx-indicator', hxIndicator)
 htmx.install('hx-disable', hxDisable)
 htmx.install('hx-on', hxOn)
 htmx.install('hx-preserve', hxPreserve)
 htmx.install('hx-ignore', hxIgnore)
 htmx.install('hx-boost', hxBoost)
+htmx.install('hx-action', hxAction)
+htmx.install('hx-config', hxConfig)
+htmx.install('hx-status', hxStatus)
+htmx.install('strip-modifier', stripModifier)
 htmx.install('history', historyMgmt)
 htmx.install('morph', morph)
 htmx.install('public-api', publicApi)

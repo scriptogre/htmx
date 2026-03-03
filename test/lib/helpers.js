@@ -190,7 +190,7 @@ function playground() {
 }
 
 function find(selector) {
-  return playground()?.querySelector(selector)
+  return playground()?.querySelector(selector) ?? null
 }
 
 // ==============================================================================

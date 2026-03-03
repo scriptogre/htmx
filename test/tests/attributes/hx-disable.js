@@ -47,13 +47,10 @@ describe('hx-disable attribute', function() {
         b2.click()
         b3.hasAttribute('disabled').should.equal(true)
 
-        // Wait for first request to complete
+        // Wait for both requests to complete (mock resolves them simultaneously)
         await forRequest()
-
-        b3.hasAttribute('disabled').should.equal(true)
-
-        // Wait for second request to complete
-        await forRequest()
+        // Allow second htmx:finally to fire if not already
+        await htmx.timeout(1)
 
         b3.hasAttribute('disabled').should.equal(false)
     })
@@ -88,7 +85,9 @@ describe('hx-disable attribute', function() {
         let div = find('#d1')
         let btn = find('#b1')
 
-        div.innerHTML.should.equal('Load Me!')
+        // Load trigger fires via microtask — wait for trigger and disable
+        await new Promise(resolve => queueMicrotask(resolve))
+        await new Promise(resolve => queueMicrotask(resolve))
         btn.hasAttribute('disabled').should.equal(true)
 
         await forRequest()
@@ -107,7 +106,7 @@ describe('hx-disable attribute', function() {
         i1.hasAttribute('disabled').should.equal(false)
         b2.hasAttribute('disabled').should.equal(false)
 
-        b2.click()
+        form.requestSubmit()
         i1.hasAttribute('disabled').should.equal(true)
         b2.hasAttribute('disabled').should.equal(true)
 

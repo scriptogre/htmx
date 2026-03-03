@@ -63,7 +63,7 @@ describe('hx-on attribute', function () {
     btn.dispatchEvent(evt)
     let div = find('#foo')
     assert.isNotNull(div)
-    assert.equal(window.foo, div)
+    assert.strictEqual(window.foo, div)
     delete window.foo
   })
 
@@ -80,7 +80,7 @@ describe('hx-on attribute', function () {
     btn.dispatchEvent(evt)
     let div = find('#bar')
     assert.isNotNull(div)
-    assert.equal(window.foo, div)
+    assert.strictEqual(window.foo, div)
     delete window.foo
   })
 })

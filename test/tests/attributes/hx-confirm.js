@@ -16,7 +16,8 @@ describe('hx-confirm attribute', function () {
       '<button hx-get="/test" hx-confirm="Are you sure?">Click</button>',
     )
     btn.click()
-    await forRequest()
+    // No request is made when confirm is false, so wait a tick instead
+    await htmx.timeout(10)
 
     btn.innerText.should.equal('Click')
     window.confirm = originalConfirm
@@ -108,7 +109,8 @@ describe('hx-confirm attribute', function () {
     })
 
     btn.click()
-    await forRequest()
+    // No request is made when issueRequest(false), so wait a tick instead
+    await htmx.timeout(10)
 
     btn.innerText.should.equal('Click')
   })
@@ -126,7 +128,8 @@ describe('hx-confirm attribute', function () {
     mockResponse('GET', '/test', 'Success')
     let btn = createProcessedHTML('<button hx-get="/test" hx-confirm="js:false">Click</button>')
     btn.click()
-    await forRequest()
+    // No request is made when js: returns false, so wait a tick instead
+    await htmx.timeout(10)
 
     btn.innerText.should.equal('Click')
   })
@@ -195,7 +198,8 @@ describe('hx-confirm attribute', function () {
     createProcessedHTML('<div id="ind" class="htmx-indicator">Loading...</div>')
 
     btn.click()
-    await forRequest()
+    // No request is made when confirm is false, so wait a tick instead
+    await htmx.timeout(10)
 
     let indicator = find('#ind')
     assert.isFalse(indicator.classList.contains('htmx-request'))
@@ -212,7 +216,8 @@ describe('hx-confirm attribute', function () {
     )
 
     btn.click()
-    await forRequest()
+    // No request is made when confirm is false, so wait a tick instead
+    await htmx.timeout(10)
 
     assert.isFalse(btn.disabled)
     window.confirm = originalConfirm

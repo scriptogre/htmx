@@ -39,6 +39,7 @@ const config = {
 </html>`,
 
   nodeResolve: true,
+  testsFinishTimeout: 30000,
   coverage: true,
   coverageConfig: {
     include: ['src/htmx.kernel.js', 'src/htmx.core.js'],

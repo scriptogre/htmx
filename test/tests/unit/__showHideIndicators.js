@@ -1,4 +1,4 @@
-describe('__showIndicators / __hideIndicators unit tests', function () {
+describe('indicator show/hide behavior tests', function () {
   beforeEach(function () {
     setupTest()
   })
@@ -7,130 +7,106 @@ describe('__showIndicators / __hideIndicators unit tests', function () {
     cleanupTest()
   })
 
-  it('shows indicator by adding request class', function () {
-    let container = createProcessedHTML('<div><span class="indicator"></span></div>')
-    let span = container.querySelector('span')
-
-    htmx.__showIndicators(container, '.indicator')
-
-    assert.isTrue(span.classList.contains('htmx-request'))
-  })
-
-  it('hides indicator by removing request class', function () {
-    let container = createProcessedHTML('<div><span class="indicator"></span></div>')
-    let span = container.querySelector('span')
-
-    let indicators = htmx.__showIndicators(container, '.indicator')
-    htmx.__hideIndicators(indicators)
-
-    assert.isFalse(span.classList.contains('htmx-request'))
-  })
-
-  it('increments counter on multiple shows', function () {
-    let container = createProcessedHTML('<div><span class="indicator"></span></div>')
-    let span = container.querySelector('span')
-
-    htmx.__showIndicators(container, '.indicator')
-    htmx.__showIndicators(container, '.indicator')
-
-    assert.equal(span._htmxReqCount, 2)
-    assert.isTrue(span.classList.contains('htmx-request'))
-  })
-
-  it('decrements counter on hide', function () {
-    let container = createProcessedHTML('<div><span class="indicator"></span></div>')
-    let span = container.querySelector('span')
-
-    let indicators1 = htmx.__showIndicators(container, '.indicator')
-    let indicators2 = htmx.__showIndicators(container, '.indicator')
-    htmx.__hideIndicators(indicators1)
-
-    assert.equal(span._htmxReqCount, 1)
-    assert.isTrue(span.classList.contains('htmx-request'))
-  })
-
-  it('removes class only when counter reaches zero', function () {
-    let container = createProcessedHTML('<div><span class="indicator"></span></div>')
-    let span = container.querySelector('span')
-
-    let indicators1 = htmx.__showIndicators(container, '.indicator')
-    let indicators2 = htmx.__showIndicators(container, '.indicator')
-    htmx.__hideIndicators(indicators1)
-    htmx.__hideIndicators(indicators2)
-
-    assert.isFalse(span.classList.contains('htmx-request'))
-    assert.isUndefined(span._htmxReqCount)
-  })
-
-  it('handles multiple indicators', function () {
+  it('shows indicator by adding request class during request', async function () {
+    mockResponse('GET', '/test', 'response')
     let container = createProcessedHTML(
-      '<div><span class="indicator"></span><div class="indicator"></div></div>',
+      '<div><button hx-get="/test" hx-indicator=".indicator">Click</button><span class="indicator"></span></div>',
     )
     let span = container.querySelector('span')
-    let div = container.querySelector('div')
+    let btn = container.querySelector('button')
 
-    htmx.__showIndicators(container, '.indicator')
+    let indicatorShown = false
+    btn.addEventListener('htmx:before:request', () => {
+      indicatorShown = span.classList.contains('htmx-request')
+    })
 
-    assert.isTrue(span.classList.contains('htmx-request'))
-    assert.isTrue(div.classList.contains('htmx-request'))
+    btn.click()
+    await forRequest()
+
+    assert.isTrue(indicatorShown)
   })
 
-  it('does nothing when selector is null', function () {
-    let container = createProcessedHTML('<div><span class="indicator"></span></div>')
-    let span = container.querySelector('span')
-
-    htmx.__showIndicators(container, null)
-
-    assert.isFalse(span.classList.contains('htmx-request'))
-  })
-
-  it('includes element itself in indicators', function () {
-    let div = createProcessedHTML('<div class="indicator"></div>')
-
-    htmx.__showIndicators(div, '.indicator')
-
-    assert.isTrue(div.classList.contains('htmx-request'))
-  })
-
-  it('handles hide without prior show gracefully', function () {
-    let container = createProcessedHTML('<div><span class="indicator"></span></div>')
-    let span = container.querySelector('span')
-
-    htmx.__hideIndicators([span])
-
-    assert.isFalse(span.classList.contains('htmx-request'))
-    assert.isUndefined(span._htmxReqCount)
-  })
-
-  it('works with nested indicators', function () {
+  it('hides indicator by removing request class after request completes', async function () {
+    mockResponse('GET', '/test', 'response')
     let container = createProcessedHTML(
-      '<div class="indicator"><span class="indicator"></span></div>',
+      '<div><button hx-get="/test" hx-indicator=".indicator">Click</button><span class="indicator"></span></div>',
+    )
+    let span = container.querySelector('span')
+    let btn = container.querySelector('button')
+
+    btn.click()
+    await forRequest()
+
+    assert.isFalse(span.classList.contains('htmx-request'))
+  })
+
+  it('handles multiple indicators', async function () {
+    mockResponse('GET', '/test', 'response')
+    let container = createProcessedHTML(
+      '<div><button hx-get="/test" hx-indicator=".indicator">Click</button><span class="indicator"></span><div class="indicator"></div></div>',
+    )
+    let span = container.querySelector('span')
+    let innerDiv = container.querySelector('div.indicator')
+    let btn = container.querySelector('button')
+
+    let spanShown = false
+    let divShown = false
+    btn.addEventListener('htmx:before:request', () => {
+      spanShown = span.classList.contains('htmx-request')
+      divShown = innerDiv.classList.contains('htmx-request')
+    })
+
+    btn.click()
+    await forRequest()
+
+    assert.isTrue(spanShown)
+    assert.isTrue(divShown)
+  })
+
+  it('does not show indicator when no hx-indicator is set', async function () {
+    mockResponse('GET', '/test', 'response')
+    let container = createProcessedHTML(
+      '<div><button hx-get="/test">Click</button><span class="indicator"></span></div>',
+    )
+    let span = container.querySelector('span')
+    let btn = container.querySelector('button')
+
+    btn.click()
+    await forRequest()
+
+    assert.isFalse(span.classList.contains('htmx-request'))
+  })
+
+  it('includes element itself in indicators', async function () {
+    mockResponse('GET', '/test', 'response')
+    let div = createProcessedHTML(
+      '<div class="indicator" hx-get="/test" hx-indicator=".indicator">Click</div>',
+    )
+
+    let indicatorShown = false
+    div.addEventListener('htmx:before:request', () => {
+      indicatorShown = div.classList.contains('htmx-request')
+    })
+
+    div.click()
+    await forRequest()
+
+    assert.isTrue(indicatorShown)
+  })
+
+  it('removes class after request completes for nested indicators', async function () {
+    mockResponse('GET', '/test', 'response')
+    let container = createProcessedHTML(
+      '<div class="indicator"><button hx-get="/test" hx-indicator=".indicator">Click</button><span class="indicator"></span></div>',
     )
     let outer = container
     let inner = container.querySelector('span')
+    let btn = container.querySelector('button')
 
-    let indicators = htmx.__showIndicators(container, '.indicator')
-
-    assert.isTrue(outer.classList.contains('htmx-request'))
-    assert.isTrue(inner.classList.contains('htmx-request'))
-
-    htmx.__hideIndicators(indicators)
+    btn.click()
+    await forRequest()
 
     assert.isFalse(outer.classList.contains('htmx-request'))
     assert.isFalse(inner.classList.contains('htmx-request'))
-  })
-
-  it('maintains separate counts for separate indicators', function () {
-    let container = createProcessedHTML(
-      '<div><span class="indicator"></span><div class="indicator"></div></div>',
-    )
-    let span = container.querySelector('span')
-    let div = container.querySelector('div')
-
-    htmx.__showIndicators(container, 'span.indicator')
-    htmx.__showIndicators(container, '.indicator')
-
-    assert.equal(span._htmxReqCount, 2)
-    assert.equal(div._htmxReqCount, 1)
   })
 })

@@ -84,7 +84,7 @@ describe('hx-optimistic attribute', function () {
     )
     find('button').click()
     await forRequest()
-    assert.isUndefined(find('#result'))
+    assert.isNull(find('#result'))
   })
 
   it('none swap uses default outerHTML-like behavior', async function () {

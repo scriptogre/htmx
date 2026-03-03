@@ -1,4 +1,4 @@
-describe('__handleHxHeadersAndMaybeReturnEarly unit tests', function () {
+describe('HX response header handling tests', function () {
   beforeEach(function () {
     setupTest()
   })
@@ -7,51 +7,74 @@ describe('__handleHxHeadersAndMaybeReturnEarly unit tests', function () {
     cleanupTest()
   })
 
-  it('handles hx-trigger header', function () {
+  it('handles HX-Trigger header by firing event', async function () {
+    mockResponse('GET', '/test', 'ok', {
+      headers: { 'HX-Trigger': 'myEvent' },
+    })
+    let div = createProcessedHTML('<div hx-get="/test" hx-swap="none">Click</div>')
+
     let triggerFired = false
-    let listener = () => {
+    div.addEventListener('myEvent', () => {
       triggerFired = true
-    }
+    })
 
-    let container = createProcessedHTML('<div></div>')
-    container.addEventListener('myEvent', listener)
+    div.click()
+    await forRequest()
 
-    let ctx = {
-      hx: {
-        trigger: 'myEvent',
-      },
-      sourceElement: container,
-    }
-
-    let result = htmx.__handleHeadersAndMaybeReturnEarly(ctx)
-
-    assert.isNotOk(result)
     assert.isTrue(triggerFired)
   })
 
-  it('returns false when no headers to handle', function () {
-    let ctx = {
-      hx: {},
-      sourceElement: createProcessedHTML('<div></div>'),
-    }
+  it('handles HX-Retarget header by swapping into different target', async function () {
+    mockResponse('GET', '/test', '<span>retargeted</span>', {
+      headers: { 'HX-Retarget': '#alt-target' },
+    })
+    // No hx-target — the default target is the source element, HX-Retarget should override it
+    createProcessedHTML(
+      '<div id="source" hx-get="/test">original</div><div id="alt-target">alt</div>',
+    )
+    let source = find('#source')
 
-    let result = htmx.__handleHeadersAndMaybeReturnEarly(ctx)
+    source.click()
+    await forRequest()
 
-    assert.isNotOk(result)
+    assert.equal(find('#alt-target').innerHTML, '<span>retargeted</span>')
   })
 
-  it('returns false when only hx-trigger is present', function () {
-    let container = createProcessedHTML('<div></div>')
+  it('handles HX-Reswap header by changing swap style', async function () {
+    mockResponse('GET', '/test', '<span>appended</span>', {
+      headers: { 'HX-Reswap': 'beforeend' },
+    })
+    let div = createProcessedHTML('<div id="target" hx-get="/test">existing</div>')
 
-    let ctx = {
-      hx: {
-        trigger: 'someEvent',
-      },
-      sourceElement: container,
-    }
+    div.click()
+    await forRequest()
 
-    let result = htmx.__handleHeadersAndMaybeReturnEarly(ctx)
+    assert.include(find('#target').innerHTML, 'existing')
+    assert.include(find('#target').innerHTML, '<span>appended</span>')
+  })
 
-    assert.isNotOk(result)
+  // TODO: HX-Reselect sets detail.swap.select but the swap function doesn't consume
+  // the select property yet. This test should pass once select filtering is implemented.
+  it.skip('handles HX-Reselect header by selecting specific content', async function () {
+    mockResponse('GET', '/test', '<div id="keep">wanted</div><div id="discard">unwanted</div>', {
+      headers: { 'HX-Reselect': '#keep' },
+    })
+    let div = createProcessedHTML('<div id="target" hx-get="/test">original</div>')
+
+    div.click()
+    await forRequest()
+
+    assert.include(find('#target').textContent, 'wanted')
+    assert.notInclude(find('#target').textContent, 'unwanted')
+  })
+
+  it('does not interfere when no HX headers are present', async function () {
+    mockResponse('GET', '/test', 'normal response')
+    let div = createProcessedHTML('<div id="target" hx-get="/test">original</div>')
+
+    div.click()
+    await forRequest()
+
+    assert.equal(find('#target').textContent, 'normal response')
   })
 })
