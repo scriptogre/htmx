@@ -1,5 +1,4 @@
-// TODO: Preload extension not yet implemented in kernel+core architecture
-describe.skip('hx-preload attribute', function () {
+describe('hx-preload attribute', function () {
   beforeEach(() => {
     setupTest(this.currentTest)
   })

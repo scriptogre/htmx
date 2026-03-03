@@ -1,86 +1,97 @@
 ;(() => {
-  let api
+  htmx.install('hx-preload', {
+    config: { attributeFilter: ['hx-preload'] },
+    on: {
+      'htmx:after:init': (detail, api) => {
+        const elt = detail.element
+        if (!elt) return
 
-  function initializePreload(elt) {
-    let preloadSpec = api.attributeValue(elt, 'hx-preload')
-    if (!preloadSpec && !elt._htmx?.boosted) return
+        let preloadSpec = api.attr(elt, 'hx-preload')
+        if (!preloadSpec) return
 
-    let eventName
-    let timeout
-    if (preloadSpec) {
-      let specs = api.parseTriggerSpecs(preloadSpec)
-      if (specs.length === 0) return
-      let spec = specs[0]
-      eventName = spec.name
-      timeout = spec.timeout ? htmx.parseInterval(spec.timeout) : 5000
-    } else {
-      eventName = htmx.config?.preload?.boostEvent || 'mousedown'
-      timeout = htmx.config?.preload?.boostTimeout
-        ? htmx.parseInterval(htmx.config?.preload?.boostTimeout)
-        : 5000
-    }
+        // Parse the preload spec as a trigger spec (e.g., "mouseenter timeout:5s")
+        let eventName = 'mousedown'
+        let timeout = 5000
+        let specs = htmx.parseTriggerSpecs?.(preloadSpec) || []
+        if (specs.length > 0) {
+          eventName = specs[0].name
+          if (specs[0].timeout) timeout = htmx.parseInterval(specs[0].timeout)
+        } else {
+          // Simple event name
+          eventName = preloadSpec.trim().split(/\s+/)[0]
+        }
 
-    let preloadListener = async evt => {
-      let { method } = api.determineMethodAndAction(elt, evt)
-      if (method !== 'GET') return
+        elt._htmx ??= {}
 
-      if (elt._htmx?.preload) return
+        let preloadListener = async () => {
+          // Only preload GET requests
+          const url = api.attr(elt, 'hx-get')
+          if (!url) return
 
-      let ctx = api.createRequestContext(elt, evt)
-      let form = elt.form || elt.closest('form')
-      let body = api.collectFormData(elt, form, evt.submitter)
-      api.handleHxVals(elt, body)
+          if (elt._htmx?.preload) return
 
-      let action = ctx.request.shouldActivate.replace?.(/#.*$/, '')
+          // Build action URL with form data
+          let action = url.replace(/#.*$/, '')
+          let form = elt.form || elt.closest('form')
+          if (form) {
+            let formData = new FormData(form)
+            let params = new URLSearchParams(formData)
+            if (params.toString()) {
+              action += (/\?/.test(action) ? '&' : '?') + params
+            }
+          }
 
-      let params = new URLSearchParams(body)
-      if (params.size) action += (/\?/.test(action) ? '&' : '?') + params
+          // Also merge hx-vals if present
+          const hxVals = api.attr(elt, 'hx-vals')
+          if (hxVals) {
+            try {
+              const vals = JSON.parse(hxVals)
+              let params = new URLSearchParams(vals)
+              if (params.toString()) {
+                action += (/\?/.test(action) ? '&' : '?') + params
+              }
+            } catch (e) { /* ignore parse errors */ }
+          }
 
-      elt._htmx.preload = {
-        prefetch: fetch(action, ctx.request),
-        action: action,
-        expiresAt: Date.now() + timeout,
-      }
+          elt._htmx.preload = {
+            prefetch: fetch(action, { method: 'GET' }),
+            action: action,
+            expiresAt: Date.now() + timeout,
+          }
 
-      try {
-        await elt._htmx.preload.prefetch
-      } catch (error) {
-        delete elt._htmx.preload
-      }
-    }
-    elt.addEventListener(eventName, preloadListener)
-    elt._htmx.preloadListener = preloadListener
-    elt._htmx.preloadEvent = eventName
-  }
+          try {
+            await elt._htmx.preload.prefetch
+          } catch (error) {
+            delete elt._htmx.preload
+          }
+        }
 
-  htmx.defineExtension('preload', {
-    init: internalAPI => {
-      api = internalAPI
-    },
+        elt.addEventListener(eventName, preloadListener)
+        elt._htmx.preloadListener = preloadListener
+        elt._htmx.preloadEvent = eventName
+      },
 
-    htmx_after_init: elt => {
-      initializePreload(elt)
-    },
+      'htmx:before:request': (detail, api) => {
+        const elt = detail.element
+        if (!elt?._htmx?.preload) return
+        if (
+          elt._htmx.preload.action === detail.request?.url &&
+          Date.now() < elt._htmx.preload.expiresAt
+        ) {
+          let prefetch = elt._htmx.preload.prefetch
+          detail.request.execute = async () => prefetch
+          delete elt._htmx.preload
+        } else {
+          delete elt._htmx.preload
+        }
+      },
 
-    htmx_before_request: (elt, detail) => {
-      let { ctx } = detail
-      if (
-        elt._htmx?.preload &&
-        elt._htmx.preload.action === ctx.request.shouldActivate &&
-        Date.now() < elt._htmx.preload.expiresAt
-      ) {
-        let prefetch = elt._htmx.preload.prefetch
-        ctx.fetch = () => prefetch
-        delete elt._htmx.preload
-      } else {
-        if (elt._htmx) delete elt._htmx.preload
-      }
-    },
-
-    htmx_before_cleanup: elt => {
-      if (elt._htmx?.preloadListener) {
-        elt.removeEventListener(elt._htmx.preloadEvent, elt._htmx.preloadListener)
-      }
+      'htmx:cleanup': (detail, api) => {
+        const elt = detail.element
+        if (elt?._htmx?.preloadListener) {
+          elt.removeEventListener(elt._htmx.preloadEvent, elt._htmx.preloadListener)
+        }
+      },
     },
   })
 })()

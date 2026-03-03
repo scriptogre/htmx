@@ -1,29 +1,6 @@
-// TODO: Upsert extension not yet implemented in kernel+core architecture
-describe.skip('hx-upsert extension', function() {
-
-    let extBackup;
-
-    before(async () => {
-        extBackup = backupExtensions();
-        clearExtensions();
-        let script = document.createElement('script');
-        script.src = '../src/ext/hx-upsert.js';
-        await new Promise(resolve => {
-            script.onload = resolve;
-            document.head.appendChild(script);
-        });
-    })
-
-    after(() => {
-        restoreExtensions(extBackup);
-    })
-
-    beforeEach(() => {
-        setupTest(this.currentTest)
-    })
-
+describe('hx-upsert extension', function() {
     afterEach(() => {
-        cleanupTest(this.currentTest)
+        cleanupTest()
     })
 
     it('updates existing element by id', async function () {
