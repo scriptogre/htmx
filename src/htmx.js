@@ -13,9 +13,9 @@ var htmx = (() => {
             } else {
                 // Replace strategy OR current is abortable: abort current and issue new
                 if (queueStrategy === "replace" || (queueStrategy !== "abort" && this.#c.queueStrategy === "abort")) {
-                    this.#q.map(value => value.status = "dropped");
+                    this.#q.forEach(value => value.status = "dropped");
                     this.#q = []
-                    this.#c.request.abort();
+                    this.#c.request?.abort?.();
                     this.#c = ctx
                     return true
                 } else if (queueStrategy === "queue all") {
@@ -25,7 +25,7 @@ var htmx = (() => {
                     // ignore the request
                     ctx.status = "dropped";
                 } else if (queueStrategy === "queue last") {
-                    this.#q.map(value => value.status = "dropped");
+                    this.#q.forEach(value => value.status = "dropped");
                     this.#q = [ctx]
                     ctx.status = "queued";
                 } else if (this.#q.length === 0 && queueStrategy !== "abort") {
@@ -48,7 +48,7 @@ var htmx = (() => {
         }
 
         abort() {
-            this.#c?.abort?.()
+            this.#c.request?.abort?.()
         }
 
         more() {
@@ -83,7 +83,8 @@ var htmx = (() => {
                 handleHxVals: this.__handleHxVals.bind(this),
                 insertContent: this.__insertContent.bind(this),
                 morph: this.__morph.bind(this),
-                isSoftMatch: this.__isSoftMatch.bind(this)
+                isSoftMatch: this.__isSoftMatch.bind(this),
+                onTrigger: this.__onTrigger.bind(this)
             };
             document.addEventListener("DOMContentLoaded", () => {
                 this.__initHistoryHandling();
@@ -93,7 +94,7 @@ var htmx = (() => {
 
         __initHtmxConfig() {
             this.config = {
-                version: '4.0.0-alpha7',
+                version: '4.0.0-beta1',
                 logAll: false,
                 prefix: "",
                 transitions: false,
@@ -106,14 +107,6 @@ var htmx = (() => {
                 includeIndicatorCSS: true,
                 defaultTimeout: 60000, /* 60 second default timeout */
                 extensions: '',
-                sse: {
-                    reconnect: false,
-                    reconnectDelay: 500,
-                    reconnectMaxDelay: 60000,
-                    reconnectMaxAttempts: 10,
-                    reconnectJitter: 0.3,
-                    closeOnHide: false
-                },
                 morphIgnore: ["data-htmx-powered"],
                 morphScanLimit: 10,
                 noSwap: [204, 304],
@@ -271,7 +264,7 @@ var htmx = (() => {
                 if (!action) {
                     for (let verb of this.#verbs) {
                         let verbAction = this.__attributeValue(elt, "hx-" + verb);
-                        if (verbAction) {
+                        if (verbAction != null) {
                             action = verbAction;
                             method = verb;
                             break;
@@ -300,7 +293,6 @@ var htmx = (() => {
                 this.__initializeTriggers(elt);
                 this.__initializeAbortListener(elt)
                 this.__trigger(elt, "htmx:after:init", {}, true)
-                this.__trigger(elt, "load", {}, false)
             }
         }
 
@@ -372,7 +364,7 @@ var htmx = (() => {
                 "HX-Request": "true",
                 "HX-Source": this.__buildIdentifier(elt),
                 "HX-Current-URL": location.href,
-                "Accept": "text/html, text/event-stream"
+                "Accept": "text/html"
             };
             if (this.__isBoosted(elt)) {
                 headers["HX-Boosted"] = "true"
@@ -381,7 +373,7 @@ var htmx = (() => {
         }
 
         __handleHxHeaders(elt, headers) {
-            return this.__getAttributeObject(elt, "hx-headers", obj => {
+            return this.__handleAttributeObject(elt, "hx-headers", obj => {
                 for (let key in obj) headers[key] = String(obj[key]);
             });
         }
@@ -390,7 +382,7 @@ var htmx = (() => {
             if (selector instanceof Element) {
                 return selector;
             } else if (selector != null) {
-                return this.__findExt(elt, selector, "hx-target");
+                return this.__findOrWarn(elt, selector, "hx-target");
             } else if (this.__isBoosted(elt)) {
                 return document.body
             } else {
@@ -412,7 +404,7 @@ var htmx = (() => {
             if (this.__shouldCancel(evt)) evt.preventDefault()
 
             // determine if request uses query params
-            var usesQueryParams = /GET|DELETE/.test(ctx.request.method);
+            let usesQueryParams = /GET|DELETE/.test(ctx.request.method);
 
             // Only include *enclosing* form info for request types that do not use
             // query parameters (can still be included explicitly with hx-include)
@@ -497,13 +489,9 @@ var htmx = (() => {
             try {
                 // Handle confirmation
                 if (ctx.confirm) {
-                    let issueRequest = null;
                     let confirmed = await new Promise(resolve => {
-                        issueRequest = resolve;
-                        if (this.__trigger(elt, "htmx:confirm", {
-                            ctx,
-                            issueRequest: (skip) => issueRequest?.(skip !== false)
-                        })) {
+                        let detail = {ctx, issueRequest: () => resolve(true), dropRequest: () => resolve(false)};
+                        if (this.__trigger(elt, "htmx:confirm", detail)) {
                             let js = this.__extractJavascriptContent(ctx.confirm);
                             resolve(js ? this.__executeJavaScriptAsync(elt, {}, js, true) : window.confirm(ctx.confirm));
                         }
@@ -522,31 +510,22 @@ var htmx = (() => {
                     headers: response.headers,
                 }
                 this.__extractHxHeaders(ctx);
-                ctx.isSSE = response.headers.get("Content-Type")?.includes('text/event-stream');
-                if (!ctx.isSSE) {
-                    ctx.text = await response.text();
-                }
+                if (!this.__trigger(elt, "htmx:before:response", {ctx})) return;
+                ctx.text = await response.text();
                 if (!this.__trigger(elt, "htmx:after:request", {ctx})) return;
 
                 if (this.__handleHeadersAndMaybeReturnEarly(ctx)) {
                     return
                 }
 
-                let isSSE = response.headers.get("Content-Type")?.includes('text/event-stream');
-                if (isSSE) {
-                    // SSE response
-                    await this.__handleSSE(ctx, elt, response);
-                } else {
-                    // HTTP response
-                    if (ctx.status === "issuing") {
-                        if (ctx.hx.retarget) ctx.target = ctx.hx.retarget;
-                        if (ctx.hx.reswap) ctx.swap = ctx.hx.reswap;
-                        if (ctx.hx.reselect) ctx.select = ctx.hx.reselect;
-                        ctx.status = "response received";
-                        this.__handleStatusCodes(ctx);
-                        await this.swap(ctx);
-                        ctx.status = "swapped";
-                    }
+                if (ctx.status === "issuing") {
+                    if (ctx.hx.retarget) ctx.target = ctx.hx.retarget;
+                    if (ctx.hx.reswap) ctx.swap = ctx.hx.reswap;
+                    if (ctx.hx.reselect) ctx.select = ctx.hx.reselect;
+                    ctx.status = "response received";
+                    this.__handleStatusCodes(ctx);
+                    await this.swap(ctx);
+                    ctx.status = "swapped";
                 }
 
             } catch (error) {
@@ -605,185 +584,6 @@ var htmx = (() => {
             }
         }
 
-        async __handleSSE(ctx, elt, response) {
-            let config = {...this.config.sse, ...ctx.request.sse}
-            let lastEventId = null, attempt = 0, currentResponse = response, reader = null;
-            let reconnectRequested = false;
-            let delayCanceller = null;
-
-            let reconnect = () => {
-                if (!elt.isConnected || reconnectRequested) return;
-                reconnectRequested = true;
-                if (delayCanceller) delayCanceller();
-                reader?.cancel();
-            };
-
-            let visibilityHandler = () => {
-                if (document.hidden) {
-                    reader?.cancel();
-                } else {
-                    reconnect();
-                }
-            };
-
-            if (config.closeOnHide) {
-                document.addEventListener('visibilitychange', visibilityHandler);
-            }
-
-            try {
-                while (elt.isConnected) {
-                    if (attempt > 0 && !reconnectRequested) {
-                        if (!config.reconnect || attempt > config.reconnectMaxAttempts) break;
-
-                        let delay = Math.min(this.parseInterval(config.reconnectDelay) * Math.pow(2, attempt - 1), this.parseInterval(config.reconnectMaxDelay));
-                        if (config.reconnectJitter > 0) {
-                            let jitterRange = delay * config.reconnectJitter;
-                            let jitter = (Math.random() * 2 - 1) * jitterRange;
-                            delay = Math.max(0, delay + jitter);
-                        }
-                        let reconnectDetail = {attempt, delay, lastEventId, cancelled: false};
-
-                        ctx.status = "reconnecting to stream";
-                        if (!this.__trigger(elt, "htmx:before:sse:reconnect", {
-                            ctx,
-                            reconnect: reconnectDetail
-                        }) || reconnectDetail.cancelled) break;
-
-                        await new Promise(r => {
-                            delayCanceller = r;
-                            setTimeout(r, reconnectDetail.delay);
-                        });
-                        delayCanceller = null;
-                        if (!elt.isConnected) break;
-
-                        try {
-                            if (lastEventId) (ctx.request.headers = ctx.request.headers || {})['Last-Event-ID'] = lastEventId;
-                            currentResponse = await fetch(ctx.request.action, ctx.request);
-                        } catch (e) {
-                            ctx.status = "stream error";
-                            this.__trigger(elt, "htmx:error", {ctx, error: e});
-                            attempt++;
-                            continue;
-                        }
-                    }
-
-                    // Core streaming logic
-                    if (!this.__trigger(elt, "htmx:before:sse:stream", {ctx})) break;
-                    ctx.status = "streaming";
-                    reconnectRequested = false;
-                    attempt = 0;
-
-                    try {
-                        reader = currentResponse.body.getReader();
-                        for await (const sseMessage of this.__parseSSE(reader)) {
-                            if (!elt.isConnected || reconnectRequested) break;
-
-                            let msg = {
-                                data: sseMessage.data,
-                                event: sseMessage.event,
-                                id: sseMessage.id,
-                                cancelled: false
-                            };
-                            if (!this.__trigger(elt, "htmx:before:sse:message", {
-                                ctx,
-                                message: msg
-                            }) || msg.cancelled) continue;
-
-                            if (sseMessage.id) lastEventId = sseMessage.id;
-
-                            // Trigger custom event if `event:` line is present
-                            if (sseMessage.event) {
-                                this.__trigger(elt, sseMessage.event, {data: sseMessage.data, id: sseMessage.id});
-                                // Skip swap for custom events
-                                this.__trigger(elt, "htmx:after:sse:message", {ctx, message: msg});
-                                continue;
-                            }
-
-                            ctx.text = sseMessage.data;
-                            ctx.status = "stream message received";
-
-                            if (!ctx.response.cancelled) {
-                                await this.swap(ctx);
-                                ctx.status = "swapped";
-                            }
-                            this.__trigger(elt, "htmx:after:sse:message", {ctx, message: msg});
-                        }
-                    } catch (e) {
-                        ctx.status = "stream error";
-                        this.__trigger(elt, "htmx:error", {ctx, error: e});
-                    }
-
-                    if (!elt.isConnected) break;
-                    this.__trigger(elt, "htmx:after:sse:stream", {ctx});
-
-                    if (reconnectRequested) {
-                        attempt++;
-                        continue;
-                    }
-
-                    attempt++;
-                }
-            } finally {
-                if (config.closeOnHide) {
-                    document.removeEventListener('visibilitychange', visibilityHandler);
-                }
-            }
-        }
-
-        async* __parseSSE(reader) {
-            let decoder = new TextDecoder();
-            let buffer = '';
-            let message = {data: '', event: '', id: '', retry: null};
-
-            try {
-                while (true) {
-                    let {done, value} = await reader.read();
-                    if (done) break;
-
-                    // Decode chunk and add to buffer
-                    buffer += decoder.decode(value, {stream: true});
-                    let lines = buffer.split('\n');
-                    // Keep incomplete line in buffer
-                    buffer = lines.pop() || '';
-
-                    for (let line of lines) {
-                        // Empty line or carriage return indicates end of message
-                        if (!line || line === '\r') {
-                            if (message.data) {
-                                yield message;
-                                message = {data: '', event: '', id: '', retry: null};
-                            }
-                            continue;
-                        }
-
-                        // Parse field: value
-                        let colonIndex = line.indexOf(':');
-                        if (colonIndex <= 0) continue;
-
-                        let field = line.slice(0, colonIndex);
-
-                        let value = line.slice(colonIndex + 1)
-                        if (value[0] === ' ') value = value.slice(1);
-
-                        if (field === 'data') {
-                            message.data += (message.data ? '\n' : '') + value;
-                        } else if (field === 'event') {
-                            message.event = value;
-                        } else if (field === 'id') {
-                            message.id = value;
-                        } else if (field === 'retry') {
-                            let retryValue = parseInt(value, 10);
-                            if (!isNaN(retryValue)) {
-                                message.retry = retryValue;
-                            }
-                        }
-                    }
-                }
-            } finally {
-                reader.releaseLock();
-            }
-        }
-
         __initTimeout(ctx) {
             let timeoutInterval;
             if (ctx.request.timeout) {
@@ -791,7 +591,7 @@ var htmx = (() => {
             } else {
                 timeoutInterval = this.config.defaultTimeout;
             }
-            ctx.requestTimeout = setTimeout(() => ctx.abort?.(), timeoutInterval);
+            ctx.requestTimeout = setTimeout(() => ctx.request?.abort?.(), timeoutInterval);
         }
 
         __determineSyncStrategy(elt) {
@@ -805,7 +605,7 @@ var htmx = (() => {
             if (syncValue && syncValue.includes(":")) {
                 let strings = syncValue.split(":");
                 let selector = strings[0];
-                syncElt = this.__findExt(elt, selector, "hx-sync");
+                syncElt = this.__findOrWarn(elt, selector, "hx-sync") || elt;
             }
             return syncElt._htmxRequestQueue ||= new ReqQ()
         }
@@ -843,12 +643,26 @@ var htmx = (() => {
                     elt.matches("input:not([type=button]),select,textarea") ? "change" :
                         "click";
             }
-            elt._htmx.triggerSpecs = this.__parseTriggerSpecs(specString)
-            elt._htmx.listeners = []
-            for (let spec of elt._htmx.triggerSpecs) {
-                spec.handler = initialHandler
+            this.__onTrigger(elt, specString, initialHandler)
+        }
+
+        // Wire up trigger listeners with full modifier support (delay, throttle, once, etc.)
+        __onTrigger(elt, specString, handler) {
+            let specs = this.__parseTriggerSpecs(specString)
+            let listeners = []
+
+            // Ensure element is registered for cleanup
+            if (!elt._htmx) {
+                elt._htmx = {}
+                elt.setAttribute('data-htmx-powered', 'true')
+            }
+            elt._htmx.triggerSpecs = (elt._htmx.triggerSpecs || []).concat(specs)
+            elt._htmx.listeners ||= []
+
+            for (let spec of specs) {
+                spec.handler = handler
                 spec.listeners = []
-                spec.values = {}
+                spec.values = new WeakMap()
 
                 let [eventName, filter] = this.__extractFilter(spec.name);
 
@@ -866,7 +680,7 @@ var htmx = (() => {
                 if (eventName === 'intersect' || eventName === "revealed") {
                     let observerOptions = {}
                     if (spec.opts?.root) {
-                        observerOptions.root = this.__findExt(elt, spec.opts.root)
+                        observerOptions.root = this.__findOrWarn(elt, spec.opts.root)
                     }
                     if (spec.opts?.threshold) {
                         observerOptions.threshold = parseFloat(spec.opts.threshold)
@@ -966,9 +780,9 @@ var htmx = (() => {
                     spec.handler = (evt) => {
                         let trigger = false
                         for (let fromElt of fromElts) {
-                            if (spec.values[fromElt] !== fromElt.value) {
+                            if (spec.values.get(fromElt) !== fromElt.value) {
                                 trigger = true
-                                spec.values[fromElt] = fromElt.value
+                                spec.values.set(fromElt, fromElt.value);
                             }
                         }
                         if (trigger) {
@@ -977,11 +791,25 @@ var htmx = (() => {
                     }
                 }
 
+                // load: fire handler directly (no listener needed)
+                if (eventName === 'load') {
+                    let loadHandler = spec.handler
+                    loadHandler(new CustomEvent('load'))
+                    continue
+                }
+
                 for (let fromElt of fromElts) {
                     let listenerInfo = {fromElt, eventName, handler: spec.handler};
                     elt._htmx.listeners.push(listenerInfo)
                     spec.listeners.push(listenerInfo)
+                    listeners.push(listenerInfo)
                     fromElt.addEventListener(eventName, spec.handler);
+                }
+            }
+
+            return () => {
+                for (let l of listeners) {
+                    l.fromElt.removeEventListener(l.eventName, l.handler)
                 }
             }
         }
@@ -1118,6 +946,7 @@ var htmx = (() => {
                 for (let spec of elt._htmx.triggerSpecs || []) {
                     if (spec.interval) clearInterval(spec.interval);
                     if (spec.timeout) clearTimeout(spec.timeout);
+                    Missing: spec.observer?.disconnect()
                 }
                 for (let listenerInfo of elt._htmx.listeners || []) {
                     listenerInfo.fromElt.removeEventListener(listenerInfo.eventName, listenerInfo.handler);
@@ -1290,7 +1119,7 @@ var htmx = (() => {
         }
 
         __handleAutoFocus(elt) {
-            let autofocus = this.find(elt, "[autofocus]");
+            let autofocus = elt.querySelector?.("[autofocus]");
             if (autofocus) {
                 this.__setFocus(autofocus);
             }
@@ -1299,15 +1128,17 @@ var htmx = (() => {
         __handleScroll(swapSpec, target) {
             if (swapSpec.scroll) {
                 let scrollTarget = swapSpec.scrollTarget ? this.__findExt(swapSpec.scrollTarget) : target;
-                if (swapSpec.scroll === 'top') {
-                    scrollTarget.scrollTop = 0;
-                } else if (swapSpec.scroll === 'bottom') {
-                    scrollTarget.scrollTop = scrollTarget.scrollHeight;
+                if (scrollTarget) {
+                    if (swapSpec.scroll === 'top') {
+                        scrollTarget.scrollTop = 0;
+                    } else if (swapSpec.scroll === 'bottom') {
+                        scrollTarget.scrollTop = scrollTarget.scrollHeight;
+                    }
                 }
             }
             if (swapSpec.show) {
                 let showTarget = swapSpec.showTarget ? this.__findExt(swapSpec.showTarget) : target;
-                showTarget.scrollIntoView(swapSpec.show === 'top')
+                showTarget?.scrollIntoView(swapSpec.show === 'top')
             }
         }
 
@@ -1360,7 +1191,7 @@ var htmx = (() => {
             let swapPromises = [];
             let transitionTasks = [];
             for (let task of tasks) {
-                if (task.swapSpec?.transition ?? mainSwap?.transition ?? ctx.transition !== false) {
+                if (task.swapSpec?.transition ?? mainSwap?.transition ?? (ctx.transition !== false)) {
                     transitionTasks.push(task);
                 } else {
                     swapPromises.push(this.__insertContent(task));
@@ -1494,7 +1325,7 @@ var htmx = (() => {
                         this.__insertNodes(parentNode, target.nextSibling, fragment);
                     }
                 } else {
-                    let methods = this.__extMethods.get('handle_swap')
+                    let methods = this.__extMethods.get('handle_swap') || []
                     let handled = false;
                     for (const method of methods) {
                         let result = method(swapStyle, target, fragment, swapSpec);
@@ -1644,8 +1475,7 @@ var htmx = (() => {
                 detail,
                 cancelable: true,
                 bubbles,
-                composed: true,
-                originalTarget: on
+                composed: true
             });
             let target = on?.isConnected ? on : document;
             let result = !detail.cancelled && target.dispatchEvent(evt);
@@ -1667,16 +1497,20 @@ var htmx = (() => {
                 return Promise.reject(new Error('Source not found'));
             }
 
-            // Resolve target, defaulting to body only if no source or target provided
-            let target = this.__resolveTarget(document.body, context.target || sourceElt);
-            if (!target) {
-                return Promise.reject(new Error('Target not found'));
+            // Resolve explicit target if provided; otherwise __createRequestContext
+            // will resolve from hx-target on the source element
+            if (context.target) {
+                let target = this.__resolveTarget(document.body, context.target);
+                if (!target) {
+                    return Promise.reject(new Error('Target not found'));
+                }
+                sourceElt ||= target;
             }
-
-            sourceElt ||= target;
+            sourceElt ||= document.body;
 
             let ctx = this.__createRequestContext(sourceElt, context.event || {});
-            Object.assign(ctx, context, {target});
+            Object.assign(ctx, context);
+            if (context.target) ctx.target = this.__resolveTarget(document.body, context.target);
             Object.assign(ctx.request, {action: path, method: verb.toUpperCase()});
             if (context.headers) Object.assign(ctx.request.headers, context.headers);
 
@@ -1723,8 +1557,6 @@ var htmx = (() => {
                         request: {headers: {'HX-History-Restore-Request': 'true'}}
                     });
                 }
-            } else if (elt.tagName === "FORM") {
-                return elt.method !== 'dialog' && this.__isSameOrigin(elt.action);
             }
         }
 
@@ -1766,7 +1598,7 @@ var htmx = (() => {
 
         __handleHxOnAttributes(node) {
             for (let attr of node.getAttributeNames()) {
-                var searchString = this.__maybeAdjustMetaCharacter(this.__prefix("hx-on:"));
+                let searchString = this.__maybeAdjustMetaCharacter(this.__prefix("hx-on:"));
                 if (attr.startsWith(searchString)) {
                     let evtName = attr.substring(searchString.length)
                     let code = node.getAttribute(attr);
@@ -1774,7 +1606,7 @@ var htmx = (() => {
                         try {
                             await this.__executeJavaScriptAsync(node, {"event": evt}, code, false)
                         } catch (e) {
-                            console.log(e);
+                            console.error(e);
                         }
                     });
                 }
@@ -1889,7 +1721,7 @@ var htmx = (() => {
             }
         }
 
-        __getAttributeObject(elt, attrName, callback) {
+        __handleAttributeObject(elt, attrName, callback) {
             let attrValue = this.__attributeValue(elt, attrName);
             if (!attrValue) return null;
 
@@ -1910,7 +1742,7 @@ var htmx = (() => {
         }
 
         __handleHxVals(elt, body) {
-            return this.__getAttributeObject(elt, "hx-vals", obj => {
+            return this.__handleAttributeObject(elt, "hx-vals", obj => {
                 for (let key in obj) body.set(key, obj[key]);
             });
         }
@@ -2004,6 +1836,14 @@ var htmx = (() => {
             }
         }
 
+        __findOrWarn(elt, selector, thisAttr) {
+            let result = this.__findAllExt(elt, selector, thisAttr)[0]
+            if (!result) {
+                console.warn(`htmx: '${selector}' on ${thisAttr} did not match any element`)
+            }
+            return result
+        }
+
         __findExt(eltOrSelector, selector, thisAttr) {
             return this.__findAllExt(eltOrSelector, selector, thisAttr)[0]
         }
@@ -2048,7 +1888,7 @@ var htmx = (() => {
             }
             insertionPoint ||= oldParent.firstChild;
 
-            for (const newChild of newParent.childNodes) {
+            for (const newChild of [...newParent.childNodes]) {
                 if (insertionPoint && insertionPoint != endPoint) {
                     let bestMatch = this.__findBestMatch(ctx, newChild, insertionPoint, endPoint);
                     if (bestMatch) {
@@ -2090,16 +1930,15 @@ var htmx = (() => {
                     continue;
                 }
 
-                let tempChild;
                 if (ctx.idMap.has(newChild)) {
-                    tempChild = document.createElement(newChild.tagName);
-                    oldParent.insertBefore(tempChild, insertionPoint);
-                    this.__morphNode(tempChild, newChild, ctx);
+                    let placeholder = document.createElement(newChild.tagName);
+                    oldParent.insertBefore(placeholder, insertionPoint);
+                    this.__morphNode(placeholder, newChild, ctx);
+                    insertionPoint = placeholder.nextSibling;
                 } else {
-                    tempChild = document.importNode(newChild, true);
-                    oldParent.insertBefore(tempChild, insertionPoint);
+                    oldParent.insertBefore(newChild, insertionPoint);
+                    insertionPoint = newChild.nextSibling;
                 }
-                insertionPoint = tempChild.nextSibling;
             }
 
             while (insertionPoint && insertionPoint != endPoint) {
@@ -2179,7 +2018,7 @@ var htmx = (() => {
                     parentNode.moveBefore(element, after);
                     return
                 } catch (e) {
-                    // ignore and insertBefore insteat
+                    // ignore and insertBefore instead
                 }
             }
             parentNode.insertBefore(element, after);
