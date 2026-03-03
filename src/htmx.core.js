@@ -304,6 +304,108 @@ const parser = {
 }
 
 
+// ── Form Data ───────────────────────────────────────────────────────────
+
+/**
+ * Form data collection — collect form values and inject into requests.
+ */
+const formData = {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-include', 'hx-encoding']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (!el) return
+
+            const method = detail.request.method?.toUpperCase()
+            const usesQueryParams = /GET|DELETE/.test(method)
+
+            // Find form: for GET/DELETE only use form if element IS the form
+            // For POST/PUT/PATCH, use enclosing form
+            const form = usesQueryParams
+                ? (el.matches?.('form') ? el : null)
+                : (el.form || el.closest?.('form'))
+
+            // Collect FormData
+            const body = form ? new FormData(form) : new FormData()
+            const included = form ? new Set(form.elements) : new Set()
+
+            // Include element's own value if not in a form
+            if (!form && el.name) {
+                body.append(el.name, el.value)
+                included.add(el)
+            }
+
+            // hx-include: add fields from other selectors
+            const includeSelector = api.attr(el, 'hx-include')
+            if (includeSelector) {
+                const nodes = api.find(includeSelector, {from: el, multiple: true})
+                for (const node of nodes) {
+                    addInputValues(node, included, body)
+                }
+            }
+
+            if (usesQueryParams) {
+                // GET/DELETE: append form data to URL as query parameters
+                const url = new URL(detail.request.url, document.baseURI)
+
+                // Clear existing keys that will be re-added from form
+                for (const key of body.keys()) {
+                    url.searchParams.delete(key)
+                }
+                for (const [key, value] of body) {
+                    url.searchParams.append(key, value)
+                }
+
+                // Keep relative if same origin
+                if (url.origin === location.origin) {
+                    detail.request.url = url.pathname + url.search
+                } else {
+                    detail.request.url = url.href
+                }
+            } else {
+                // POST/PUT/PATCH: set body
+                const encoding = api.attr(el, 'hx-encoding')
+                if (encoding === 'multipart/form-data') {
+                    detail.request.body = body
+                } else {
+                    detail.request.body = new URLSearchParams(body)
+                }
+            }
+        },
+    }
+}
+
+/** Add input values from an element and its descendants to formData */
+function addInputValues(elt, included, formData) {
+    // If elt is a form, add all its fields
+    if (elt.matches?.('form')) {
+        for (const [k, v] of new FormData(elt)) formData.append(k, v)
+        return
+    }
+
+    const inputs = elt.matches?.('input, select, textarea')
+        ? [elt]
+        : elt.querySelectorAll('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
+
+    for (const input of inputs) {
+        if (!input.name || included.has(input)) continue
+        included.add(input)
+
+        const type = input.type
+        if (type === 'checkbox' || type === 'radio') {
+            if (input.checked) formData.append(input.name, input.value)
+        } else if (type === 'file') {
+            for (const file of input.files) formData.append(input.name, file)
+        } else if (input.type === 'select-multiple') {
+            for (const option of input.selectedOptions) formData.append(input.name, option.value)
+        } else {
+            formData.append(input.name, input.value)
+        }
+    }
+}
+
+
 // ── Attributes ──────────────────────────────────────────────────────────
 
 /**
@@ -933,6 +1035,7 @@ htmx.install('ajax', ajax)
 htmx.install('default-trigger', defaultTrigger)
 htmx.install('default-swap', defaultSwap)
 htmx.install('default-headers', defaultHeaders)
+htmx.install('form-data', formData)
 htmx.install('hx-trigger', hxTrigger)
 htmx.install('hx-get', hxGet)
 htmx.install('hx-post', hxPost)
