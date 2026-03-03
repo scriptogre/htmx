@@ -82,7 +82,7 @@ function createProcessedHTML(innerHTML) {
   let pg = playground()
   if (pg) {
     pg.innerHTML = innerHTML
-    htmx.process(pg)
+    htmx.init(pg)
   }
   return pg.childNodes[0]
 }
@@ -167,19 +167,30 @@ function lastFetch() {
 //======================================================================
 
 function waitForEvent(eventName, timeout = 200) {
-  return htmx.forEvent(eventName, testDebugging ? 0 : timeout)
+  return new Promise((resolve, reject) => {
+    const handler = (evt) => {
+      clearTimeout(timeoutId)
+      document.removeEventListener(eventName, handler)
+      resolve(evt)
+    }
+    const timeoutId = (timeout > 0 && !testDebugging) ? setTimeout(() => {
+      document.removeEventListener(eventName, handler)
+      reject(new Error(`Timeout waiting for ${eventName}`))
+    }, timeout) : null
+    document.addEventListener(eventName, handler)
+  })
 }
 
 function forRequest(timeout = 200) {
-  return waitForEvent('htmx:finally:request', timeout)
+  return waitForEvent('htmx:finally', timeout)
 }
 
 function playground() {
-  return htmx.find('#test-playground')
+  return document.querySelector('#test-playground')
 }
 
 function find(selector) {
-  return htmx.find(playground(), selector)
+  return playground()?.querySelector(selector)
 }
 
 // ==============================================================================
