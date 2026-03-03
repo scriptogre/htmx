@@ -304,6 +304,213 @@ const parser = {
 }
 
 
+// ── hx-vals / hx-headers ─────────────────────────────────────────────────
+
+/**
+ * Merge JSON values from hx-vals into request body or URL query params.
+ */
+const hxVals = {
+    config: {attributeFilter: ['hx-vals']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const valsAttr = api.attr(detail.element, 'hx-vals')
+            if (!valsAttr) return
+
+            let vals
+            try { vals = JSON.parse(valsAttr) } catch { return }
+
+            const method = detail.request.method?.toUpperCase()
+            const usesQueryParams = /GET|DELETE/.test(method)
+
+            if (usesQueryParams) {
+                const url = new URL(detail.request.url, document.baseURI)
+                for (const [k, v] of Object.entries(vals)) {
+                    url.searchParams.set(k, String(v))
+                }
+                detail.request.url = url.origin === location.origin
+                    ? url.pathname + url.search
+                    : url.href
+            } else {
+                if (!detail.request.body) detail.request.body = new URLSearchParams()
+                for (const [k, v] of Object.entries(vals)) {
+                    if (detail.request.body instanceof URLSearchParams) {
+                        detail.request.body.set(k, String(v))
+                    }
+                }
+            }
+        },
+    }
+}
+
+/**
+ * Merge JSON headers from hx-headers into request headers.
+ */
+const hxHeaders = {
+    config: {attributeFilter: ['hx-headers']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const headersAttr = api.attr(detail.element, 'hx-headers')
+            if (!headersAttr) return
+            try {
+                const headers = JSON.parse(headersAttr)
+                detail.request.headers = {...detail.request.headers, ...headers}
+            } catch (e) {
+                console.error('[htmx] Failed to parse hx-headers:', e)
+            }
+        },
+    }
+}
+
+
+// ── Response Headers ─────────────────────────────────────────────────────
+
+/**
+ * Process HX-* response headers (redirect, refresh, retarget, reswap, etc).
+ */
+const responseHeaders = {
+    requires: ['ajax'],
+    on: {
+        'htmx:after:request': (detail, api) => {
+            if (!detail.response?.raw?.headers) return
+            const h = detail.response.raw.headers
+
+            // Store extracted HX headers on detail for other extensions
+            detail.hx = {}
+            for (const [k, v] of h) {
+                if (k.toLowerCase().startsWith('hx-')) {
+                    detail.hx[k.toLowerCase().replace('hx-', '')] = v
+                }
+            }
+        },
+
+        'htmx:before:response': (detail, api) => {
+            if (!detail.hx) return
+
+            // HX-Redirect: navigate away
+            if (detail.hx.redirect) {
+                location.href = detail.hx.redirect
+                return false // cancel further processing
+            }
+
+            // HX-Refresh: reload page
+            if (detail.hx.refresh === 'true') {
+                location.reload()
+                return false
+            }
+
+            // HX-Location: ajax navigation
+            if (detail.hx.location) {
+                let path = detail.hx.location
+                if (path.startsWith('{')) {
+                    try {
+                        const opts = JSON.parse(path)
+                        path = opts.path
+                    } catch {}
+                }
+                api.ajax({request: {url: path, method: 'GET'}})
+                return false
+            }
+
+            // HX-Trigger: fire events on source element
+            if (detail.hx.trigger) {
+                const value = detail.hx.trigger
+                if (value.startsWith('{')) {
+                    try {
+                        const triggers = JSON.parse(value)
+                        for (const [name, eventDetail] of Object.entries(triggers)) {
+                            api.emit(detail.element, name, typeof eventDetail === 'object' ? eventDetail : {})
+                        }
+                    } catch {}
+                } else {
+                    api.emit(detail.element, value, {})
+                }
+            }
+
+            // HX-Retarget: change swap target
+            if (detail.hx.retarget) {
+                detail.swap = detail.swap || {}
+                detail.swap.target = detail.hx.retarget
+            }
+
+            // HX-Reswap: change swap style
+            if (detail.hx.reswap) {
+                detail.swap = detail.swap || {}
+                detail.swap.style = detail.hx.reswap
+            }
+
+            // HX-Reselect: change selection
+            if (detail.hx.reselect) {
+                detail.swap = detail.swap || {}
+                detail.swap.select = detail.hx.reselect
+            }
+        },
+    }
+}
+
+/**
+ * Skip swap for 204, 304 responses.
+ */
+const noSwap = {
+    requires: ['ajax'],
+    config: { noSwap: [204, 304] },
+    on: {
+        'htmx:before:response': (detail, api) => {
+            if (api.config.noSwap.includes(detail.response?.status)) {
+                detail.swap = detail.swap || {}
+                detail.swap.style = 'none'
+            }
+        },
+    }
+}
+
+
+// ── Fragment Parsing ─────────────────────────────────────────────────────
+
+/**
+ * Parse HTML responses into fragments, extracting title and body content.
+ */
+const fragmentParsing = {
+    define: {
+        makeFragment: (api) => function makeFragment(text) {
+            const template = document.createElement('template')
+            template.innerHTML = text.trim()
+            let fragment = template.content
+            let title = null
+
+            // Extract title
+            const titleEl = fragment.querySelector('title')
+            if (titleEl) title = titleEl.textContent
+
+            // Handle full HTML doc responses — extract body content
+            const body = fragment.querySelector('body')
+            if (body) {
+                const newFrag = document.createDocumentFragment()
+                while (body.childNodes.length > 0) newFrag.appendChild(body.childNodes[0])
+                fragment = newFrag
+            }
+
+            return {fragment, title}
+        },
+    },
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            // Parse string content using makeFragment
+            if (typeof detail.swap?.content === 'string') {
+                const result = api.makeFragment(detail.swap.content)
+                detail.swap.content = result.fragment
+                if (result.title) detail.swap.title = result.title
+            }
+        },
+        'htmx:after:swap': (detail, api) => {
+            // Set document title from response
+            if (detail.swap?.title) {
+                document.title = detail.swap.title
+            }
+        },
+    }
+}
+
+
 // ── Form Data ───────────────────────────────────────────────────────────
 
 /**
@@ -1026,6 +1233,7 @@ const publicApi = {
 // Order matters: dependencies must be installed before dependents.
 
 htmx.install('parser', parser)
+htmx.install('fragment-parsing', fragmentParsing)
 htmx.install('swaps', swaps)
 htmx.install('extended-selectors', extendedSelectors)
 htmx.install('inheritance', inheritance)
@@ -1036,6 +1244,10 @@ htmx.install('default-trigger', defaultTrigger)
 htmx.install('default-swap', defaultSwap)
 htmx.install('default-headers', defaultHeaders)
 htmx.install('form-data', formData)
+htmx.install('hx-vals', hxVals)
+htmx.install('hx-headers', hxHeaders)
+htmx.install('response-headers', responseHeaders)
+htmx.install('no-swap', noSwap)
 htmx.install('hx-trigger', hxTrigger)
 htmx.install('hx-get', hxGet)
 htmx.install('hx-post', hxPost)
