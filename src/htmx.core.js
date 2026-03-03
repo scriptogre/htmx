@@ -2,9 +2,9 @@
 //
 // Extension definitions ordered by importance. Installation order at the bottom.
 //
-// api is always the last argument:
+// api is the last argument for event handlers only:
 //   Event handlers: (detail, api) => { ... }
-//   Wraps: (original, ...kernelArgs, api) => { ... }
+//   Wraps: (original, ...originalArgs) => { ... }  — no api, use htmx.* or closures
 
 
 // ── Capabilities ────────────────────────────────────────────────────────
@@ -1583,6 +1583,329 @@ const hxIgnore = {
 }
 
 
+// ── Config ─────────────────────────────────────────────────────────────
+
+/**
+ * Default configuration values for htmx core.
+ */
+const defaultConfig = {
+    config: {
+        logAll: false,
+        prefix: '',
+        transitions: false,
+        history: true,
+        mode: 'same-origin',
+        defaultFocusScroll: false,
+        defaultTimeout: 60000,
+        extensions: '',
+        implicitInheritance: false,
+        defaultSettleDelay: 1,
+        inlineScriptNonce: null,
+        inlineStyleNonce: null,
+    }
+}
+
+/**
+ * Reads <meta name="htmx-config"> and merges its JSON content into config.
+ */
+const metaConfig = {
+    on: {
+        'htmx:boot': (detail, api) => {
+            const meta = document.querySelector('meta[name="htmx-config"]')
+            if (meta) {
+                try {
+                    const parsed = JSON.parse(meta.content)
+                    Object.assign(api.config, parsed)
+                } catch (e) {
+                    console.error('[htmx] Invalid htmx-config meta tag:', e)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Wraps attr() to support a configurable attribute name prefix (e.g. "data-hx-" instead of "hx-").
+ */
+const prefix = {
+    wrap: {
+        attr: (original, element, name, options) => {
+            if (htmx.config.prefix) {
+                let prefixed = htmx.config.prefix + name
+                let result = original(element, prefixed, options)
+                if (result !== undefined && result !== null) return result
+            }
+            return original(element, name, options)
+        }
+    }
+}
+
+/**
+ * Wraps attr() to replace ":" in attribute names with a configurable meta character.
+ */
+const metaCharacter = {
+    wrap: {
+        attr: (original, element, name, options) => {
+            if (htmx.config.metaCharacter) {
+                let adjusted = name.replace(/:/g, htmx.config.metaCharacter)
+                if (adjusted !== name) {
+                    let result = original(element, adjusted, options)
+                    if (result !== undefined && result !== null) return result
+                }
+            }
+            return original(element, name, options)
+        }
+    }
+}
+
+// ── Morph ─────────────────────────────────────────────────────────────
+
+/**
+ * DOM morphing algorithm — intelligently patches existing DOM nodes to match
+ * new content while preserving element identity, focus state, and animations.
+ */
+const morph = {
+    config: {
+        morphScanLimit: 10,
+        morphIgnore: ['data-htmx-powered'],
+        morphSkip: null,
+        morphSkipChildren: null,
+    },
+    define: {
+        morph: (api) => function morph(oldNode, fragment, innerHTML) {
+            // ── Helpers ──
+
+            function queryEltAndDescendants(elt, selector) {
+                let results = [...elt.querySelectorAll(selector)]
+                if (elt.matches?.(selector)) results.unshift(elt)
+                return results
+            }
+
+            function isSoftMatch(oldNode, newNode) {
+                if (!(oldNode instanceof Element) || oldNode.tagName !== newNode.tagName) return false
+                if (oldNode._x_bindings?.id && newNode.matches?.('[\\:id], [x-bind\\:id]')) return true
+                return !oldNode.id || oldNode.id === newNode.id
+            }
+
+            function copyAttributes(destination, source) {
+                let attributesToIgnore = api.config.morphIgnore || []
+                for (const attr of source.attributes) {
+                    if (!attributesToIgnore.includes(attr.name) && destination.getAttribute(attr.name) !== attr.value) {
+                        destination.setAttribute(attr.name, attr.value)
+                        if (attr.name === 'value' && destination instanceof HTMLInputElement && destination.type !== 'file') {
+                            destination.value = attr.value
+                        }
+                    }
+                }
+                for (let i = destination.attributes.length - 1; i >= 0; i--) {
+                    let attr = destination.attributes[i]
+                    if (attr && !source.hasAttribute(attr.name) && !attributesToIgnore.includes(attr.name)) {
+                        destination.removeAttribute(attr.name)
+                    }
+                }
+            }
+
+            function moveBefore(parentNode, element, after) {
+                if (parentNode.moveBefore) {
+                    try { parentNode.moveBefore(element, after); return } catch (e) {}
+                }
+                parentNode.insertBefore(element, after)
+            }
+
+            function createPersistentIds(oldIdElements, newIdElements) {
+                let duplicateIds = new Set(), oldIdTagNameMap = new Map()
+                for (const {id, tagName} of oldIdElements) {
+                    if (oldIdTagNameMap.has(id)) duplicateIds.add(id)
+                    else if (id) oldIdTagNameMap.set(id, tagName)
+                }
+                let persistentIds = new Set()
+                for (const {id, tagName} of newIdElements) {
+                    if (persistentIds.has(id)) duplicateIds.add(id)
+                    else if (oldIdTagNameMap.get(id) === tagName) persistentIds.add(id)
+                }
+                for (const id of duplicateIds) persistentIds.delete(id)
+                return persistentIds
+            }
+
+            function populateIdMapWithTree(idMap, persistentIds, root, elements) {
+                for (const elt of elements) {
+                    if (persistentIds.has(elt.id)) {
+                        let current = elt
+                        while (current && current !== root) {
+                            let idSet = idMap.get(current)
+                            if (idSet == null) { idSet = new Set(); idMap.set(current, idSet) }
+                            idSet.add(elt.id)
+                            current = current.parentElement
+                        }
+                    }
+                }
+            }
+
+            function createIdMaps(oldNode, newContent) {
+                let oldIdElements = queryEltAndDescendants(oldNode, '[id]')
+                let newIdElements = newContent.querySelectorAll('[id]')
+                let persistentIds = createPersistentIds(oldIdElements, newIdElements)
+                let idMap = new Map()
+                populateIdMapWithTree(idMap, persistentIds, oldNode.parentElement, oldIdElements)
+                populateIdMapWithTree(idMap, persistentIds, newContent, newIdElements)
+                return {persistentIds, idMap}
+            }
+
+            function removeNode(ctx, node) {
+                if (ctx.idMap.has(node)) {
+                    moveBefore(ctx.pantry, node, null)
+                } else {
+                    node.remove()
+                }
+            }
+
+            function matchesUpcomingSibling(ctx, oldElt, startNode) {
+                if (ctx.futureMatches.has(oldElt)) return true
+                for (let sibling = startNode.nextSibling, i = 0; sibling && i < api.config.morphScanLimit; sibling = sibling.nextSibling, i++) {
+                    if (sibling instanceof Element && oldElt.isEqualNode(sibling)) {
+                        ctx.futureMatches.add(oldElt)
+                        return true
+                    }
+                }
+                return false
+            }
+
+            function findBestMatch(ctx, node, startPoint, endPoint) {
+                if (!(node instanceof Element)) return null
+                let softMatch = null, displaceMatchCount = 0, scanLimit = api.config.morphScanLimit
+                let newSet = ctx.idMap.get(node), nodeMatchCount = newSet?.size || 0
+                if (node.id && !newSet) return null
+                let cursor = startPoint
+                while (cursor && cursor != endPoint) {
+                    let oldSet = ctx.idMap.get(cursor)
+                    if (isSoftMatch(cursor, node)) {
+                        if (oldSet && newSet && [...oldSet].some(id => newSet.has(id))) return cursor
+                        if (!oldSet) {
+                            if (scanLimit > 0 && cursor.isEqualNode(node)) return cursor
+                            if (!softMatch) softMatch = cursor
+                        }
+                    }
+                    displaceMatchCount += oldSet?.size || 0
+                    if (displaceMatchCount > nodeMatchCount) break
+                    if (cursor.contains(document.activeElement)) break
+                    if (--scanLimit < 1 && nodeMatchCount === 0) break
+                    cursor = cursor.nextSibling
+                }
+                if (softMatch && matchesUpcomingSibling(ctx, softMatch, node)) return null
+                return softMatch
+            }
+
+            function morphNode(oldNode, newNode, ctx) {
+                if (api.config.morphSkip && oldNode.matches?.(api.config.morphSkip)) return
+                if (api.emit(oldNode, 'htmx:before:morph:node', {oldNode, newNode}) === false) return
+                copyAttributes(oldNode, newNode)
+                if (oldNode instanceof HTMLTextAreaElement && oldNode.defaultValue != newNode.defaultValue) {
+                    oldNode.value = newNode.value
+                }
+                let skipChildren = api.config.morphSkipChildren && oldNode.matches?.(api.config.morphSkipChildren)
+                if (!skipChildren && (!oldNode.isEqualNode(newNode) || newNode.tagName === 'TEMPLATE' || newNode.querySelector?.('template'))) {
+                    morphChildren(ctx, oldNode, newNode)
+                }
+            }
+
+            function morphChildren(ctx, oldParent, newParent, insertionPoint = null, endPoint = null) {
+                if (oldParent instanceof HTMLTemplateElement && newParent instanceof HTMLTemplateElement) {
+                    oldParent = oldParent.content
+                    newParent = newParent.content
+                }
+                insertionPoint ||= oldParent.firstChild
+
+                for (const newChild of [...newParent.childNodes]) {
+                    if (insertionPoint && insertionPoint != endPoint) {
+                        let bestMatch = findBestMatch(ctx, newChild, insertionPoint, endPoint)
+                        if (bestMatch) {
+                            if (bestMatch !== insertionPoint) {
+                                let cursor = insertionPoint
+                                while (cursor && cursor !== bestMatch) {
+                                    let tempNode = cursor
+                                    cursor = cursor.nextSibling
+                                    if (tempNode instanceof Element && (ctx.idMap.has(tempNode) || matchesUpcomingSibling(ctx, tempNode, newChild))) {
+                                        moveBefore(oldParent, tempNode, endPoint)
+                                    } else {
+                                        removeNode(ctx, tempNode)
+                                    }
+                                }
+                            }
+                            morphNode(bestMatch, newChild, ctx)
+                            insertionPoint = bestMatch.nextSibling
+                            continue
+                        }
+                    }
+
+                    if (newChild instanceof Element && ctx.persistentIds.has(newChild.id)) {
+                        let target = (ctx.target.id === newChild.id && ctx.target) ||
+                            ctx.target.querySelector(`[id="${newChild.id}"]`) ||
+                            ctx.pantry.querySelector(`[id="${newChild.id}"]`)
+                        let elementId = target.id
+                        let element = target
+                        while ((element = element.parentNode)) {
+                            let idSet = ctx.idMap.get(element)
+                            if (idSet) {
+                                idSet.delete(elementId)
+                                if (!idSet.size) ctx.idMap.delete(element)
+                            }
+                        }
+                        moveBefore(oldParent, target, insertionPoint)
+                        morphNode(target, newChild, ctx)
+                        insertionPoint = target.nextSibling
+                        continue
+                    }
+
+                    if (ctx.idMap.has(newChild)) {
+                        let placeholder = document.createElement(newChild.tagName)
+                        oldParent.insertBefore(placeholder, insertionPoint)
+                        morphNode(placeholder, newChild, ctx)
+                        insertionPoint = placeholder.nextSibling
+                    } else {
+                        oldParent.insertBefore(newChild, insertionPoint)
+                        insertionPoint = newChild.nextSibling
+                    }
+                }
+
+                while (insertionPoint && insertionPoint != endPoint) {
+                    let tempNode = insertionPoint
+                    insertionPoint = insertionPoint.nextSibling
+                    removeNode(ctx, tempNode)
+                }
+            }
+
+            // ── Main morph logic ──
+            let {persistentIds, idMap} = createIdMaps(oldNode, fragment)
+            let pantry = document.createElement('div')
+            pantry.hidden = true
+            document.body.after(pantry)
+            let ctx = {target: oldNode, idMap, persistentIds, pantry, futureMatches: new WeakSet()}
+            if (innerHTML) {
+                morphChildren(ctx, oldNode, fragment)
+            } else {
+                morphChildren(ctx, oldNode.parentNode, fragment, oldNode, oldNode.nextSibling)
+            }
+            pantry.remove()
+        },
+    },
+    wrap: {
+        swap: (originalSwap, swapObj, options) => {
+            const style = swapObj?.style
+            if (style === 'innerMorph' || style === 'outerMorph') {
+                const target = swapObj.target || options?.element
+                const content = swapObj.content
+                if (content instanceof DocumentFragment) {
+                    htmx.morph(target, content, style === 'innerMorph')
+                    htmx.init(target)
+                    return
+                }
+            }
+            return originalSwap(swapObj, options)
+        },
+    },
+}
+
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 /**
@@ -1692,6 +2015,10 @@ const publicApi = {
 // Order matters: dependencies must be installed before dependents.
 
 htmx.install('parser', parser)
+htmx.install('default-config', defaultConfig)
+htmx.install('meta-config', metaConfig)
+htmx.install('prefix', prefix)
+htmx.install('meta-character', metaCharacter)
 htmx.install('fragment-parsing', fragmentParsing)
 htmx.install('swaps', swaps)
 htmx.install('extended-selectors', extendedSelectors)
@@ -1728,4 +2055,5 @@ htmx.install('hx-preserve', hxPreserve)
 htmx.install('hx-ignore', hxIgnore)
 htmx.install('hx-boost', hxBoost)
 htmx.install('history', historyMgmt)
+htmx.install('morph', morph)
 htmx.install('public-api', publicApi)
