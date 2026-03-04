@@ -54,14 +54,15 @@ struct Wrap {
     target_fn: String,
     params: Vec<String>,
     body: String,
-    helpers: String,
     extension_name: String,
     doc: String,
 }
 
-enum WrapKind {
-    PreTransform,
-    PostProcess,
+/// A wrap that couldn't be parsed for inlining (e.g., IIFE pattern).
+/// Kept as-is for runtime install() emission.
+struct RuntimeWrap {
+    extension_name: String,
+    wrap_source: String,  // "wrap: { ajax: (() => { ... })() }"
 }
 
 struct KernelFn {
@@ -144,35 +145,6 @@ fn is_top_level(node: Node, body: Node) -> bool {
             _ => current = parent,
         }
     }
-}
-
-/// Collect nodes of a given kind at the top level of a body.
-fn collect_top_level<'a>(node: Node<'a>, kind: &str, body: Node, out: &mut Vec<Node<'a>>) {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == kind && is_top_level(child, body) {
-            out.push(child);
-        }
-        match child.kind() {
-            "function_declaration" | "function_expression" | "arrow_function" => {}
-            _ => collect_top_level(child, kind, body, out),
-        }
-    }
-}
-
-/// Check if a return_statement node returns a call to `original(...)`.
-fn returns_original(node: Node, source: &[u8]) -> bool {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "call_expression" {
-            if let Some(func) = child.child_by_field_name("function") {
-                if func.kind() == "identifier" {
-                    return func.utf8_text(source).unwrap() == "original";
-                }
-            }
-        }
-    }
-    false
 }
 
 /// Get the expression node from a return_statement (the part after `return`).
@@ -924,7 +896,23 @@ fn inject_handlers_in_text_recursive(
         .collect();
     if matched_sites.is_empty() { return text.to_string(); }
 
-    // Build output by splicing handler blocks before each emit site's line
+    // Detect extension name collisions across all handlers in this text.
+    // If the same extension has handlers at multiple emit sites, disambiguate
+    // with an event-action suffix to avoid duplicate function names.
+    let mut ext_counts: HashMap<&str, usize> = HashMap::new();
+    for site in &matched_sites {
+        if let Some(handlers) = event_handlers.get(&site.event_name) {
+            for &(ext_idx, _) in handlers {
+                *ext_counts.entry(extensions[ext_idx].name.as_str()).or_default() += 1;
+            }
+        }
+    }
+    let needs_suffix: HashSet<&str> = ext_counts.iter()
+        .filter(|&(_, count)| *count > 1)
+        .map(|(&name, _)| name)
+        .collect();
+
+    // Build output by splicing handler functions before each emit site's line
     let mut out = String::with_capacity(text.len() * 2);
     let mut cursor = 0;
 
@@ -936,17 +924,15 @@ fn inject_handlers_in_text_recursive(
             out.push_str(&text[cursor..site.line_start]);
         }
 
-        // Inject handler blocks before the emit line
+        // Inject named handler functions before the emit line
         out.push('\n');
         for &(ext_idx, h_idx) in handlers {
             let ext = &extensions[ext_idx];
             let handler = &ext.handlers[h_idx];
             let tag = format!("[{}]", ext.name);
             let close_tag = format!("[/{}]", ext.name);
-            let label = make_label(&ext.name);
-
-            out.push_str(&format!("{}// ── {} {}\n", site.indent, tag, dash(&tag)));
-            out.push_str(&format!("{}{}: {{\n", site.indent, label));
+            let fn_name = handler_fn_name(&ext.name, &site.event_name,
+                needs_suffix.contains(ext.name.as_str()));
 
             // Recursively inject handlers into this handler's body in case it
             // contains api.emit() calls (e.g. hx-trigger emits htmx:before:trigger)
@@ -954,12 +940,16 @@ fn inject_handlers_in_text_recursive(
             let processed = inject_handlers_in_text_recursive(
                 &dedented, event_handlers, extensions, dash, depth + 1,
             );
-            let body = convert_returns_for_label(&processed, &label);
-            let extra_indent = format!("{}    ", site.indent);
-            out.push_str(&indent(&body, &extra_indent));
-            out.push('\n');
 
+            out.push_str(&format!("{}// ── {} {}\n", site.indent, tag, dash(&tag)));
+            out.push_str(&format!("{}function {}({}, {}) {{\n",
+                site.indent, fn_name, handler.params.0, handler.params.1));
+            let extra_indent = format!("{}    ", site.indent);
+            out.push_str(&indent(&processed, &extra_indent));
+            out.push('\n');
             out.push_str(&format!("{}}}\n", site.indent));
+            out.push_str(&format!("{}if ({}({}, {}) === false) return false\n",
+                site.indent, fn_name, handler.params.0, handler.params.1));
             out.push_str(&format!("{}// ── {} {}\n\n", site.indent, close_tag, dash(&close_tag)));
         }
 
@@ -1015,38 +1005,6 @@ fn indent(text: &str, indent: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// Convert `return` and `return false` at the handler body level to `break label`.
-fn convert_returns_for_label(body: &str, label: &str) -> String {
-    let (wrapped, tree) = parse_as_body(body);
-    let Some(body_node) = get_body_node(&tree) else { return body.to_string() };
-
-    let mut returns = Vec::new();
-    collect_top_level(body_node, "return_statement", body_node, &mut returns);
-
-    returns.sort_by(|a, b| b.start_byte().cmp(&a.start_byte()));
-
-    let mut result = wrapped.clone();
-    for ret in &returns {
-        let expr = return_expr(*ret);
-        let range = ret.byte_range();
-
-        match expr {
-            None => {
-                result.replace_range(range, &format!("break {}", label));
-            }
-            Some(e) if e.kind() == "false" => {
-                result.replace_range(range, &format!("break {}", label));
-            }
-            _ => {}
-        }
-    }
-
-    let prefix = "function _() {\n";
-    let suffix = "\n}";
-    let inner = &result[prefix.len()..result.len() - suffix.len()];
-    dedent(inner)
 }
 
 fn make_label(name: &str) -> String {
@@ -1206,7 +1164,9 @@ fn inject_wrap_docs(output: &str, fn_wrap_docs: &HashMap<String, Vec<(String, St
 // ── Wrap parsing ─────────────────────────────────────────────────────────
 
 /// Parse declarative wrap: { fn: (original, ...args) => { ... } } from an install() call.
-fn parse_declarative_wraps(source: &str, extension_name: &str) -> Vec<Wrap> {
+/// Returns (inlinable_wraps, runtime_wraps) where runtime_wraps are wraps that couldn't
+/// be parsed for inlining (e.g., IIFE patterns) and need runtime install() emission.
+fn parse_declarative_wraps(source: &str, extension_name: &str) -> (Vec<Wrap>, Vec<RuntimeWrap>) {
     let tree = parse_js(source);
     let root = tree.root_node();
     let src = source.as_bytes();
@@ -1221,13 +1181,14 @@ fn parse_declarative_wraps(source: &str, extension_name: &str) -> Vec<Wrap> {
         })
     };
 
-    let Some(obj_node) = obj_node else { return vec![] };
-    if obj_node.kind() != "object" { return vec![]; }
+    let Some(obj_node) = obj_node else { return (vec![], vec![]) };
+    if obj_node.kind() != "object" { return (vec![], vec![]); }
 
-    let Some(wrap_node) = find_property(obj_node, "wrap", src) else { return vec![] };
-    if wrap_node.kind() != "object" { return vec![]; }
+    let Some(wrap_node) = find_property(obj_node, "wrap", src) else { return (vec![], vec![]) };
+    if wrap_node.kind() != "object" { return (vec![], vec![]); }
 
     let mut wraps = Vec::new();
+    let mut runtime_wraps = Vec::new();
     let mut cursor = wrap_node.walk();
     for child in wrap_node.children(&mut cursor) {
         if child.kind() != "pair" { continue; }
@@ -1236,7 +1197,15 @@ fn parse_declarative_wraps(source: &str, extension_name: &str) -> Vec<Wrap> {
 
         let fn_name = key_node.utf8_text(src).unwrap().to_string();
 
-        if value_node.kind() != "arrow_function" { continue; }
+        if value_node.kind() != "arrow_function" {
+            // Non-inlinable wrap (e.g., IIFE) — keep for runtime emission
+            let wrap_text = child.utf8_text(src).unwrap_or("").to_string();
+            runtime_wraps.push(RuntimeWrap {
+                extension_name: extension_name.to_string(),
+                wrap_source: format!("wrap: {{ {} }}", wrap_text),
+            });
+            continue;
+        }
 
         let Some(params_node) = value_node.child_by_field_name("parameters") else { continue };
         let all_params = extract_params(params_node, src);
@@ -1255,45 +1224,12 @@ fn parse_declarative_wraps(source: &str, extension_name: &str) -> Vec<Wrap> {
             target_fn: fn_name,
             params,
             body,
-            helpers: String::new(),
             extension_name: extension_name.to_string(),
             doc,
         });
     }
 
-    wraps
-}
-
-// ── Wrap classification ──────────────────────────────────────────────────
-
-fn classify_wrap(wrap: &Wrap, kernel_params: &[String]) -> Result<WrapKind, String> {
-    if wrap.params != kernel_params {
-        return Err(format!(
-            "error: extension '{}' wraps '{}' with mismatched params: {:?} vs {:?}",
-            wrap.extension_name, wrap.target_fn, wrap.params, kernel_params
-        ));
-    }
-
-    let (wrapped, tree) = parse_as_body(&wrap.body);
-    let src = wrapped.as_bytes();
-    let Some(body_node) = get_body_node(&tree) else {
-        return Ok(WrapKind::PreTransform);
-    };
-
-    let mut cursor = body_node.walk();
-    let first_stmt = body_node.children(&mut cursor)
-        .find(|n| n.kind() != "{" && n.kind() != "}" && !n.kind().contains("comment"));
-
-    if let Some(stmt) = first_stmt {
-        if stmt.kind() == "lexical_declaration" || stmt.kind() == "variable_declaration" {
-            let text = stmt.utf8_text(src).unwrap();
-            if text.contains("= original(") {
-                return Ok(WrapKind::PostProcess);
-            }
-        }
-    }
-
-    Ok(WrapKind::PreTransform)
+    (wraps, runtime_wraps)
 }
 
 // ── Kernel function detection ────────────────────────────────────────────
@@ -1351,106 +1287,6 @@ fn find_functions_recursive(
     }
 }
 
-// ── Wrap inlining ────────────────────────────────────────────────────────
-
-fn inline_pre_transform(wrap_body: &str, label: &str) -> String {
-    let body = dedent(wrap_body);
-    let (wrapped, tree) = parse_as_body(&body);
-    let src = wrapped.as_bytes();
-    let Some(body_node) = get_body_node(&tree) else { return body };
-
-    let mut returns = Vec::new();
-    collect_top_level(body_node, "return_statement", body_node, &mut returns);
-
-    returns.sort_by(|a, b| b.start_byte().cmp(&a.start_byte()));
-
-    let mut result = wrapped.clone();
-    for ret in &returns {
-        if returns_original(*ret, src) {
-            result.replace_range(ret.byte_range(), &format!("break {}", label));
-        }
-    }
-
-    let prefix = "function _() {\n";
-    let suffix = "\n}";
-    let inner = &result[prefix.len()..result.len() - suffix.len()];
-    dedent(inner)
-}
-
-fn inline_post_process(wrap_body: &str) -> String {
-    let body = dedent(wrap_body);
-    let (wrapped, tree) = parse_as_body(&body);
-    let src = wrapped.as_bytes();
-    let Some(body_node) = get_body_node(&tree) else { return body };
-
-    let mut cursor = body_node.walk();
-    for child in body_node.children(&mut cursor) {
-        if child.kind() == "lexical_declaration" || child.kind() == "variable_declaration" {
-            let text = child.utf8_text(src).unwrap();
-            if text.contains("= original(") {
-                let after = child.end_byte();
-                let body_end = body_node.end_byte() - 1;
-                let remaining = std::str::from_utf8(&src[after..body_end]).unwrap();
-                return dedent(remaining);
-            }
-        }
-    }
-
-    body
-}
-
-fn convert_kernel_returns(body: &str, result_var: &str) -> String {
-    let body = dedent(body);
-    let body = rename_var_declarations(&body, result_var, "temp");
-
-    let (wrapped, tree) = parse_as_body(&body);
-    let src = wrapped.as_bytes();
-    let Some(body_node) = get_body_node(&tree) else { return body };
-
-    let mut returns = Vec::new();
-    collect_top_level(body_node, "return_statement", body_node, &mut returns);
-
-    returns.sort_by(|a, b| b.start_byte().cmp(&a.start_byte()));
-
-    let mut result = wrapped.clone();
-    for ret in &returns {
-        let range = ret.byte_range();
-        if let Some(expr) = return_expr(*ret) {
-            let expr_text = expr.utf8_text(src).unwrap();
-            result.replace_range(range, &format!("{{ {} = {}; break kernel }}", result_var, expr_text));
-        } else {
-            result.replace_range(range, &format!("{{ {} = undefined; break kernel }}", result_var));
-        }
-    }
-
-    let prefix = "function _() {\n";
-    let suffix = "\n}";
-    let inner = &result[prefix.len()..result.len() - suffix.len()];
-    dedent(inner)
-}
-
-fn rename_var_declarations(body: &str, old: &str, new_name: &str) -> String {
-    let (wrapped, tree) = parse_as_body(body);
-    let src = wrapped.as_bytes();
-    let Some(body_node) = get_body_node(&tree) else { return body.to_string() };
-
-    let mut idents = Vec::new();
-    find_identifiers(body_node, old, src, &mut idents);
-
-    if idents.is_empty() { return body.to_string(); }
-
-    idents.sort_by(|a, b| b.start_byte().cmp(&a.start_byte()));
-
-    let mut result = wrapped.clone();
-    for ident in &idents {
-        result.replace_range(ident.byte_range(), new_name);
-    }
-
-    let prefix = "function _() {\n";
-    let suffix = "\n}";
-    let inner = &result[prefix.len()..result.len() - suffix.len()];
-    dedent(inner)
-}
 
 fn find_identifiers<'a>(node: Node<'a>, name: &str, src: &[u8], out: &mut Vec<Node<'a>>) {
     if node.kind() == "identifier" && node.utf8_text(src).unwrap() == name {
@@ -1462,16 +1298,124 @@ fn find_identifiers<'a>(node: Node<'a>, name: &str, src: &[u8], out: &mut Vec<No
     }
 }
 
-fn has_intercept_returns(wrap_body: &str) -> bool {
-    let body = dedent(wrap_body);
-    let (wrapped, tree) = parse_as_body(&body);
+// ── Named function inlining ──────────────────────────────────────────────
+
+/// Rename top-level `original` identifiers in a body to `replacement`.
+/// Identifiers inside nested functions (function declarations, function
+/// expressions, arrow functions) are left untouched.
+fn rename_original(body: &str, replacement: &str) -> String {
+    let (wrapped, tree) = parse_as_body(body);
     let src = wrapped.as_bytes();
-    let Some(body_node) = get_body_node(&tree) else { return false };
+    let Some(body_node) = get_body_node(&tree) else { return body.to_string() };
 
-    let mut returns = Vec::new();
-    collect_top_level(body_node, "return_statement", body_node, &mut returns);
+    let mut idents = Vec::new();
+    find_identifiers(body_node, "original", src, &mut idents);
 
-    returns.iter().any(|r| !returns_original(*r, src))
+    // Keep only identifiers at the top level of the body
+    let mut top_level: Vec<Node> = idents.into_iter()
+        .filter(|n| is_top_level(*n, body_node))
+        .collect();
+
+    if top_level.is_empty() { return body.to_string(); }
+
+    top_level.sort_by(|a, b| b.start_byte().cmp(&a.start_byte()));
+
+    let mut result = wrapped;
+    for ident in &top_level {
+        result.replace_range(ident.byte_range(), replacement);
+    }
+
+    let prefix = "function _() {\n";
+    let suffix = "\n}";
+    let inner = &result[prefix.len()..result.len() - suffix.len()];
+    dedent(inner)
+}
+
+/// Build a chain of named functions from kernel body + wraps.
+///
+/// Given kernel function `fn_name` with body `kernel_body`, and wraps in
+/// inner→outer order, produces:
+///   1. `function __fnName_kernel(params) { kernel body }`
+///   2. For each inner wrap: `function __fnName_extName(params) { wrap body with original→prev }`
+///   3. Outermost wrap body emitted directly (not in a function) with original→prev
+fn build_wrap_chain(
+    fn_name: &str,
+    kernel_body: &str,
+    kernel_params: &[String],
+    wraps: &[&Wrap],
+    indent_str: &str,
+    dash: &dyn Fn(&str) -> String,
+) -> String {
+    let params_str = kernel_params.join(", ");
+    let mut body = String::new();
+    body.push('\n');
+
+    // Build chain of function names: kernel, wrap0, wrap1, ..., wrapN
+    let kernel_chain_name = format!("__{}_kernel", fn_name);
+    let mut chain_names: Vec<String> = vec![kernel_chain_name.clone()];
+    for wrap in wraps {
+        chain_names.push(format!("__{}_{}", fn_name, make_label(&wrap.extension_name)));
+    }
+
+    // Emit kernel body as a named function
+    body.push_str(&format!("{}function {}({}) {{\n", indent_str, kernel_chain_name, params_str));
+    let kernel_dedented = dedent(kernel_body);
+    body.push_str(&indent(kernel_dedented.trim(), &format!("{}    ", indent_str)));
+    body.push('\n');
+    body.push_str(&format!("{}}}\n", indent_str));
+
+    // Emit inner wraps as named functions (all except outermost)
+    for (i, wrap) in wraps.iter().enumerate() {
+        if i == wraps.len() - 1 { break; } // outermost is emitted inline below
+
+        let this_name = &chain_names[i + 1];
+        let prev_name = &chain_names[i];
+        let tag = format!("[{}]", wrap.extension_name);
+        let close_tag = format!("[/{}]", wrap.extension_name);
+
+        let renamed = rename_original(&wrap.body, prev_name);
+
+        body.push('\n');
+        body.push_str(&format!("{}// ── {} {}\n", indent_str, tag, dash(&tag)));
+        body.push_str(&format!("{}function {}({}) {{\n", indent_str, this_name, params_str));
+        body.push_str(&indent(renamed.trim(), &format!("{}    ", indent_str)));
+        body.push('\n');
+        body.push_str(&format!("{}}}\n", indent_str));
+        body.push_str(&format!("{}// ── {} {}\n", indent_str, close_tag, dash(&close_tag)));
+    }
+
+    // Emit outermost wrap body directly (not in a function)
+    if let Some(outermost) = wraps.last() {
+        let prev_name = &chain_names[chain_names.len() - 2];
+        let tag = format!("[{}]", outermost.extension_name);
+        let close_tag = format!("[/{}]", outermost.extension_name);
+
+        let renamed = rename_original(&outermost.body, prev_name);
+
+        body.push('\n');
+        body.push_str(&format!("{}// ── {} {}\n", indent_str, tag, dash(&tag)));
+        body.push_str(&indent(renamed.trim(), indent_str));
+        body.push('\n');
+        body.push_str(&format!("{}// ── {} {}\n", indent_str, close_tag, dash(&close_tag)));
+    }
+
+    body
+}
+
+/// Extract event action suffix from an event name for disambiguation.
+/// `htmx:before:trigger` → `_before_trigger`
+fn event_action_suffix(event_name: &str) -> String {
+    let stripped = event_name.strip_prefix("htmx:").unwrap_or(event_name);
+    format!("_{}", stripped.replace(':', "_"))
+}
+
+/// Generate a handler function name from extension name and (optionally) event name.
+fn handler_fn_name(ext_name: &str, event_name: &str, needs_suffix: bool) -> String {
+    if needs_suffix {
+        format!("__{}{}", make_label(ext_name), event_action_suffix(event_name))
+    } else {
+        format!("__{}", make_label(ext_name))
+    }
 }
 
 // ── Topological Sort ─────────────────────────────────────────────────────
@@ -1602,25 +1546,6 @@ fn find_header_end(source: &str) -> usize {
     }
 
     pos
-}
-
-/// Find the end of the initial guard statement in a function body.
-fn find_guard_end(body: &str) -> usize {
-    let trimmed = body.trim_start();
-    let offset = body.len() - trimmed.len();
-
-    if !trimmed.starts_with("if ") && !trimmed.starts_with("if(") {
-        return 0;
-    }
-
-    if let Some(newline) = trimmed.find('\n') {
-        let first_line = &trimmed[..newline];
-        if first_line.contains("throw ") || first_line.contains("return ") {
-            return offset + newline + 1;
-        }
-    }
-
-    0
 }
 
 pub fn assemble_simple(source: &str, extensions: &[Extension], order: &[usize]) -> Result<String, AssemblyError> {
@@ -1909,36 +1834,51 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
 
     // ── Extract declarative wraps from install() wrap: key ─────────────
     let mut all_wraps: Vec<Wrap> = Vec::new();
+    let mut all_runtime_wraps: Vec<RuntimeWrap> = Vec::new();
 
     for &idx in order {
         let ext = &extensions[idx];
-        let decl_wraps = parse_declarative_wraps(&ext.source_text, &ext.name);
+        let (decl_wraps, rt_wraps) = parse_declarative_wraps(&ext.source_text, &ext.name);
         if !decl_wraps.is_empty() {
             diagnostics.push(format!("  wraps from '{}': {}",
                 ext.name,
                 decl_wraps.iter().map(|w| w.target_fn.as_str()).collect::<Vec<_>>().join(", ")));
         }
+        if !rt_wraps.is_empty() {
+            diagnostics.push(format!("  runtime wraps from '{}' (not inlined): {}",
+                ext.name,
+                rt_wraps.iter().map(|w| w.extension_name.as_str()).collect::<Vec<_>>().join(", ")));
+        }
         all_wraps.extend(decl_wraps);
+        all_runtime_wraps.extend(rt_wraps);
     }
 
     // ── Find kernel functions ───────────────────────────────────────────
     let target_names: Vec<&str> = all_wraps.iter().map(|w| w.target_fn.as_str()).collect();
     let kernel_fns = find_kernel_functions(source, &target_names);
 
-    // ── Classify wraps (against kernel functions + defines) ─────────────
-    let mut wraps_by_fn: HashMap<String, Vec<(usize, WrapKind)>> = HashMap::new();
-    let mut wraps_on_defines: HashMap<String, Vec<(usize, WrapKind)>> = HashMap::new();
+    // ── Group wraps by target function ──────────────────────────────────
+    let mut wraps_by_fn: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut wraps_on_defines: HashMap<String, Vec<usize>> = HashMap::new();
 
     for (i, wrap) in all_wraps.iter().enumerate() {
         if let Some(kfn) = kernel_fns.get(&wrap.target_fn) {
-            match classify_wrap(wrap, &kfn.params) {
-                Ok(kind) => { wraps_by_fn.entry(wrap.target_fn.clone()).or_default().push((i, kind)); }
-                Err(e) => errors.push(e),
+            if wrap.params != kfn.params {
+                errors.push(format!(
+                    "error: extension '{}' wraps '{}' with mismatched params: {:?} vs {:?}",
+                    wrap.extension_name, wrap.target_fn, wrap.params, kfn.params
+                ));
+            } else {
+                wraps_by_fn.entry(wrap.target_fn.clone()).or_default().push(i);
             }
         } else if let Some(def) = define_map.get(&wrap.target_fn) {
-            match classify_wrap(wrap, &def.params) {
-                Ok(kind) => { wraps_on_defines.entry(wrap.target_fn.clone()).or_default().push((i, kind)); }
-                Err(e) => errors.push(e),
+            if wrap.params != def.params {
+                errors.push(format!(
+                    "error: extension '{}' wraps '{}' with mismatched params: {:?} vs {:?}",
+                    wrap.extension_name, wrap.target_fn, wrap.params, def.params
+                ));
+            } else {
+                wraps_on_defines.entry(wrap.target_fn.clone()).or_default().push(i);
             }
         } else {
             // Extension wraps a non-kernel function (e.g., api.parse installed by
@@ -1952,7 +1892,7 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
         return Err(AssemblyError { messages: errors });
     }
 
-    // ── Build rewritten function bodies ─────────────────────────────────
+    // ── Build rewritten function bodies (named function chains) ────────
     let mut fn_rewrites: HashMap<usize, String> = HashMap::new();
     let fn_indent = "        ";
 
@@ -1962,106 +1902,8 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
         let kfn = &kernel_fns[fn_name];
         let original_body = &source[kfn.body_start..kfn.body_end];
 
-        let mut pre_transforms: Vec<usize> = Vec::new();
-        let mut post_processes: Vec<usize> = Vec::new();
-        for (idx, kind) in wrap_indices {
-            match kind {
-                WrapKind::PreTransform => pre_transforms.push(*idx),
-                WrapKind::PostProcess => post_processes.push(*idx),
-            }
-        }
-
-        let mut new_body = String::new();
-        new_body.push('\n');
-
-        let guard_end = find_guard_end(original_body);
-        if guard_end > 0 {
-            new_body.push_str(&original_body[..guard_end]);
-        }
-
-        // ── Pre-transforms ──────────────────────────────────────────────
-        for &wrap_idx in &pre_transforms {
-            let wrap = &all_wraps[wrap_idx];
-            let label = make_label(&wrap.extension_name);
-            let tag = format!("[{}]", wrap.extension_name);
-            let close_tag = format!("[/{}]", wrap.extension_name);
-
-            let inlined = inline_pre_transform(&wrap.body, &label);
-            let needs_label = has_intercept_returns(&wrap.body) || !wrap.helpers.is_empty();
-
-            let inlined = if !needs_label {
-                let trimmed = inlined.trim_end();
-                let break_stmt = format!("break {}", label);
-                if trimmed.ends_with(&break_stmt) {
-                    trimmed[..trimmed.len() - break_stmt.len()].trim_end().to_string()
-                } else {
-                    inlined
-                }
-            } else {
-                inlined
-            };
-
-            new_body.push('\n');
-            new_body.push_str(&format!("{}// ── {} {}\n", fn_indent, tag, dash(&tag)));
-
-            if needs_label {
-                new_body.push_str(&format!("{}{}: {{\n", fn_indent, label));
-                if !wrap.helpers.is_empty() {
-                    new_body.push_str(&indent(&wrap.helpers, &format!("{}    ", fn_indent)));
-                    new_body.push('\n');
-                }
-                new_body.push_str(&indent(inlined.trim(), &format!("{}    ", fn_indent)));
-                new_body.push('\n');
-                new_body.push_str(&format!("{}}}\n", fn_indent));
-            } else {
-                new_body.push_str(&indent(inlined.trim(), fn_indent));
-                new_body.push('\n');
-            }
-
-            new_body.push_str(&format!("{}// ── {} {}\n", fn_indent, close_tag, dash(&close_tag)));
-        }
-
-        // ── Post-processes ──────────────────────────────────────────────
-        if !post_processes.is_empty() {
-            let result_var = "result";
-            let kernel_body_text = &original_body[guard_end..];
-
-            new_body.push_str(&format!("\n{}let {}\n", fn_indent, result_var));
-            new_body.push_str(&format!("{}kernel: {{\n", fn_indent));
-            let converted = convert_kernel_returns(kernel_body_text, result_var);
-            new_body.push_str(&indent(&converted, &format!("{}    ", fn_indent)));
-            new_body.push('\n');
-            new_body.push_str(&format!("{}}}\n", fn_indent));
-
-            for &wrap_idx in &post_processes {
-                let wrap = &all_wraps[wrap_idx];
-                let tag = format!("[{}]", wrap.extension_name);
-                let close_tag = format!("[/{}]", wrap.extension_name);
-
-                let post_body = inline_post_process(&wrap.body);
-
-                new_body.push('\n');
-                new_body.push_str(&format!("{}// ── {} {}\n", fn_indent, tag, dash(&tag)));
-                new_body.push_str(&indent(&post_body, fn_indent));
-                new_body.push('\n');
-                new_body.push_str(&format!("{}// ── {} {}\n", fn_indent, close_tag, dash(&close_tag)));
-            }
-
-            let last_post = &all_wraps[*post_processes.last().unwrap()];
-            let last_post_body = inline_post_process(&last_post.body);
-            let ends_with_return = last_post_body.trim_end().lines().last()
-                .map(|l| l.trim_start().starts_with("return "))
-                .unwrap_or(false);
-            if !ends_with_return {
-                new_body.push_str(&format!("\n{}return {}\n    ", fn_indent, result_var));
-            } else {
-                new_body.push_str("\n    ");
-            }
-        } else {
-            let kernel_rest = original_body[guard_end..].trim_start_matches('\n');
-            new_body.push('\n');
-            new_body.push_str(kernel_rest);
-        }
+        let wraps: Vec<&Wrap> = wrap_indices.iter().map(|&i| &all_wraps[i]).collect();
+        let new_body = build_wrap_chain(fn_name, original_body, &kfn.params, &wraps, fn_indent, &dash);
 
         fn_rewrites.insert(kfn.body_start, new_body);
     }
@@ -2072,108 +1914,8 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
     let def_indent = "    ";
     for def in &all_defines {
         if let Some(wrap_indices) = wraps_on_defines.get(&def.fn_name) {
-            // Apply wraps to the define's body. Use 4-space indent (standard function
-            // body level); the outer emission adds another 4 for the kernel IIFE.
-            let normalized = indent(&def.body, def_indent);
-            let original_body = normalized.as_str();
-            let mut pre_transforms: Vec<usize> = Vec::new();
-            let mut post_processes: Vec<usize> = Vec::new();
-            for (idx, kind) in wrap_indices {
-                match kind {
-                    WrapKind::PreTransform => pre_transforms.push(*idx),
-                    WrapKind::PostProcess => post_processes.push(*idx),
-                }
-            }
-
-            let mut new_body = String::new();
-            new_body.push('\n');
-
-            let guard_end = find_guard_end(original_body);
-            if guard_end > 0 {
-                new_body.push_str(&original_body[..guard_end]);
-            }
-
-            for &wrap_idx in &pre_transforms {
-                let wrap = &all_wraps[wrap_idx];
-                let label = make_label(&wrap.extension_name);
-                let tag = format!("[{}]", wrap.extension_name);
-                let close_tag = format!("[/{}]", wrap.extension_name);
-
-                let inlined = inline_pre_transform(&wrap.body, &label);
-                let needs_label = has_intercept_returns(&wrap.body) || !wrap.helpers.is_empty();
-
-                let inlined = if !needs_label {
-                    let trimmed = inlined.trim_end();
-                    let break_stmt = format!("break {}", label);
-                    if trimmed.ends_with(&break_stmt) {
-                        trimmed[..trimmed.len() - break_stmt.len()].trim_end().to_string()
-                    } else {
-                        inlined
-                    }
-                } else {
-                    inlined
-                };
-
-                new_body.push('\n');
-                new_body.push_str(&format!("{}// ── {} {}\n", def_indent, tag, dash(&tag)));
-
-                if needs_label {
-                    new_body.push_str(&format!("{}{}: {{\n", def_indent, label));
-                    if !wrap.helpers.is_empty() {
-                        new_body.push_str(&indent(&wrap.helpers, &format!("{}    ", def_indent)));
-                        new_body.push('\n');
-                    }
-                    new_body.push_str(&indent(inlined.trim(), &format!("{}    ", def_indent)));
-                    new_body.push('\n');
-                    new_body.push_str(&format!("{}}}\n", def_indent));
-                } else {
-                    new_body.push_str(&indent(inlined.trim(), def_indent));
-                    new_body.push('\n');
-                }
-
-                new_body.push_str(&format!("{}// ── {} {}\n", def_indent, close_tag, dash(&close_tag)));
-            }
-
-            if !post_processes.is_empty() {
-                let result_var = "result";
-                let kernel_body_text = &original_body[guard_end..];
-
-                new_body.push_str(&format!("\n{}let {}\n", def_indent, result_var));
-                new_body.push_str(&format!("{}kernel: {{\n", def_indent));
-                let converted = convert_kernel_returns(kernel_body_text, result_var);
-                new_body.push_str(&indent(&converted, &format!("{}    ", def_indent)));
-                new_body.push('\n');
-                new_body.push_str(&format!("{}}}\n", def_indent));
-
-                for &wrap_idx in &post_processes {
-                    let wrap = &all_wraps[wrap_idx];
-                    let tag = format!("[{}]", wrap.extension_name);
-                    let close_tag = format!("[/{}]", wrap.extension_name);
-
-                    let post_body = inline_post_process(&wrap.body);
-
-                    new_body.push('\n');
-                    new_body.push_str(&format!("{}// ── {} {}\n", def_indent, tag, dash(&tag)));
-                    new_body.push_str(&indent(&post_body, def_indent));
-                    new_body.push('\n');
-                    new_body.push_str(&format!("{}// ── {} {}\n", def_indent, close_tag, dash(&close_tag)));
-                }
-
-                let last_post = &all_wraps[*post_processes.last().unwrap()];
-                let last_post_body = inline_post_process(&last_post.body);
-                let ends_with_return = last_post_body.trim_end().lines().last()
-                    .map(|l| l.trim_start().starts_with("return "))
-                    .unwrap_or(false);
-                if !ends_with_return {
-                    new_body.push_str(&format!("\n{}return {}\n", def_indent, result_var));
-                } else {
-                    new_body.push('\n');
-                }
-            } else {
-                let kernel_rest = original_body[guard_end..].trim_start_matches('\n');
-                new_body.push('\n');
-                new_body.push_str(kernel_rest);
-            }
+            let wraps: Vec<&Wrap> = wrap_indices.iter().map(|&i| &all_wraps[i]).collect();
+            let new_body = build_wrap_chain(&def.fn_name, &def.body, &def.params, &wraps, def_indent, &dash);
 
             // Reconstruct the function declaration with the rewritten body
             let params_text: Vec<&str> = def.params.iter().map(|s| s.as_str()).collect();
@@ -2275,6 +2017,22 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
     }
     inject_points.sort_by_key(|&(pos, _)| pos);
 
+    // Pre-compute handler function name collision detection for kernel emit sites
+    let kernel_needs_suffix: HashSet<&str> = {
+        let mut ext_counts: HashMap<&str, usize> = HashMap::new();
+        for site in &emit_sites {
+            if let Some(handlers) = event_handlers.get(&site.event_name) {
+                for &(ext_idx, _) in handlers {
+                    *ext_counts.entry(extensions[ext_idx].name.as_str()).or_default() += 1;
+                }
+            }
+        }
+        ext_counts.into_iter()
+            .filter(|(_, count)| *count > 1)
+            .map(|(name, _)| name)
+            .collect()
+    };
+
     for (pos, kind) in &inject_points {
         if *pos > cursor {
             out.push_str(&source[cursor..*pos]);
@@ -2344,19 +2102,31 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
 
                     let tag = format!("[{}]", ext.name);
                     let close_tag = format!("[/{}]", ext.name);
-                    let label = make_label(&ext.name);
+                    let fn_name = format!("__{}_boot", make_label(&ext.name));
 
                     out.push_str(&format!("    // ── {} {}\n", tag, dash(&tag)));
-                    out.push_str(&format!("    {}: {{\n", label));
+                    out.push_str(&format!("    function {}({}, {}) {{\n",
+                        fn_name, boot.params.0, boot.params.1));
 
                     let processed = inject_handlers_in_text(
                         &body_dedented, &event_handlers, extensions, &dash,
                     );
-                    let body = convert_returns_for_label(&processed, &label);
-                    out.push_str(&indent(&body, "        "));
+                    out.push_str(&indent(&processed, "        "));
                     out.push('\n');
 
                     out.push_str("    }\n");
+                    out.push_str(&format!("    {}({{}}, api)\n", fn_name));
+                    out.push_str(&format!("    // ── {} {}\n\n", close_tag, dash(&close_tag)));
+                }
+
+                // Emit runtime install() calls for non-inlinable wraps (e.g., IIFE patterns).
+                // Note: requires is omitted because dependencies are already inlined.
+                for rt_wrap in &all_runtime_wraps {
+                    let tag = format!("[{}]", rt_wrap.extension_name);
+                    let close_tag = format!("[/{}]", rt_wrap.extension_name);
+
+                    out.push_str(&format!("    // ── {} {} (runtime)\n", tag, dash(&tag)));
+                    out.push_str(&format!("    htmx.install('{}', {{{}}});\n", rt_wrap.extension_name, rt_wrap.wrap_source));
                     out.push_str(&format!("    // ── {} {}\n\n", close_tag, dash(&close_tag)));
                 }
 
@@ -2370,22 +2140,24 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
                         let handler = &ext.handlers[h_idx];
                         let tag = format!("[{}]", ext.name);
                         let close_tag = format!("[/{}]", ext.name);
-                        let label = make_label(&ext.name);
-
-                        out.push_str(&format!("{}// ── {} {}\n", site_indent, tag, dash(&tag)));
-                        out.push_str(&format!("{}{}: {{\n", site_indent, label));
+                        let fn_name = handler_fn_name(&ext.name, event_name,
+                            kernel_needs_suffix.contains(ext.name.as_str()));
 
                         // Recursively inject handlers into this handler's body
                         let dedented = dedent(&handler.body);
                         let processed = inject_handlers_in_text(
                             &dedented, &event_handlers, extensions, &dash,
                         );
-                        let body = convert_returns_for_label(&processed, &label);
-                        let extra_indent = format!("{}    ", site_indent);
-                        out.push_str(&indent(&body, &extra_indent));
-                        out.push('\n');
 
+                        out.push_str(&format!("{}// ── {} {}\n", site_indent, tag, dash(&tag)));
+                        out.push_str(&format!("{}function {}({}, {}) {{\n",
+                            site_indent, fn_name, handler.params.0, handler.params.1));
+                        let extra_indent = format!("{}    ", site_indent);
+                        out.push_str(&indent(&processed, &extra_indent));
+                        out.push('\n');
                         out.push_str(&format!("{}}}\n", site_indent));
+                        out.push_str(&format!("{}if ({}({}, {}) === false) return false\n",
+                            site_indent, fn_name, handler.params.0, handler.params.1));
                         out.push_str(&format!("{}// ── {} {}\n\n", site_indent, close_tag, dash(&close_tag)));
                     }
                 }
@@ -2418,4 +2190,337 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
     }
 
     Ok(out)
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── rename_original tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_rename_original_simple() {
+        let body = "let x = original(a, b)";
+        let result = rename_original(body, "__attr_kernel");
+        assert_eq!(result, "let x = __attr_kernel(a, b)");
+    }
+
+    #[test]
+    fn test_rename_original_no_match() {
+        let body = "let x = foo(a, b)";
+        let result = rename_original(body, "__attr_kernel");
+        assert_eq!(result, "let x = foo(a, b)");
+    }
+
+    #[test]
+    fn test_rename_original_multiple() {
+        let body = "if (x) return original(a)\nreturn original(b)";
+        let result = rename_original(body, "__fn_ext");
+        assert!(result.contains("__fn_ext(a)"));
+        assert!(result.contains("__fn_ext(b)"));
+        assert!(!result.contains("original"));
+    }
+
+    #[test]
+    fn test_rename_original_in_conditional() {
+        let body = "if (cond) {\n    return original(a, b)\n}\nreturn original(c)";
+        let result = rename_original(body, "__f");
+        assert!(result.contains("__f(a, b)"));
+        assert!(result.contains("__f(c)"));
+        assert!(!result.contains("original"));
+    }
+
+    #[test]
+    fn test_rename_original_skips_nested_functions() {
+        let body = "const fn = () => original()\nreturn original(x)";
+        let result = rename_original(body, "__replaced");
+        // The top-level original(x) should be renamed
+        assert!(result.contains("__replaced(x)"));
+        // The nested arrow function's original() should be left alone
+        assert!(result.contains("() => original()"));
+    }
+
+    #[test]
+    fn test_rename_original_skips_strings() {
+        let body = "let s = \"original\"\nreturn original(x)";
+        let result = rename_original(body, "__r");
+        assert!(result.contains("\"original\""));
+        assert!(result.contains("__r(x)"));
+    }
+
+    // ── build_wrap_chain tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_chain_single_wrap() {
+        let wrap = Wrap {
+            target_fn: "attr".into(),
+            params: vec!["element".into(), "name".into()],
+            body: "if (x) return original(element, name)\nreturn original(element, name)".into(),
+            extension_name: "my-ext".into(),
+            doc: String::new(),
+        };
+        let dash = |tag: &str| "─".repeat(72usize.saturating_sub(6 + tag.len()));
+        let result = build_wrap_chain(
+            "attr",
+            "\nreturn element.getAttribute(name)\n",
+            &["element".into(), "name".into()],
+            &[&wrap],
+            "    ",
+            &dash,
+        );
+        // Should contain kernel function
+        assert!(result.contains("function __attr_kernel(element, name)"));
+        assert!(result.contains("element.getAttribute(name)"));
+        // Outermost wrap body should be emitted directly (not in a function)
+        assert!(!result.contains("function __attr_my_ext"));
+        // original should be renamed to __attr_kernel
+        assert!(result.contains("__attr_kernel(element, name)"));
+        assert!(!result.contains("original("));
+    }
+
+    #[test]
+    fn test_chain_multiple_wraps() {
+        let inner = Wrap {
+            target_fn: "f".into(),
+            params: vec!["x".into()],
+            body: "return original(x + 1)".into(),
+            extension_name: "inner".into(),
+            doc: String::new(),
+        };
+        let outer = Wrap {
+            target_fn: "f".into(),
+            params: vec!["x".into()],
+            body: "return original(x * 2)".into(),
+            extension_name: "outer".into(),
+            doc: String::new(),
+        };
+        let dash = |tag: &str| "─".repeat(72usize.saturating_sub(6 + tag.len()));
+        let result = build_wrap_chain(
+            "f",
+            "\nreturn x\n",
+            &["x".into()],
+            &[&inner, &outer],
+            "    ",
+            &dash,
+        );
+        // Should have kernel function
+        assert!(result.contains("function __f_kernel(x)"));
+        // Inner wrap should be a named function calling kernel
+        assert!(result.contains("function __f_inner(x)"));
+        assert!(result.contains("__f_kernel(x + 1)"));
+        // Outer wrap body should be inline, calling inner
+        assert!(!result.contains("function __f_outer"));
+        assert!(result.contains("__f_inner(x * 2)"));
+    }
+
+    #[test]
+    fn test_chain_preserves_wrap_body() {
+        let wrap = Wrap {
+            target_fn: "attr".into(),
+            params: vec!["el".into(), "name".into()],
+            body: "if (cond) {\n    let r = original(el, name)\n    if (r) return r\n}\nreturn original(el, name)".into(),
+            extension_name: "complex".into(),
+            doc: String::new(),
+        };
+        let dash = |_: &str| String::new();
+        let result = build_wrap_chain(
+            "attr",
+            "\nreturn el.getAttribute(name)\n",
+            &["el".into(), "name".into()],
+            &[&wrap],
+            "",
+            &dash,
+        );
+        // Both original() calls should be renamed
+        assert!(!result.contains("original("));
+        // Complex logic preserved
+        assert!(result.contains("if (cond)"));
+        assert!(result.contains("if (r) return r"));
+    }
+
+    // ── handler injection tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_handler_named_function() {
+        let ext = Extension {
+            name: "my-ext".into(),
+            requires: vec![],
+            handlers: vec![Handler {
+                event: "htmx:before:trigger".into(),
+                params: ("detail".into(), "api".into()),
+                body: "if (!detail.ok) return false".into(),
+            }],
+            defines: vec![],
+            configs: vec![],
+            define_errors: vec![],
+            source_path: String::new(),
+            source_text: String::new(),
+            description: String::new(),
+        };
+        let mut event_handlers: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        event_handlers.insert("htmx:before:trigger".into(), vec![(0, 0)]);
+        let dash = |_: &str| String::new();
+
+        let text = "    if (canceled(api.emit(el, 'htmx:before:trigger', detail))) return";
+        let result = inject_handlers_in_text(text, &event_handlers, &[ext], &dash);
+
+        assert!(result.contains("function __my_ext(detail, api)"));
+        assert!(result.contains("if (__my_ext(detail, api) === false) return false"));
+        assert!(result.contains("if (!detail.ok) return false"));
+    }
+
+    #[test]
+    fn test_handler_collision_disambiguation() {
+        let ext = Extension {
+            name: "my-ext".into(),
+            requires: vec![],
+            handlers: vec![
+                Handler {
+                    event: "htmx:before:trigger".into(),
+                    params: ("detail".into(), "api".into()),
+                    body: "// handler 1".into(),
+                },
+                Handler {
+                    event: "htmx:after:trigger".into(),
+                    params: ("detail".into(), "api".into()),
+                    body: "// handler 2".into(),
+                },
+            ],
+            defines: vec![],
+            configs: vec![],
+            define_errors: vec![],
+            source_path: String::new(),
+            source_text: String::new(),
+            description: String::new(),
+        };
+        let mut event_handlers: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        event_handlers.insert("htmx:before:trigger".into(), vec![(0, 0)]);
+        event_handlers.insert("htmx:after:trigger".into(), vec![(0, 1)]);
+        let dash = |_: &str| String::new();
+
+        let text = "api.emit(el, 'htmx:before:trigger', d)\napi.emit(el, 'htmx:after:trigger', d)";
+        let result = inject_handlers_in_text(text, &event_handlers, &[ext], &dash);
+
+        // Same extension at two emit sites → suffixed names
+        assert!(result.contains("__my_ext_before_trigger"));
+        assert!(result.contains("__my_ext_after_trigger"));
+    }
+
+    // ── event_action_suffix tests ────────────────────────────────────────
+
+    #[test]
+    fn test_event_action_suffix() {
+        assert_eq!(event_action_suffix("htmx:before:trigger"), "_before_trigger");
+        assert_eq!(event_action_suffix("htmx:after:walk:init"), "_after_walk_init");
+        assert_eq!(event_action_suffix("custom:event"), "_custom_event");
+    }
+
+    // ── integration tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_full_wrap_chain_assembly() {
+        let kernel = r#"(function() {
+    // ── Extensions: Start
+    // ── Extensions: End
+
+    const config = {
+        x: 1,
+    }
+
+    function attr(element, name) {
+        return element.getAttribute(name)
+    }
+
+    const api = {
+        attr,
+    }
+})()"#;
+
+        let ext_source = r#"htmx.install('prefix', {
+    wrap: {
+        attr: (original, element, name) => {
+            let prefixed = 'data-' + name
+            let result = original(element, prefixed)
+            if (result !== null) return result
+            return original(element, name)
+        }
+    }
+})"#;
+        let extensions = parse_extensions(ext_source, "test.js");
+        let order = vec![0];
+        let result = assemble(kernel, &extensions, &order).unwrap();
+
+        assert!(result.contains("function __attr_kernel(element, name)"));
+        assert!(result.contains("__attr_kernel(element, prefixed)"));
+        assert!(result.contains("__attr_kernel(element, name)"));
+        assert!(!result.contains("original("));
+    }
+
+    #[test]
+    fn test_full_handler_assembly() {
+        let kernel = r#"(function() {
+    // ── Extensions: Start
+    // ── Extensions: End
+
+    const config = {
+        x: 1,
+    }
+
+    function trigger(element) {
+        if (canceled(api.emit(element, 'htmx:before:trigger', {}))) return
+        element.click()
+    }
+
+    const api = {
+        trigger,
+    }
+})()"#;
+
+        let ext_source = r#"htmx.install('hx-confirm', {
+    on: {
+        'htmx:before:trigger': (detail, api) => {
+            if (!detail.confirm) return false
+        }
+    }
+})"#;
+        let extensions = parse_extensions(ext_source, "test.js");
+        let order = vec![0];
+        let result = assemble(kernel, &extensions, &order).unwrap();
+
+        assert!(result.contains("function __hx_confirm(detail, api)"));
+        assert!(result.contains("if (__hx_confirm(detail, api) === false) return false"));
+        assert!(result.contains("if (!detail.confirm) return false"));
+    }
+
+    #[test]
+    fn test_runtime_wrap_preserved() {
+        let kernel = r#"(function() {
+    // ── Extensions: Start
+    // ── Extensions: End
+
+    const config = {
+        x: 1,
+    }
+
+    const api = {
+    }
+})()"#;
+
+        let ext_source = r#"htmx.install('request-queue', {
+    wrap: {
+        ajax: (() => {
+            class Queue {}
+            return (original, options) => original(options)
+        })()
+    }
+})"#;
+        let extensions = parse_extensions(ext_source, "test.js");
+        let order = vec![0];
+        let result = assemble(kernel, &extensions, &order).unwrap();
+
+        // Runtime wrap should be emitted as install() call
+        assert!(result.contains("htmx.install('request-queue'"));
+    }
 }

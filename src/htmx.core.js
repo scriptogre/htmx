@@ -132,11 +132,11 @@ const ajax = {
          * `request` / `response` / `error` when present.
          */
         swap: (original, swap, options = {}) => {
-            const context = {...options.context}
-            if (options.request !== undefined) context.request = options.request
-            if (options.response !== undefined) context.response = options.response
-            if (options.error !== undefined) context.error = options.error
-            return original(swap, {...options, context})
+            options = {...options, context: {...options.context}}
+            if (options.request !== undefined) options.context.request = options.request
+            if (options.response !== undefined) options.context.response = options.response
+            if (options.error !== undefined) options.context.error = options.error
+            return original(swap, options)
         },
     },
 }
@@ -374,6 +374,7 @@ const parser = {
  * Merge JSON values from hx-vals into request body or URL query params.
  */
 const hxVals = {
+    requires: ['form-data'],
     config: {attributeFilter: ['hx-vals']},
     on: {
         'htmx:before:request': (detail, api) => {
@@ -620,6 +621,34 @@ const formData = {
     config: {attributeFilter: ['hx-include', 'hx-encoding']},
     on: {
         'htmx:before:request': (detail, api) => {
+            function addInputValues(elt, included, formData) {
+                // If elt is a form, add all its fields
+                if (elt.matches?.('form')) {
+                    for (const [k, v] of new FormData(elt)) formData.append(k, v)
+                    return
+                }
+
+                const inputs = elt.matches?.('input, select, textarea')
+                    ? [elt]
+                    : elt.querySelectorAll('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
+
+                for (const input of inputs) {
+                    if (!input.name || included.has(input)) continue
+                    included.add(input)
+
+                    const type = input.type
+                    if (type === 'checkbox' || type === 'radio') {
+                        if (input.checked) formData.append(input.name, input.value)
+                    } else if (type === 'file') {
+                        for (const file of input.files) formData.append(input.name, file)
+                    } else if (input.type === 'select-multiple') {
+                        for (const option of input.selectedOptions) formData.append(input.name, option.value)
+                    } else {
+                        formData.append(input.name, input.value)
+                    }
+                }
+            }
+
             const el = detail.element
             if (!el) return
 
@@ -679,35 +708,6 @@ const formData = {
                 }
             }
         },
-    }
-}
-
-/** Add input values from an element and its descendants to formData */
-function addInputValues(elt, included, formData) {
-    // If elt is a form, add all its fields
-    if (elt.matches?.('form')) {
-        for (const [k, v] of new FormData(elt)) formData.append(k, v)
-        return
-    }
-
-    const inputs = elt.matches?.('input, select, textarea')
-        ? [elt]
-        : elt.querySelectorAll('input:not([disabled]), select:not([disabled]), textarea:not([disabled])')
-
-    for (const input of inputs) {
-        if (!input.name || included.has(input)) continue
-        included.add(input)
-
-        const type = input.type
-        if (type === 'checkbox' || type === 'radio') {
-            if (input.checked) formData.append(input.name, input.value)
-        } else if (type === 'file') {
-            for (const file of input.files) formData.append(input.name, file)
-        } else if (input.type === 'select-multiple') {
-            for (const option of input.selectedOptions) formData.append(input.name, option.value)
-        } else {
-            formData.append(input.name, input.value)
-        }
     }
 }
 
@@ -1142,98 +1142,97 @@ const requestTimeout = {
 }
 
 
-/**
- * Request queue — manages concurrent requests per-element.
- */
-class RequestQueue {
-    #current = null
-    #queue = []
-
-    issue(ctx, strategy) {
-        ctx._queueStrategy = strategy
-        if (!this.#current) {
-            this.#current = ctx
-            return true
-        }
-
-        if (strategy === 'replace' || (strategy !== 'abort' && this.#current._queueStrategy === 'abort')) {
-            this.#queue.forEach(c => c._dropped = true)
-            this.#queue = []
-            if (this.#current._abort) this.#current._abort()
-            this.#current = ctx
-            return true
-        } else if (strategy === 'queue all') {
-            this.#queue.push(ctx)
-        } else if (strategy === 'drop') {
-            ctx._dropped = true
-        } else if (strategy === 'queue last') {
-            this.#queue.forEach(c => c._dropped = true)
-            this.#queue = [ctx]
-        } else if (this.#queue.length === 0 && strategy !== 'abort') {
-            // default: queue first
-            this.#queue.push(ctx)
-        } else {
-            ctx._dropped = true
-        }
-        return false
-    }
-
-    finish() { this.#current = null }
-    next() { return this.#queue.shift() }
-    hasMore() { return this.#queue.length > 0 }
-}
-
 const requestQueueExt = {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-sync']},
     wrap: {
-        ajax: (original, options) => {
-            const el = options?.element
-            if (!el) return original(options)
+        ajax: (() => {
+            class RequestQueue {
+                _current = null
+                _queue = []
 
-            // Determine sync strategy from hx-sync attribute
-            let syncAttr = el.getAttribute?.('hx-sync')
-            let strategy = 'queue first'
-            let queueEl = el
-
-            if (syncAttr) {
-                if (syncAttr.includes(':')) {
-                    const [selector, strat] = syncAttr.split(':')
-                    strategy = strat.trim()
-                    const found = document.querySelector(selector.trim())
-                    if (found) queueEl = found
-                } else {
-                    strategy = syncAttr.trim()
-                }
-            }
-
-            // Get or create queue for the element
-            const queue = queueEl._htmxRequestQueue ||= new RequestQueue()
-
-            const ctx = {options}
-            if (!queue.issue(ctx, strategy)) return // dropped or queued
-
-            // Set up abort capability
-            const controller = new AbortController()
-            ctx._abort = () => controller.abort()
-            options.request.signal = options.request.signal
-                ? AbortSignal.any([options.request.signal, controller.signal])
-                : controller.signal
-
-            // Execute and handle queue
-            const result = original(options)
-            if (result && typeof result.then === 'function') {
-                result.finally(() => {
-                    queue.finish()
-                    const next = queue.next()
-                    if (next) {
-                        // Re-issue the queued request
-                        original(next.options)
+                issue(ctx, strategy) {
+                    ctx._queueStrategy = strategy
+                    if (!this._current) {
+                        this._current = ctx
+                        return true
                     }
-                })
+
+                    if (strategy === 'replace' || (strategy !== 'abort' && this._current._queueStrategy === 'abort')) {
+                        this._queue.forEach(c => c._dropped = true)
+                        this._queue = []
+                        if (this._current._abort) this._current._abort()
+                        this._current = ctx
+                        return true
+                    } else if (strategy === 'queue all') {
+                        this._queue.push(ctx)
+                    } else if (strategy === 'drop') {
+                        ctx._dropped = true
+                    } else if (strategy === 'queue last') {
+                        this._queue.forEach(c => c._dropped = true)
+                        this._queue = [ctx]
+                    } else if (this._queue.length === 0 && strategy !== 'abort') {
+                        // default: queue first
+                        this._queue.push(ctx)
+                    } else {
+                        ctx._dropped = true
+                    }
+                    return false
+                }
+
+                finish() { this._current = null }
+                next() { return this._queue.shift() }
+                hasMore() { return this._queue.length > 0 }
             }
-            return result
-        },
+
+            return (original, options) => {
+                const el = options?.element
+                if (!el) return original(options)
+
+                // Determine sync strategy from hx-sync attribute
+                let syncAttr = el.getAttribute?.('hx-sync')
+                let strategy = 'queue first'
+                let queueEl = el
+
+                if (syncAttr) {
+                    if (syncAttr.includes(':')) {
+                        const [selector, strat] = syncAttr.split(':')
+                        strategy = strat.trim()
+                        const found = document.querySelector(selector.trim())
+                        if (found) queueEl = found
+                    } else {
+                        strategy = syncAttr.trim()
+                    }
+                }
+
+                // Get or create queue for the element
+                const queue = queueEl._htmxRequestQueue ||= new RequestQueue()
+
+                const ctx = {options}
+                if (!queue.issue(ctx, strategy)) return // dropped or queued
+
+                // Set up abort capability
+                const controller = new AbortController()
+                ctx._abort = () => controller.abort()
+                options.request.signal = options.request.signal
+                    ? AbortSignal.any([options.request.signal, controller.signal])
+                    : controller.signal
+
+                // Execute and handle queue
+                const result = original(options)
+                if (result && typeof result.then === 'function') {
+                    result.finally(() => {
+                        queue.finish()
+                        const next = queue.next()
+                        if (next) {
+                            // Re-issue the queued request
+                            original(next.options)
+                        }
+                    })
+                }
+                return result
+            }
+        })(),
     }
 }
 
@@ -1399,9 +1398,13 @@ const inheritance = {
             const append = `${name}:${appendSuffix}`
             const inheritedAppend = `${name}:${inheritSuffix}:${appendSuffix}`
 
-            // Direct attribute on element
-            if (element.hasAttribute(name)) return original(element, name, options)
-            if (element.hasAttribute(inherited)) return original(element, inherited, options)
+            // Direct attribute on element — pass {inherit: false} to avoid recursion
+            if (element.hasAttribute(name)) {
+                return original(element, name, {inherit: false})
+            }
+            if (element.hasAttribute(inherited)) {
+                return original(element, inherited, {inherit: false})
+            }
 
             // Build ancestor selector
             const parts = [`[${CSS.escape(inherited)}]`, `[${CSS.escape(inheritedAppend)}]`]
@@ -1411,18 +1414,15 @@ const inheritance = {
             // Collect :append chain + base, walking up
             const chain = []
 
-            const selfAppend = original(element, append, options)
-                ?? original(element, inheritedAppend, options)
+            const selfAppend = element.getAttribute(append)
+                ?? element.getAttribute(inheritedAppend)
             if (selfAppend !== null) chain.push(selfAppend)
 
             let ancestor = element.parentElement?.closest(selector)
             while (ancestor) {
-                const base = original(ancestor, inherited, options)
-                    ?? (mode === 'implicit' ? original(ancestor, name, options) : null)
+                const base = ancestor.getAttribute(inherited)
+                    ?? (mode === 'implicit' ? ancestor.getAttribute(name) : null)
                 if (base !== null) {
-                    // When "this" is inherited from an ancestor, resolve it to a
-                    // `closest` selector so api.find() targets the declaring element
-                    // rather than the requesting element.
                     if (base === 'this') {
                         const attrName = ancestor.hasAttribute(inherited) ? inherited : name
                         chain.push(`closest [${CSS.escape(attrName)}="this"]`)
@@ -1432,7 +1432,7 @@ const inheritance = {
                     break
                 }
 
-                const ancestorAppend = original(ancestor, inheritedAppend, options)
+                const ancestorAppend = ancestor.getAttribute(inheritedAppend)
                 if (ancestorAppend !== null) {
                     chain.push(ancestorAppend)
                     ancestor = ancestor.parentElement?.closest(selector)
@@ -1536,59 +1536,6 @@ const hxSelect = {
  *   "innerHTML target:#sel swap:100ms" → new format with modifiers
  *   'innerHTML target:".foo .bar"' → quoted multi-word selector
  */
-function parseSwapOobValue(value) {
-    const result = {style: 'outerHTML', target: null, swap: null}
-    if (!value || value === 'true') return result
-
-    // Tokenize respecting quoted strings
-    const tokens = []
-    let current = ''
-    let inQuote = null
-    for (let i = 0; i < value.length; i++) {
-        const ch = value[i]
-        if (inQuote) {
-            if (ch === inQuote) {
-                inQuote = null
-            } else {
-                current += ch
-            }
-        } else if (ch === '"' || ch === "'") {
-            inQuote = ch
-        } else if (/\s/.test(ch)) {
-            if (current) { tokens.push(current); current = '' }
-        } else {
-            current += ch
-        }
-    }
-    if (current) tokens.push(current)
-    if (!tokens.length) return result
-
-    // First token: swapStyle or swapStyle:targetSelector (legacy)
-    const firstPart = tokens[0]
-    const colonIdx = firstPart.indexOf(':')
-    if (colonIdx > 0) {
-        result.style = firstPart.slice(0, colonIdx)
-        const sel = firstPart.slice(colonIdx + 1)
-        if (sel) result.target = sel
-    } else {
-        result.style = firstPart
-    }
-
-    // Remaining tokens: key:value modifiers
-    for (let i = 1; i < tokens.length; i++) {
-        const modColonIdx = tokens[i].indexOf(':')
-        if (modColonIdx > 0) {
-            const key = tokens[i].slice(0, modColonIdx)
-            const val = tokens[i].slice(modColonIdx + 1)
-            if (key === 'target') result.target = val
-            else if (key === 'swap') result.swap = val
-            else result[key] = val === 'true' ? true : val === 'false' ? false : val
-        }
-    }
-
-    return result
-}
-
 // ── OOB Swap ───────────────────────────────────────────────────────────
 
 /**
@@ -1600,6 +1547,58 @@ const oobSwap = {
     config: {attributeFilter: ['hx-select-oob']},
     on: {
         'htmx:before:swap': (detail, api) => {
+            function parseSwapOobValue(value) {
+                const result = {style: 'outerHTML', target: null, swap: null}
+                if (!value || value === 'true') return result
+
+                // Tokenize respecting quoted strings
+                const tokens = []
+                let current = ''
+                let inQuote = null
+                for (let i = 0; i < value.length; i++) {
+                    const ch = value[i]
+                    if (inQuote) {
+                        if (ch === inQuote) {
+                            inQuote = null
+                        } else {
+                            current += ch
+                        }
+                    } else if (ch === '"' || ch === "'") {
+                        inQuote = ch
+                    } else if (/\s/.test(ch)) {
+                        if (current) { tokens.push(current); current = '' }
+                    } else {
+                        current += ch
+                    }
+                }
+                if (current) tokens.push(current)
+                if (!tokens.length) return result
+
+                // First token: swapStyle or swapStyle:targetSelector (legacy)
+                const firstPart = tokens[0]
+                const colonIdx = firstPart.indexOf(':')
+                if (colonIdx > 0) {
+                    result.style = firstPart.slice(0, colonIdx)
+                    const sel = firstPart.slice(colonIdx + 1)
+                    if (sel) result.target = sel
+                } else {
+                    result.style = firstPart
+                }
+
+                // Remaining tokens: key:value modifiers
+                for (let i = 1; i < tokens.length; i++) {
+                    const modColonIdx = tokens[i].indexOf(':')
+                    if (modColonIdx > 0) {
+                        const key = tokens[i].slice(0, modColonIdx)
+                        const val = tokens[i].slice(modColonIdx + 1)
+                        if (key === 'target') result.target = val
+                        else if (key === 'swap') result.swap = val
+                        else result[key] = val === 'true' ? true : val === 'false' ? false : val
+                    }
+                }
+
+                return result
+            }
             const content = detail.swap?.content
             if (!(content instanceof DocumentFragment)) return
             // Skip nested OOB/partial swaps
@@ -2165,7 +2164,6 @@ const metaCharacter = {
  * DOM morphing algorithm — intelligently patches existing DOM nodes to match
  * new content while preserving element identity, focus state, and animations.
  */
-let _morphFn
 const morph = {
     config: {
         morphScanLimit: 10,
@@ -2391,7 +2389,7 @@ const morph = {
         },
     },
     on: {
-        'htmx:boot': (detail, api) => { _morphFn = api.morph },
+        'htmx:boot': (detail, api) => { api.state._morphFn = api.morph },
     },
     wrap: {
         swap: (original, swap, options) => {
@@ -2407,7 +2405,7 @@ const morph = {
                     content = template.content
                 }
                 if (content instanceof DocumentFragment) {
-                    _morphFn(target, content, style === 'innerMorph')
+                    htmx.state._morphFn(target, content, style === 'innerMorph')
                     htmx.init(target)
                     return
                 }
@@ -2432,14 +2430,14 @@ const publicApi = {
         //   on(element, eventName, handler)  → listen on element (passthrough)
         on: (original, element, eventName, handler, options) => {
             if (typeof element === 'string' && typeof eventName === 'function') {
-                // on(eventName, handler)
+                // on(eventName, handler) → remap to (document, eventName, handler)
                 return original(document, element, eventName, handler)
             }
             if (typeof element === 'string' && typeof eventName === 'string') {
-                // on('#selector', eventName, handler)
-                const el = document.querySelector(element)
-                if (!el) return () => {}
-                return original(el, eventName, handler, options)
+                // on('#selector', eventName, handler) → resolve selector
+                const target = document.querySelector(element)
+                if (!target) return () => {}
+                return original(target, eventName, handler, options)
             }
             return original(element, eventName, handler, options)
         },
@@ -2481,7 +2479,7 @@ const publicApi = {
 
             // find override: support find(root, selector) two-arg form
             const _kernelFind = htmx.find
-            htmx.find = (selectorOrRoot, selector) => {
+            const _enhancedFind = (selectorOrRoot, selector) => {
                 if (selector === undefined) {
                     return _kernelFind(selectorOrRoot)
                 }
@@ -2489,6 +2487,7 @@ const publicApi = {
                     ? document.querySelector(selectorOrRoot) : selectorOrRoot
                 return root?.querySelector(selector) ?? null
             }
+            Object.defineProperty(htmx, 'find', {value: _enhancedFind, configurable: true, writable: true})
 
             // forEvent(name, timeout, target) — promise-based event waiting
             htmx.forEvent = (event, timeout = 200, target = document) => {
@@ -3027,6 +3026,7 @@ const hxValidate = {
  * Handles scroll and delay modifiers on swap specifications.
  */
 const swapModifiers = {
+    requires: ['hx-swap'],
     on: {
         'htmx:before:swap': (detail, api) => {
             const swap = detail.swap

@@ -365,6 +365,32 @@ var htmx = (function () {
         state,
     }
 
+    // ── Public API ───────────────────────────────────────────────────────────
+    // Constructed before Extensions so inlined boot handlers can reference htmx.
+    // Getters delegate to api so extension wraps take effect.
+
+    htmx = {
+        version: '4.0.0',
+        config,
+        install,
+        state,
+        get init() {
+            return api.init
+        },
+        get emit() {
+            return api.emit
+        },
+        get on() {
+            return api.on
+        },
+        get attr() {
+            return api.attr
+        },
+        get find() {
+            return api.find
+        },
+    }
+
     // ── Extensions: Start ────────────────────────────────────────────────────
     // ── Extensions: End ──────────────────────────────────────────────────────
 
@@ -406,28 +432,5 @@ var htmx = (function () {
         queueMicrotask(boot)
     }
 
-    // ── Public API ───────────────────────────────────────────────────────────
-    // Getters delegate to api so extension wraps take effect.
-
-    return {
-        version: '4.0.0',
-        config,
-        install,
-        state,
-        get init() {
-            return api.init
-        },
-        get emit() {
-            return api.emit
-        },
-        get on() {
-            return api.on
-        },
-        get attr() {
-            return api.attr
-        },
-        get find() {
-            return api.find
-        },
-    }
+    return htmx
 })()
