@@ -560,7 +560,8 @@ htmx.install('ajax', {
          * @returns {Promise<void>}
          */
         ajax: (api) => async function ajax(options = {}) {
-            if (!options.request?.url) throw new HtmxError('Cannot issue request without a URL', {type: 'REQUEST_URL_MISSING'})
+            if (options.request?.url == null) throw new HtmxError('Cannot issue request without a URL', {type: 'REQUEST_URL_MISSING'})
+            if (!options.request.url) options.request.url = location.pathname + location.search
             const element = options.element || document.body
 
             const detail = {
@@ -677,9 +678,9 @@ htmx.install('default-trigger', {
             // Elements with only inherited/config attrs (e.g. hx-boost:inherited)
             // should not get a click handler that calls preventDefault().
             const el = detail.element
-            const hasAction = api.attr(el, 'hx-get') || api.attr(el, 'hx-post')
-                || api.attr(el, 'hx-put') || api.attr(el, 'hx-patch')
-                || api.attr(el, 'hx-delete') || api.attr(el, 'hx-trigger')
+            const hasAction = api.attr(el, 'hx-get') != null || api.attr(el, 'hx-post') != null
+                || api.attr(el, 'hx-put') != null || api.attr(el, 'hx-patch') != null
+                || api.attr(el, 'hx-delete') != null || api.attr(el, 'hx-trigger') != null
             if (!hasAction) return
 
             // Default trigger based on element type
@@ -1328,7 +1329,7 @@ htmx.install('hx-get', {
     on: {
         'htmx:before:trigger': (detail, api) => {
             const url = api.attr(detail.element, 'hx-get')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'GET'}})
+            if (url != null) api.ajax({element: detail.element, request: {url: url || location.pathname + location.search, method: 'GET'}})
         }
     }
 })
@@ -1341,7 +1342,7 @@ htmx.install('hx-post', {
     on: {
         'htmx:before:trigger': (detail, api) => {
             const url = api.attr(detail.element, 'hx-post')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'POST'}})
+            if (url != null) api.ajax({element: detail.element, request: {url: url || location.pathname + location.search, method: 'POST'}})
         }
     }
 })
@@ -1354,7 +1355,7 @@ htmx.install('hx-put', {
     on: {
         'htmx:before:trigger': (detail, api) => {
             const url = api.attr(detail.element, 'hx-put')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'PUT'}})
+            if (url != null) api.ajax({element: detail.element, request: {url: url || location.pathname + location.search, method: 'PUT'}})
         }
     }
 })
@@ -1367,7 +1368,7 @@ htmx.install('hx-patch', {
     on: {
         'htmx:before:trigger': (detail, api) => {
             const url = api.attr(detail.element, 'hx-patch')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'PATCH'}})
+            if (url != null) api.ajax({element: detail.element, request: {url: url || location.pathname + location.search, method: 'PATCH'}})
         }
     }
 })
@@ -1380,7 +1381,7 @@ htmx.install('hx-delete', {
     on: {
         'htmx:before:trigger': (detail, api) => {
             const url = api.attr(detail.element, 'hx-delete')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'DELETE'}})
+            if (url != null) api.ajax({element: detail.element, request: {url: url || location.pathname + location.search, method: 'DELETE'}})
         }
     }
 })

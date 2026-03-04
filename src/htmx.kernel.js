@@ -254,9 +254,10 @@ var htmx = (function () {
             const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
             let node = root
             while (node) {
-                const attrs = node.attributes
-                for (let i = 0; i < attrs.length; i++) {
-                    if (attrs[i].name.startsWith(config.attributePrefix)) {
+                // Use getAttributeNames() to avoid shadowed .attributes on forms with <input name="attributes">
+                const attrNames = node.getAttributeNames ? node.getAttributeNames() : []
+                for (let i = 0; i < attrNames.length; i++) {
+                    if (attrNames[i].startsWith(config.attributePrefix)) {
                         api.initElement(node)
                         break
                     }
