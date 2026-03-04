@@ -27,6 +27,8 @@ const config = {
 <script src="src/ext/hx-optimistic.js"></script>
 <script src="src/ext/hx-upsert.js"></script>
 <script src="src/ext/hx-preload.js"></script>
+<script src="src/ext/hx-sse.js"></script>
+<script src="src/ext/hx-ws.js"></script>
 
 <script class="mocha-init">
     window.should = window.chai.should()

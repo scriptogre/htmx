@@ -1,118 +1,92 @@
-// TODO: WebSocket extension not yet implemented in kernel+core architecture
-describe.skip('hx-ws WebSocket extension', function() {
-    
-    let extBackup;
+describe('hx-ws WebSocket extension', function() {
+
+    let originalWebSocket;
     let mockWebSocket;
     let mockWebSocketInstances = [];
-    
-    before(async () => {
-        extBackup = backupExtensions();
-        clearExtensions();
-        
-        // Mock WebSocket
+
+    before(() => {
+        originalWebSocket = window.WebSocket;
+
         mockWebSocket = class MockWebSocket {
             static CONNECTING = 0;
             static OPEN = 1;
             static CLOSING = 2;
             static CLOSED = 3;
-            
+
             constructor(url) {
                 this.url = url;
                 this.readyState = MockWebSocket.CONNECTING;
                 this.listeners = {};
                 mockWebSocketInstances.push(this);
-                
-                // Simulate connection after a short delay
+
                 setTimeout(() => {
                     this.readyState = MockWebSocket.OPEN;
                     this.triggerEvent('open', {});
                 }, 10);
             }
-            
+
             addEventListener(event, handler) {
                 if (!this.listeners[event]) this.listeners[event] = [];
                 this.listeners[event].push(handler);
             }
-            
+
             removeEventListener(event, handler) {
                 if (!this.listeners[event]) return;
                 this.listeners[event] = this.listeners[event].filter(h => h !== handler);
             }
-            
+
             send(data) {
                 if (this.readyState !== MockWebSocket.OPEN) {
                     throw new Error('WebSocket is not open');
                 }
                 this.lastSent = data;
             }
-            
+
             close(code = 1000, reason = '') {
                 this.readyState = MockWebSocket.CLOSED;
                 this.triggerEvent('close', { code, reason });
             }
-            
+
             triggerEvent(event, data) {
                 if (this.listeners[event]) {
-                    // Add target property to event object for proper event handling
                     const eventObj = { ...data, target: this };
                     this.listeners[event].forEach(handler => handler(eventObj));
                 }
             }
-            
-            // Helper to simulate receiving a message (JSON)
+
             simulateMessage(data) {
                 this.triggerEvent('message', { data: JSON.stringify(data) });
             }
-            
-            // Helper to simulate receiving raw (non-JSON) message
+
             simulateRawMessage(data) {
                 this.triggerEvent('message', { data: data });
             }
         };
-        
+
         window.WebSocket = mockWebSocket;
-        
-        // CRITICAL: Approve extension BEFORE loading it
-        // Extension registration silently fails if not approved
-        htmx.config.extensions = 'ws';
-        htmx.__approvedExt = 'ws';
-        
-        let script = document.createElement('script');
-        script.src = '../src/ext/hx-ws.js';
-        await new Promise(resolve => {
-            script.onload = resolve;
-            document.head.appendChild(script);
-        });
-        
-        // Verify extension loaded and registered
-        if (!htmx.ext || !htmx.ext.ws) {
-            throw new Error('WebSocket extension failed to load');
-        }
-        if (!htmx.__registeredExt.has('ws')) {
-            throw new Error('WebSocket extension failed to register - check approval');
-        }
     });
-    
+
     after(() => {
-        restoreExtensions(extBackup);
+        window.WebSocket = originalWebSocket;
     });
-    
-    beforeEach(() => {
+
+    beforeEach(function () {
         setupTest(this.currentTest);
         mockWebSocketInstances = [];
         if (htmx.ext && htmx.ext.ws && htmx.ext.ws.getRegistry) {
             htmx.ext.ws.getRegistry().clear();
         }
     });
-    
-    afterEach(() => {
-        cleanupTest(this.currentTest);
-        // Close all mock WebSocket connections
+
+    afterEach(function () {
+        cleanupTest();
         mockWebSocketInstances.forEach(ws => {
             if (ws.readyState === mockWebSocket.OPEN) {
                 ws.close();
             }
         });
+        // Reset websockets config
+        delete htmx.config.websockets;
     });
     
     // Helper to check if URL ends with expected path (accounts for URL normalization)
@@ -134,7 +108,7 @@ describe.skip('hx-ws WebSocket extension', function() {
     describe('Connection Lifecycle', function() {
         
         it('creates connection on hx-ws:connect with load trigger', async function() {
-            let div = createProcessedHTML('<div hx-ext="ws" hx-ws:connect="/ws/test" hx-trigger="load"></div>');
+            let div = createProcessedHTML('<div hx-ws:connect="/ws/test" hx-trigger="load"></div>');
             await htmx.timeout(50);
             assert.equal(mockWebSocketInstances.length, 1);
             assert.isTrue(urlEndsWith(mockWebSocketInstances[0].url, '/ws/test'), 'URL should end with /ws/test');
@@ -247,14 +221,12 @@ describe.skip('hx-ws WebSocket extension', function() {
     describe('Message Sending', function() {
         
         it('sends message with hx-ws:send on form submit', async function() {
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/chat" hx-trigger="load">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/chat" hx-trigger="load">
                     <form hx-ws:send hx-trigger="submit">
                         <input name="message" value="hello">
                         <button type="submit">Send</button>
                     </form>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
             
             let form = div.querySelector('form');
@@ -271,11 +243,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('includes hx-vals in sent message', async function() {
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-vals='{"extra": "data"}' hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
             
             let button = div.querySelector('button');
@@ -330,13 +300,11 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('generates unique request_id for each message', async function() {
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
-            
+
             let button = div.querySelector('button');
             button.click();
             await htmx.timeout(20);
@@ -351,12 +319,10 @@ describe.skip('hx-ws WebSocket extension', function() {
         
         it('includes async hx-vals (js:) in sent message', async function() {
             window.testAsyncValue = () => new Promise(resolve => setTimeout(() => resolve('asyncValue'), 10));
-            
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-vals='js:{asyncField: await testAsyncValue()}' hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
             
             let button = div.querySelector('button');
@@ -496,9 +462,7 @@ describe.skip('hx-ws WebSocket extension', function() {
     describe('Custom Channels', function() {
         
         it('emits event for non-ui channel messages', async function() {
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load"></div>
-            `);
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load"></div>`);
             await htmx.timeout(50);
             
             let eventFired = false;
@@ -540,9 +504,7 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('fires htmx:before:ws:message for all messages', async function() {
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load"></div>
-            `);
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load"></div>`);
             await htmx.timeout(50);
             
             let beforeFired = false;
@@ -562,11 +524,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('allows canceling message processing via event', async function() {
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load" hx-target="#content">
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load" hx-target="#content">
                     <div id="content">Original</div>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
             
             container.addEventListener('htmx:before:ws:message', (e) => {
@@ -592,9 +552,7 @@ describe.skip('hx-ws WebSocket extension', function() {
     describe('Error Handling and Reconnection', function() {
         
         it('emits htmx:ws:error on connection error', async function() {
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load"></div>
-            `);
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load"></div>`);
             
             let errorFired = false;
             container.addEventListener('htmx:ws:error', () => {
@@ -610,9 +568,7 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('emits htmx:ws:close on connection close', async function() {
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load"></div>
-            `);
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load"></div>`);
             
             let closeFired = false;
             container.addEventListener('htmx:ws:close', () => {
@@ -659,10 +615,8 @@ describe.skip('hx-ws WebSocket extension', function() {
         
         it('emits htmx:ws:reconnect on reconnection attempt', async function() {
             htmx.config.websockets = { reconnect: true, reconnectDelay: 50 };
-            
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load"></div>
-            `);
+
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load"></div>`);
             
             let reconnectFired = false;
             container.addEventListener('htmx:ws:reconnect', () => {
@@ -678,15 +632,13 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('uses exponential backoff for reconnection', async function() {
-            htmx.config.websockets = { 
-                reconnect: true, 
+            htmx.config.websockets = {
+                reconnect: true,
                 reconnectDelay: 100,
                 reconnectMaxDelay: 1000
             };
-            
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load"></div>
-            `);
+
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load"></div>`);
             await htmx.timeout(50);
             
             let reconnectTimes = [];
@@ -717,11 +669,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('emits htmx:wsSendError when send fails', async function() {
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
             
             let errorFired = false;
@@ -742,9 +692,7 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('emits htmx:wsUnknownMessage for non-JSON data', async function() {
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load"></div>
-            `);
+            let container = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load"></div>`);
             await htmx.timeout(50);
             
             let unknownFired = false;
@@ -865,11 +813,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         
         it('emits htmx:before:ws:send before sending', async function() {
             let beforeFired = false;
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             
             div.addEventListener('htmx:before:ws:send', () => {
                 beforeFired = true;
@@ -884,11 +830,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         
         it('emits htmx:after:ws:send after sending', async function() {
             let afterFired = false;
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             
             div.addEventListener('htmx:after:ws:send', () => {
                 afterFired = true;
@@ -902,11 +846,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('allows modifying message via htmx:before:ws:send', async function() {
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             
             div.addEventListener('htmx:before:ws:send', (e) => {
                 e.detail.data.custom = 'added';
@@ -922,11 +864,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('can cancel send via htmx:before:ws:send', async function() {
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-trigger="load">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/test" hx-trigger="load">
                     <button hx-ws:send hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             
             div.addEventListener('htmx:before:ws:send', (e) => {
                 e.preventDefault();
@@ -953,7 +893,7 @@ describe.skip('hx-ws WebSocket extension', function() {
             console.warn = () => { warnCalled = true; };
             
             let container = createProcessedHTML(`
-                <div hx-ext="ws" ws-connect="/ws/test" hx-trigger="load"></div>
+                <div ws-connect="/ws/test" hx-trigger="load"></div>
             `);
             await htmx.timeout(50);
             
@@ -966,11 +906,9 @@ describe.skip('hx-ws WebSocket extension', function() {
         });
         
         it('supports legacy ws-send attribute', async function() {
-            let div = createProcessedHTML(`
-                <div hx-ext="ws" ws-connect="/ws/test" hx-trigger="load">
+            let div = createProcessedHTML(`<div ws-connect="/ws/test" hx-trigger="load">
                     <button ws-send hx-trigger="click">Send</button>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
             
             div.querySelector('button').click();
@@ -988,15 +926,13 @@ describe.skip('hx-ws WebSocket extension', function() {
     describe('Integration Scenarios', function() {
         
         it('handles chat application pattern', async function() {
-            let div = createProcessedHTML(`
-                <div hx-ws:connect="/ws/chat" hx-trigger="load" hx-target="#messages" hx-swap="beforeend">
+            let div = createProcessedHTML(`<div hx-ws:connect="/ws/chat" hx-trigger="load" hx-target="#messages" hx-swap="beforeend">
                     <div id="messages"></div>
                     <form hx-ws:send hx-trigger="submit">
                         <input name="message" value="Hello">
                         <button type="submit">Send</button>
                     </form>
-                </div>
-            `);
+                </div>`);
             await htmx.timeout(50);
             
             // Send a message

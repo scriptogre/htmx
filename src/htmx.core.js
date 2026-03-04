@@ -1,150 +1,242 @@
 // htmx 4.0 — Core Extensions
 //
-// Extension definitions ordered by importance. Installation order at the bottom.
+// Extensions are installed in dependency order — dependencies before dependents.
 //
 // api is the last argument for event handlers only:
 //   Event handlers: (detail, api) => { ... }
 //   Wraps: (original, ...originalArgs) => { ... }  — no api, use htmx.* or closures
 
+// ── Installation ────────────────────────────────────────────────────────
+// Order matters: dependencies must be installed before dependents.
 
-// ── Capabilities ────────────────────────────────────────────────────────
 
 /**
- * HTTP transport — fetch pipeline with request/response/swap phases.
+ * RelaxedJSON parser — string to object transformation.
  */
-const ajax = {
-    requires: ['swaps'],
+htmx.install('parser', {
     define: {
         /**
-         * Execute an HTTP request through the htmx request pipeline.
+         * Parse relaxed key/value text into an object.
          *
-         * Pipeline:
-         * - `htmx:before:request` -> `request.execute()` -> `htmx:after:request`
-         * - `htmx:before:response` -> `response.execute()` -> `htmx:after:response`
-         * - `api.swap(...)` when response text is available (which emits `htmx:before:swap` / `htmx:after:swap`)
-         * - `htmx:done`, `htmx:error`, `htmx:finally`
+         * Supports bare values, `key:value` pairs, boolean flags, duration
+         * coercion (`150`, `150ms`, `2s`, `1m`), and dot-key expansion.
          *
-         * Detail shape shared across request/response events:
-         * - `detail.element`
-         * - `detail.request` (url/method/headers/body plus `execute()`)
-         * - `detail.response` (status/ok/url/headers/text plus `execute()`)
-         * - `detail.swap` (swap options passed to `api.swap`)
-         * - `detail.error` (set on failures)
+         * @param {string|null|undefined} text
+         * @param {{as?: string}} [options]
          *
-         * @param {{element?: Element, request: Object, swap?: Object}} [options]
+         * @returns {Object<string, any>|null}
          *
-         * @returns {Promise<void>}
+         * @example
+         * api.parse('click')
+         * // => { value: 'click' }
+         *
+         * @example
+         * api.parse('delay:500ms once')
+         * // => { delay: 500, once: true }
+         *
+         * @example
+         * api.parse('click', { as: 'trigger' })
+         * // => { trigger: 'click' }
+         *
+         * @example
+         * api.parse('headers.X-CSRF:abc123')
+         * // => { headers: { 'X-CSRF': 'abc123' } }
          */
-        ajax: (api) => async function ajax(options = {}) {
-            if (!options.request?.url) throw new HtmxError('Cannot issue request without a URL', {type: 'REQUEST_URL_MISSING'})
-            const element = options.element || document.body
+        parse: () => {
+            return function parse(text, options) {
+                /** Tokenizer for relaxed `key:value` and flag-like option strings. */
+                const tokenPattern = /(?:"([^"]*)"|'([^']*)'|([^\s,:]+))(?:\s*:\s*(?:"([^"]*)"|'([^']*)'|([^\s,]*)))?/g
 
-            const detail = {
-                element,
-                request: {...options.request, execute: null},
-                swap: options.swap || null,
-                response: null,
-                error: null,
-            }
-
-            try {
-                // ── Request phase ────────────────────────────────────
-                detail.request.execute = async () => {
-                    const {url, execute, values, source, ...fetchOptions} = detail.request
-                    return await fetch(url, fetchOptions)
-                }
-
-                if (api.emit(element, 'htmx:before:request', detail) === false) return
-
-                // Merge programmatic values into request body/URL
-                if (detail.request.values && typeof detail.request.values === 'object') {
-                    const method = detail.request.method?.toUpperCase()
-                    const usesQuery = /GET|DELETE/.test(method)
-                    if (usesQuery) {
-                        const url = new URL(detail.request.url, document.baseURI)
-                        for (const [k, v] of Object.entries(detail.request.values)) {
-                            url.searchParams.set(k, v)
-                        }
-                        detail.request.url = url.origin === location.origin
-                            ? url.pathname + url.search : url.href
-                    } else {
-                        const params = detail.request.body instanceof URLSearchParams
-                            ? detail.request.body : new URLSearchParams(detail.request.body || '')
-                        for (const [k, v] of Object.entries(detail.request.values)) {
-                            params.set(k, v)
-                        }
-                        detail.request.body = params
+                /** Coerce parsed token text into booleans/durations when applicable. */
+                function coerce(text) {
+                    if (text === 'true') return true
+                    if (text === 'false') return false
+                    const duration = text.match(/^(\d+)(ms|s|m)?$/)
+                    if (duration) {
+                        const [, n, unit] = duration
+                        return unit === 's' ? n * 1000 : unit === 'm' ? n * 60000 : +n
                     }
-                    delete detail.request.values
+                    return text
                 }
 
-                const response = await detail.request.execute()
+                if (!text) return null
 
-                detail.response = {
-                    raw: response,
-                    status: response.status,
-                    ok: response.ok,
-                    url: response.url,
-                    headers: Object.fromEntries(response.headers),
-                    execute: null,
+                const matches = [...text.trim().matchAll(tokenPattern)]
+                if (!matches.length) return null
+
+                const result = {}
+
+                for (let i = 0; i < matches.length; i++) {
+                    const m = matches[i]
+                    const key = m[1] ?? m[2] ?? m[3]
+                    const val = m[4] ?? m[5] ?? m[6]
+                    const hasVal = val !== undefined
+
+                    if (i === 0 && !hasVal) {
+                        result.value = key
+                    } else if (hasVal) {
+                        result[key] = coerce(val)
+                    } else {
+                        result[key] = true
+                    }
                 }
 
-                api.emit(element, 'htmx:after:request', detail)
-
-                // ── Response phase ───────────────────────────────────
-                detail.response.execute = async () => {
-                    detail.response.text = await detail.response.raw.text()
+                if (options?.as && result.value !== undefined) {
+                    result[options.as] = result.value
+                    delete result.value
                 }
 
-                if (api.emit(element, 'htmx:before:response', detail) === false) return
-
-                await detail.response.execute()
-
-                // ── Swap phase ───────────────────────────────────────
-                if (detail.response.text != null) {
-                    detail.swap ??= {}
-                    detail.swap.content = detail.response.text
-                    api.swap(detail.swap, {
-                        element: detail.element,
-                        request: detail.request,
-                        response: detail.response,
-                    })
+                // Expand dot-notation keys into nested objects
+                const expanded = {}
+                for (const [k, v] of Object.entries(result)) {
+                    if (k.includes('.')) {
+                        const keys = k.split('.')
+                        keys.slice(0, -1).reduce((o, key) => o[key] ??= {}, expanded)[keys.at(-1)] = v
+                    } else {
+                        expanded[k] = v
+                    }
                 }
-
-                api.emit(element, 'htmx:done', detail)
-
-            } catch (error) {
-                detail.error = error
-                console.error(error)
-                api.emit(element, 'htmx:error', detail)
-            } finally {
-                api.emit(element, 'htmx:finally', detail)
+                return expanded
             }
         },
     },
+})
+/**
+ * Default configuration values for htmx core.
+ */
+htmx.install('default-config', {
+    config: {
+        logAll: false,
+        prefix: '',
+        transitions: false,
+        history: true,
+        mode: 'same-origin',
+        defaultFocusScroll: false,
+        defaultTimeout: 60000,
+        extensions: '',
+        implicitInheritance: false,
+        defaultSettleDelay: 1,
+        inlineScriptNonce: null,
+        inlineStyleNonce: null,
+    }
+})
+/**
+ * Reads <meta name="htmx-config"> and merges its JSON content into config.
+ */
+htmx.install('meta-config', {
+    on: {
+        'htmx:boot': (detail, api) => {
+            const meta = document.querySelector('meta[name="htmx-config"]')
+            if (meta) {
+                try {
+                    const parsed = JSON.parse(meta.content)
+                    Object.assign(api.config, parsed)
+                } catch (e) {
+                    console.error('[htmx] Invalid htmx-config meta tag:', e)
+                }
+            }
+        }
+    }
+})
+/**
+ * Wraps attr() to support a configurable attribute name prefix (e.g. "data-hx-" instead of "hx-").
+ */
+htmx.install('prefix', {
     wrap: {
-        /**
-         * HTTP context adapter for `api.swap`.
-         *
-         * Maps HTTP-specific options (`request`, `response`, `error`) into
-         * `options.context` before calling the original swap function.
-         * Result: swap lifecycle event detail includes `swap` plus
-         * `request` / `response` / `error` when present.
-         */
-        swap: (original, swap, options = {}) => {
-            options = {...options, context: {...options.context}}
-            if (options.request !== undefined) options.context.request = options.request
-            if (options.response !== undefined) options.context.response = options.response
-            if (options.error !== undefined) options.context.error = options.error
-            return original(swap, options)
+        attr: (original, element, name, options) => {
+            if (htmx.config.prefix) {
+                let prefixed = htmx.config.prefix + name
+                let result = original(element, prefixed, options)
+                if (result !== undefined && result !== null) return result
+            }
+            return original(element, name, options)
+        }
+    }
+})
+/**
+ * Wraps attr() to replace ":" in attribute names with a configurable meta character.
+ */
+htmx.install('meta-character', {
+    wrap: {
+        attr: (original, element, name, options) => {
+            if (htmx.config.metaCharacter) {
+                let adjusted = name.replace(/:/g, htmx.config.metaCharacter)
+                if (adjusted !== name) {
+                    let result = original(element, adjusted, options)
+                    if (result !== undefined && result !== null) return result
+                }
+            }
+            return original(element, name, options)
+        }
+    }
+})
+/**
+ * Parse HTML responses into fragments, extracting title and body content.
+ */
+htmx.install('fragment-parsing', {
+    define: {
+        makeFragment: (api) => function makeFragment(text) {
+            const template = document.createElement('template')
+            template.innerHTML = text.trim()
+            let fragment = template.content
+            let title = null
+
+            // Extract title
+            const titleEl = fragment.querySelector('title')
+            if (titleEl) title = titleEl.textContent
+
+            // Strip <head> content (and standalone title when no <head>/<body> wrapper)
+            const head = fragment.querySelector('head')
+            if (head) {
+                head.remove()
+            } else if (titleEl && !fragment.querySelector('body')) {
+                titleEl.remove()
+            }
+
+            // Handle full HTML doc responses — extract body content
+            const body = fragment.querySelector('body')
+            if (body) {
+                const newFrag = document.createDocumentFragment()
+                while (body.childNodes.length > 0) newFrag.appendChild(body.childNodes[0])
+                fragment = newFrag
+            }
+
+            // Convert <hx-partial> to <template hx type="partial">
+            for (const partial of [...fragment.querySelectorAll('hx-partial')]) {
+                const tmpl = document.createElement('template')
+                tmpl.setAttribute('hx', '')
+                tmpl.setAttribute('type', 'partial')
+                for (const attr of partial.attributes) {
+                    tmpl.setAttribute(attr.name, attr.value)
+                }
+                tmpl.innerHTML = partial.innerHTML
+                partial.replaceWith(tmpl)
+            }
+
+            return {fragment, title}
         },
     },
-}
-
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            // Parse string content using makeFragment
+            if (typeof detail.swap?.content === 'string') {
+                const result = api.makeFragment(detail.swap.content)
+                detail.swap.content = result.fragment
+                if (result.title) detail.swap.title = result.title
+            }
+        },
+        'htmx:after:swap': (detail, api) => {
+            // Set document title from response (unless ignoreTitle is set)
+            if (detail.swap?.title && !detail.swap?.ignoreTitle) {
+                document.title = detail.swap.title
+            }
+        },
+    }
+})
 /**
  * DOM swaps — resolve target, parse content, dispatch on style.
  */
-const swaps = {
+htmx.install('swaps', {
     define: {
         /**
          * Execute a DOM swap.
@@ -273,385 +365,419 @@ const swaps = {
             }
         },
     }
-}
-
+})
 /**
- * RelaxedJSON parser — string to object transformation.
+ * Extended selector syntax — closest, next, previous, this, find.
  */
-const parser = {
+htmx.install('extended-selectors', {
+    wrap: {
+        find: (original, selector, options) => {
+            const el = options?.from
+            const multiple = options?.multiple
+            const match = (result) => multiple ? (result ? [result] : []) : result ?? null
+
+            if (typeof selector !== 'string') return original(selector, options)
+
+            // Named targets
+            if (selector === 'this') return match(el)
+            if (selector === 'body') return match(document.body)
+            if (selector === 'document') return multiple ? [document] : document
+            if (selector === 'window') return multiple ? [window] : window
+
+            if (!el) return original(selector, options)
+
+            // Immediate relatives (require context element)
+            if (selector === 'next') return match(el.nextElementSibling)
+            if (selector === 'previous') return match(el.previousElementSibling)
+            if (selector === 'host') return match(el.getRootNode()?.host)
+
+            // Traversal
+            if (selector.startsWith('closest ')) return match(el.closest(selector.slice(8)))
+            if (selector.startsWith('next ')) {
+                for (const candidate of (el.getRootNode() || document).querySelectorAll(selector.slice(5))) {
+                    if (candidate.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) return match(candidate)
+                }
+                return match(null)
+            }
+            if (selector.startsWith('previous ')) {
+                const all = (el.getRootNode() || document).querySelectorAll(selector.slice(9))
+                for (let i = all.length - 1; i >= 0; i--) {
+                    if (all[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) return match(all[i])
+                }
+                return match(null)
+            }
+
+            // Scoped search: search within the context element
+            if (selector.startsWith('find ')) {
+                const sel = selector.slice(5)
+                return multiple
+                    ? [...el.querySelectorAll(sel)]
+                    : el.querySelector(sel)
+            }
+
+            return original(selector, options)
+        }
+    }
+})
+/**
+ * Attribute inheritance — walk up DOM via :inherited/:append.
+ */
+htmx.install('inheritance', {
+    config: {
+        /** Control how `attr()` walks up the DOM to resolve inherited values. */
+        inheritance: {
+            /** @type {'explicit'|'implicit'} Require `:inherited` suffix, or also match bare attributes. */
+            mode: 'explicit',
+            /** @type {string} Suffix marking an attribute as inheritable (e.g. `hx-get:inherited`). */
+            inheritSuffix: 'inherited',
+            /** @type {string} Suffix marking an attribute as appendable (e.g. `hx-swap:append`). */
+            appendSuffix: 'append',
+        },
+    },
+    wrap: {
+        attr: (original, element, name, options) => {
+            if (!element || options?.inherit === false) return original(element, name, options)
+
+            const {mode, inheritSuffix, appendSuffix} = htmx.config.inheritance
+            const inherited = `${name}:${inheritSuffix}`
+            const append = `${name}:${appendSuffix}`
+            const inheritedAppend = `${name}:${inheritSuffix}:${appendSuffix}`
+
+            // Direct attribute on element — pass {inherit: false} to avoid recursion
+            if (element.hasAttribute(name)) {
+                return original(element, name, {inherit: false})
+            }
+            if (element.hasAttribute(inherited)) {
+                return original(element, inherited, {inherit: false})
+            }
+
+            // Build ancestor selector
+            const parts = [`[${CSS.escape(inherited)}]`, `[${CSS.escape(inheritedAppend)}]`]
+            if (mode === 'implicit') parts.unshift(`[${CSS.escape(name)}]`)
+            const selector = parts.join(',')
+
+            // Collect :append chain + base, walking up
+            const chain = []
+
+            const selfAppend = element.getAttribute(append)
+                ?? element.getAttribute(inheritedAppend)
+            if (selfAppend !== null) chain.push(selfAppend)
+
+            let ancestor = element.parentElement?.closest(selector)
+            while (ancestor) {
+                const base = ancestor.getAttribute(inherited)
+                    ?? (mode === 'implicit' ? ancestor.getAttribute(name) : null)
+                if (base !== null) {
+                    if (base === 'this') {
+                        const attrName = ancestor.hasAttribute(inherited) ? inherited : name
+                        chain.push(`closest [${CSS.escape(attrName)}="this"]`)
+                    } else {
+                        chain.push(base)
+                    }
+                    break
+                }
+
+                const ancestorAppend = ancestor.getAttribute(inheritedAppend)
+                if (ancestorAppend !== null) {
+                    chain.push(ancestorAppend)
+                    ancestor = ancestor.parentElement?.closest(selector)
+                    continue
+                }
+
+                break
+            }
+
+            if (!chain.length) return null
+            return chain.reverse().join(',')
+        }
+    },
+})
+/**
+ * Debounce via options.delay on api.on().
+ */
+htmx.install('delay-events', {
+    wrap: {
+        on: (original, element, eventName, handler, options) => {
+            if (options?.delay !== undefined) {
+                const ms = options.delay
+                let timeout
+                const orig = handler
+                handler = (event) => {
+                    clearTimeout(timeout)
+                    timeout = setTimeout(() => orig(event), ms)
+                }
+            }
+            return original(element, eventName, handler, options)
+        }
+    }
+})
+/**
+ * Rate-limit via options.throttle on api.on().
+ */
+htmx.install('throttle-events', {
+    wrap: {
+        on: (original, element, eventName, handler, options) => {
+            if (options?.throttle !== undefined) {
+                const ms = options.throttle
+                let last = 0
+                const orig = handler
+                handler = (event) => {
+                    const now = Date.now()
+                    if (now - last >= ms) {
+                        last = now
+                        orig(event)
+                    }
+                }
+            }
+            return original(element, eventName, handler, options)
+        }
+    }
+})
+/**
+ * HTTP transport — fetch pipeline with request/response/swap phases.
+ */
+htmx.install('ajax', {
+    requires: ['swaps'],
     define: {
         /**
-         * Parse relaxed key/value text into an object.
+         * Execute an HTTP request through the htmx request pipeline.
          *
-         * Supports bare values, `key:value` pairs, boolean flags, duration
-         * coercion (`150`, `150ms`, `2s`, `1m`), and dot-key expansion.
+         * Pipeline:
+         * - `htmx:before:request` -> `request.execute()` -> `htmx:after:request`
+         * - `htmx:before:response` -> `response.execute()` -> `htmx:after:response`
+         * - `api.swap(...)` when response text is available (which emits `htmx:before:swap` / `htmx:after:swap`)
+         * - `htmx:done`, `htmx:error`, `htmx:finally`
          *
-         * @param {string|null|undefined} text
-         * @param {{as?: string}} [options]
+         * Detail shape shared across request/response events:
+         * - `detail.element`
+         * - `detail.request` (url/method/headers/body plus `execute()`)
+         * - `detail.response` (status/ok/url/headers/text plus `execute()`)
+         * - `detail.swap` (swap options passed to `api.swap`)
+         * - `detail.error` (set on failures)
          *
-         * @returns {Object<string, any>|null}
+         * @param {{element?: Element, request: Object, swap?: Object}} [options]
          *
-         * @example
-         * api.parse('click')
-         * // => { value: 'click' }
-         *
-         * @example
-         * api.parse('delay:500ms once')
-         * // => { delay: 500, once: true }
-         *
-         * @example
-         * api.parse('click', { as: 'trigger' })
-         * // => { trigger: 'click' }
-         *
-         * @example
-         * api.parse('headers.X-CSRF:abc123')
-         * // => { headers: { 'X-CSRF': 'abc123' } }
+         * @returns {Promise<void>}
          */
-        parse: () => {
-            return function parse(text, options) {
-                /** Tokenizer for relaxed `key:value` and flag-like option strings. */
-                const tokenPattern = /(?:"([^"]*)"|'([^']*)'|([^\s,:]+))(?:\s*:\s*(?:"([^"]*)"|'([^']*)'|([^\s,]*)))?/g
+        ajax: (api) => async function ajax(options = {}) {
+            if (!options.request?.url) throw new HtmxError('Cannot issue request without a URL', {type: 'REQUEST_URL_MISSING'})
+            const element = options.element || document.body
 
-                /** Coerce parsed token text into booleans/durations when applicable. */
-                function coerce(text) {
-                    if (text === 'true') return true
-                    if (text === 'false') return false
-                    const duration = text.match(/^(\d+)(ms|s|m)?$/)
-                    if (duration) {
-                        const [, n, unit] = duration
-                        return unit === 's' ? n * 1000 : unit === 'm' ? n * 60000 : +n
-                    }
-                    return text
+            const detail = {
+                element,
+                request: {...options.request, execute: null},
+                swap: options.swap || null,
+                response: null,
+                error: null,
+            }
+
+            try {
+                // ── Request phase ────────────────────────────────────
+                detail.request.execute = async () => {
+                    const {url, execute, values, source, ...fetchOptions} = detail.request
+                    return await fetch(url, fetchOptions)
                 }
 
-                if (!text) return null
+                if (api.emit(element, 'htmx:before:request', detail) === false) return
 
-                const matches = [...text.trim().matchAll(tokenPattern)]
-                if (!matches.length) return null
-
-                const result = {}
-
-                for (let i = 0; i < matches.length; i++) {
-                    const m = matches[i]
-                    const key = m[1] ?? m[2] ?? m[3]
-                    const val = m[4] ?? m[5] ?? m[6]
-                    const hasVal = val !== undefined
-
-                    if (i === 0 && !hasVal) {
-                        result.value = key
-                    } else if (hasVal) {
-                        result[key] = coerce(val)
+                // Merge programmatic values into request body/URL
+                if (detail.request.values && typeof detail.request.values === 'object') {
+                    const method = detail.request.method?.toUpperCase()
+                    const usesQuery = /GET|DELETE/.test(method)
+                    if (usesQuery) {
+                        const url = new URL(detail.request.url, document.baseURI)
+                        for (const [k, v] of Object.entries(detail.request.values)) {
+                            url.searchParams.set(k, v)
+                        }
+                        detail.request.url = url.origin === location.origin
+                            ? url.pathname + url.search : url.href
                     } else {
-                        result[key] = true
+                        const params = detail.request.body instanceof URLSearchParams
+                            ? detail.request.body : new URLSearchParams(detail.request.body || '')
+                        for (const [k, v] of Object.entries(detail.request.values)) {
+                            params.set(k, v)
+                        }
+                        detail.request.body = params
                     }
+                    delete detail.request.values
                 }
 
-                if (options?.as && result.value !== undefined) {
-                    result[options.as] = result.value
-                    delete result.value
+                const response = await detail.request.execute()
+
+                detail.response = {
+                    raw: response,
+                    status: response.status,
+                    ok: response.ok,
+                    url: response.url,
+                    headers: Object.fromEntries(response.headers),
+                    execute: null,
                 }
 
-                // Expand dot-notation keys into nested objects
-                const expanded = {}
-                for (const [k, v] of Object.entries(result)) {
-                    if (k.includes('.')) {
-                        const keys = k.split('.')
-                        keys.slice(0, -1).reduce((o, key) => o[key] ??= {}, expanded)[keys.at(-1)] = v
-                    } else {
-                        expanded[k] = v
-                    }
+                api.emit(element, 'htmx:after:request', detail)
+
+                // ── Response phase ───────────────────────────────────
+                detail.response.execute = async () => {
+                    detail.response.text = await detail.response.raw.text()
                 }
-                return expanded
+
+                if (api.emit(element, 'htmx:before:response', detail) === false) return
+
+                await detail.response.execute()
+
+                // ── Swap phase ───────────────────────────────────────
+                if (detail.response.text != null) {
+                    detail.swap ??= {}
+                    detail.swap.content = detail.response.text
+                    api.swap(detail.swap, {
+                        element: detail.element,
+                        request: detail.request,
+                        response: detail.response,
+                    })
+                }
+
+                api.emit(element, 'htmx:done', detail)
+
+            } catch (error) {
+                detail.error = error
+                console.error(error)
+                api.emit(element, 'htmx:error', detail)
+            } finally {
+                api.emit(element, 'htmx:finally', detail)
             }
         },
     },
-}
-
-
-// ── hx-vals / hx-headers ─────────────────────────────────────────────────
-
-/**
- * Merge JSON values from hx-vals into request body or URL query params.
- */
-const hxVals = {
-    requires: ['form-data', 'parser'],
-    config: {attributeFilter: ['hx-vals']},
-    on: {
-        'htmx:before:request': (detail, api) => {
-            const valsAttr = api.attr(detail.element, 'hx-vals')
-            if (!valsAttr) return
-
-            let vals
-            // js: or javascript: prefix — evaluate as expression
-            const jsMatch = valsAttr.match(/^(?:js|javascript):(.*)$/s)
-            if (jsMatch) {
-                let expr = jsMatch[1].trim()
-                if (expr[0] !== '{') expr = '{' + expr + '}'
-                try { vals = new Function('return (' + expr + ')')() } catch { return }
-            } else {
-                // Try JSON first, then fall back to config syntax
-                try { vals = JSON.parse(valsAttr) } catch {
-                    vals = api.parse(valsAttr)
-                }
-            }
-
-            if (!vals || typeof vals !== 'object') return
-
-            const method = detail.request.method?.toUpperCase()
-            const usesQueryParams = /GET|DELETE/.test(method)
-
-            if (usesQueryParams) {
-                const url = new URL(detail.request.url, document.baseURI)
-                for (const [k, v] of Object.entries(vals)) {
-                    url.searchParams.set(k, String(v))
-                }
-                detail.request.url = url.origin === location.origin
-                    ? url.pathname + url.search
-                    : url.href
-            } else {
-                if (!detail.request.body) detail.request.body = new URLSearchParams()
-                for (const [k, v] of Object.entries(vals)) {
-                    if (detail.request.body instanceof URLSearchParams) {
-                        detail.request.body.set(k, String(v))
-                    }
-                }
-            }
+    wrap: {
+        /**
+         * HTTP context adapter for `api.swap`.
+         *
+         * Maps HTTP-specific options (`request`, `response`, `error`) into
+         * `options.context` before calling the original swap function.
+         * Result: swap lifecycle event detail includes `swap` plus
+         * `request` / `response` / `error` when present.
+         */
+        swap: (original, swap, options = {}) => {
+            options = {...options, context: {...options.context}}
+            if (options.request !== undefined) options.context.request = options.request
+            if (options.response !== undefined) options.context.response = options.response
+            if (options.error !== undefined) options.context.error = options.error
+            return original(swap, options)
         },
-    }
-}
-
+    },
+})
 /**
- * Merge JSON headers from hx-headers into request headers.
+ * Default trigger — wire click/change/submit based on element type.
  */
-const hxHeaders = {
-    config: {attributeFilter: ['hx-headers']},
+htmx.install('default-trigger', {
     on: {
-        'htmx:before:request': (detail, api) => {
-            const headersAttr = api.attr(detail.element, 'hx-headers')
-            if (!headersAttr) return
-            let headers
-            try {
-                // Try javascript: prefix first
-                if (headersAttr.startsWith('javascript:')) {
-                    let code = headersAttr.slice(11).trim()
-                    if (!code.startsWith('{')) code = '{' + code + '}'
-                    const result = new Function('return (' + code + ')')()
-                    headers = {}
-                    for (const [k, v] of Object.entries(result)) {
-                        headers[k] = String(v)
-                    }
-                } else {
-                    // Try parsing as JSON (with or without braces)
-                    let jsonStr = headersAttr.trim()
-                    if (!jsonStr.startsWith('{')) jsonStr = '{' + jsonStr + '}'
-                    headers = JSON.parse(jsonStr)
-                }
-                detail.request.headers = {...detail.request.headers, ...headers}
-            } catch (e) {
-                console.error('[htmx] Failed to parse hx-headers:', e)
-            }
-        },
-    }
-}
+        'htmx:before:init': (detail, api) => {
+            // Don't override if another extension already set up trigger
+            if (detail.trigger) return
 
+            // Only wire a default trigger for elements that have a request action.
+            // Elements with only inherited/config attrs (e.g. hx-boost:inherited)
+            // should not get a click handler that calls preventDefault().
+            const el = detail.element
+            const hasAction = api.attr(el, 'hx-get') || api.attr(el, 'hx-post')
+                || api.attr(el, 'hx-put') || api.attr(el, 'hx-patch')
+                || api.attr(el, 'hx-delete') || api.attr(el, 'hx-trigger')
+            if (!hasAction) return
 
-// ── Response Headers ─────────────────────────────────────────────────────
+            // Default trigger based on element type
+            let eventName
+            if (el.matches('form')) eventName = 'submit'
+            else if (el.matches('input:not([type=button]), select, textarea')) eventName = 'change'
+            else eventName = 'click'
 
-/**
- * Process HX-* response headers (redirect, refresh, retarget, reswap, etc).
- */
-const responseHeaders = {
-    requires: ['ajax'],
-    on: {
-        'htmx:after:request': (detail, api) => {
-            if (!detail.response?.raw?.headers) return
-            const h = detail.response.raw.headers
-
-            // Store extracted HX headers on detail for other extensions
-            detail.hx = {}
-            for (const [k, v] of h) {
-                if (k.toLowerCase().startsWith('hx-')) {
-                    detail.hx[k.toLowerCase().replace('hx-', '')] = v
-                }
-            }
-        },
-
-        'htmx:before:response': (detail, api) => {
-            if (!detail.hx) return
-
-            // HX-Redirect: navigate away
-            if (detail.hx.redirect) {
-                location.href = detail.hx.redirect
-                return false // cancel further processing
-            }
-
-            // HX-Refresh: reload page
-            if (detail.hx.refresh === 'true') {
-                location.reload()
-                return false
-            }
-
-            // HX-Location: ajax navigation
-            if (detail.hx.location) {
-                let path = detail.hx.location
-                if (path.startsWith('{')) {
-                    try {
-                        const opts = JSON.parse(path)
-                        path = opts.path
-                    } catch {}
-                }
-                api.ajax({request: {url: path, method: 'GET'}})
-                return false
-            }
-
-            // HX-Trigger: fire events on source element
-            if (detail.hx.trigger) {
-                const value = detail.hx.trigger
-                if (value.startsWith('{')) {
-                    try {
-                        const triggers = JSON.parse(value)
-                        for (const [name, eventDetail] of Object.entries(triggers)) {
-                            api.emit(detail.element, name, typeof eventDetail === 'object' ? eventDetail : {})
+            detail.trigger = {
+                eventName,
+                execute: (event) => {
+                    // Don't preventDefault for anchors with real fragment identifiers
+                    // (e.g. href="#section"), only prevent for bare "#" or non-fragment hrefs
+                    if (event) {
+                        const href = el.getAttribute?.('href')
+                        const isFragmentLink = href && href.startsWith('#') && href.length > 1
+                        if (!isFragmentLink) {
+                            event.preventDefault()
                         }
-                    } catch {}
-                } else {
-                    api.emit(detail.element, value, {})
+                    }
+                    if (api.emit(el, 'htmx:before:trigger', {element: el, event}) === false) return
+                    api.emit(el, 'htmx:after:trigger', {element: el, event})
+                },
+            }
+
+            // Wrap init.execute to wire trigger listener
+            const originalInit = detail.init.execute
+            detail.init.execute = () => {
+                originalInit()
+                if (detail.trigger.eventName) {
+                    api.on(el, detail.trigger.eventName, detail.trigger.execute)
                 }
             }
-
-            // HX-Retarget: change swap target
-            if (detail.hx.retarget) {
-                detail.swap = detail.swap || {}
-                detail.swap.target = detail.hx.retarget
-            }
-
-            // HX-Reswap: change swap style
-            if (detail.hx.reswap) {
-                detail.swap = detail.swap || {}
-                detail.swap.style = detail.hx.reswap
-            }
-
-            // HX-Reselect: change selection
-            if (detail.hx.reselect) {
-                detail.swap = detail.swap || {}
-                detail.swap.select = detail.hx.reselect
-            }
         },
     }
-}
-
+})
 /**
- * Skip swap for 204, 304 responses.
+ * Default swap style — apply config.defaultSwap when none is specified.
  */
-const noSwap = {
-    requires: ['ajax'],
-    config: { noSwap: [204, 304] },
-    on: {
-        'htmx:before:response': (detail, api) => {
-            if (api.config.noSwap.includes(detail.response?.status)) {
-                detail.swap = detail.swap || {}
-                detail.swap.style = 'none'
-            }
-        },
-    }
-}
-
-/**
- * Store ETag from response headers and send If-None-Match on subsequent requests.
- */
-const etagCache = {
-    requires: ['ajax'],
-    on: {
-        'htmx:before:request': (detail) => {
-            const etag = detail.element?._htmx?.etag
-            if (etag) {
-                detail.request.headers['If-none-match'] = etag
-            }
-        },
-        'htmx:after:request': (detail) => {
-            const etag = detail.response?.headers?.etag || detail.response?.raw?.headers?.get?.('Etag')
-            if (etag) {
-                detail.element._htmx = detail.element._htmx || {}
-                detail.element._htmx.etag = etag
-            }
-        },
-    }
-}
-
-
-// ── Fragment Parsing ─────────────────────────────────────────────────────
-
-/**
- * Parse HTML responses into fragments, extracting title and body content.
- */
-const fragmentParsing = {
-    define: {
-        makeFragment: (api) => function makeFragment(text) {
-            const template = document.createElement('template')
-            template.innerHTML = text.trim()
-            let fragment = template.content
-            let title = null
-
-            // Extract title
-            const titleEl = fragment.querySelector('title')
-            if (titleEl) title = titleEl.textContent
-
-            // Strip <head> content (and standalone title when no <head>/<body> wrapper)
-            const head = fragment.querySelector('head')
-            if (head) {
-                head.remove()
-            } else if (titleEl && !fragment.querySelector('body')) {
-                titleEl.remove()
-            }
-
-            // Handle full HTML doc responses — extract body content
-            const body = fragment.querySelector('body')
-            if (body) {
-                const newFrag = document.createDocumentFragment()
-                while (body.childNodes.length > 0) newFrag.appendChild(body.childNodes[0])
-                fragment = newFrag
-            }
-
-            // Convert <hx-partial> to <template hx type="partial">
-            for (const partial of [...fragment.querySelectorAll('hx-partial')]) {
-                const tmpl = document.createElement('template')
-                tmpl.setAttribute('hx', '')
-                tmpl.setAttribute('type', 'partial')
-                for (const attr of partial.attributes) {
-                    tmpl.setAttribute(attr.name, attr.value)
-                }
-                tmpl.innerHTML = partial.innerHTML
-                partial.replaceWith(tmpl)
-            }
-
-            return {fragment, title}
-        },
+htmx.install('default-swap', {
+    requires: ['swaps'],
+    config: {
+        /** @type {string} Apply this swap style when none is specified. */
+        defaultSwap: 'innerHTML',
     },
     on: {
         'htmx:before:swap': (detail, api) => {
-            // Parse string content using makeFragment
-            if (typeof detail.swap?.content === 'string') {
-                const result = api.makeFragment(detail.swap.content)
-                detail.swap.content = result.fragment
-                if (result.title) detail.swap.title = result.title
-            }
-        },
-        'htmx:after:swap': (detail, api) => {
-            // Set document title from response (unless ignoreTitle is set)
-            if (detail.swap?.title && !detail.swap?.ignoreTitle) {
-                document.title = detail.swap.title
-            }
+            detail.swap.style ??= api.config.defaultSwap
         },
     }
-}
+})
+/**
+ * Default headers — merge config.defaultHeaders into every request.
+ */
+htmx.install('default-headers', {
+    requires: ['ajax'],
+    config: {
+        /** @type {Object<string, string>} Include these headers on every request. */
+        defaultHeaders: {'HX-Request': 'true'},
+    },
+    on: {
+        'htmx:before:request': (detail, api) => {
+            detail.request.headers = {...api.config.defaultHeaders, ...detail.request.headers}
+            detail.request.headers['HX-Current-URL'] ??= location.href
+        },
+    }
+})
+/**
+ * Add HX-Source, HX-Target, and HX-Request-Type headers to every request.
+ * HX-Source identifies the triggering element, HX-Target identifies the swap target,
+ * and HX-Request-Type indicates whether the server should return a full page or fragment.
+ */
+htmx.install('request-identifiers', {
+    requires: ['ajax'],
+    on: {
+        'htmx:before:request': (detail, api) => {
+            function ident(el) {
+                if (el === document.body) return 'body'
+                const tag = el.tagName?.toLowerCase() || ''
+                return el.id ? `${tag}#${el.id}` : tag
+            }
 
+            const el = detail.element
+            detail.request.headers['HX-Source'] = ident(el)
 
-// ── Form Data ───────────────────────────────────────────────────────────
+            const targetAttr = api.attr(el, 'hx-target')
+            const selectAttr = api.attr(el, 'hx-select')
+            const target = targetAttr ? api.find(targetAttr, {from: el}) : el
 
+            if (target) detail.request.headers['HX-Target'] = ident(target)
+            detail.request.headers['HX-Request-Type'] = (target === document.body || selectAttr) ? 'full' : 'partial'
+        }
+    }
+})
 /**
  * Form data collection — collect form values and inject into requests.
  */
-const formData = {
+htmx.install('form-data', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-include', 'hx-encoding']},
     on: {
@@ -744,119 +870,319 @@ const formData = {
             }
         },
     }
-}
-
-
-// ── Attributes ──────────────────────────────────────────────────────────
-
+})
 /**
- * Issue GET request to hx-get URL on trigger.
+ * Form validation — check form validity before issuing a request.
+ * When hx-validate="true", the enclosing form must pass checkValidity()
+ * and reportValidity() before the request proceeds.
  */
-const hxGet = {
+htmx.install('hx-validate', {
     requires: ['ajax'],
-    config: {attributeFilter: ['hx-get']},
+    config: {attributeFilter: ['hx-validate']},
     on: {
-        'htmx:before:trigger': (detail, api) => {
-            const url = api.attr(detail.element, 'hx-get')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'GET'}})
-        }
-    }
-}
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (!el) return
+            const validate = api.attr(el, 'hx-validate')
+            if (validate === 'false') return
+            if (!validate) return
 
-/**
- * Issue POST request to hx-post URL on trigger.
- */
-const hxPost = {
-    requires: ['ajax'],
-    config: {attributeFilter: ['hx-post']},
-    on: {
-        'htmx:before:trigger': (detail, api) => {
-            const url = api.attr(detail.element, 'hx-post')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'POST'}})
-        }
-    }
-}
+            const form = el.closest?.('form')
+            if (!form) return
 
-/**
- * Issue PUT request to hx-put URL on trigger.
- */
-const hxPut = {
-    requires: ['ajax'],
-    config: {attributeFilter: ['hx-put']},
-    on: {
-        'htmx:before:trigger': (detail, api) => {
-            const url = api.attr(detail.element, 'hx-put')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'PUT'}})
-        }
-    }
-}
-
-/**
- * Issue PATCH request to hx-patch URL on trigger.
- */
-const hxPatch = {
-    requires: ['ajax'],
-    config: {attributeFilter: ['hx-patch']},
-    on: {
-        'htmx:before:trigger': (detail, api) => {
-            const url = api.attr(detail.element, 'hx-patch')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'PATCH'}})
-        }
-    }
-}
-
-/**
- * Issue DELETE request to hx-delete URL on trigger.
- */
-const hxDelete = {
-    requires: ['ajax'],
-    config: {attributeFilter: ['hx-delete']},
-    on: {
-        'htmx:before:trigger': (detail, api) => {
-            const url = api.attr(detail.element, 'hx-delete')
-            if (url) api.ajax({element: detail.element, request: {url, method: 'DELETE'}})
-        }
-    }
-}
-
-/**
- * Set swap style and modifiers from hx-swap attribute.
- */
-const hxSwap = {
-    requires: ['swaps', 'parser'],
-    config: {attributeFilter: ['hx-swap']},
-    on: {
-        'htmx:before:swap': (detail, api) => {
-            // Skip nested OOB/partial swaps (they have their own style)
-            if (detail.swap?._oob || !detail.element) return
-            const swapAttr = api.parse(api.attr(detail.element, 'hx-swap'), {as: 'style'})
-            if (swapAttr) Object.assign(detail.swap, swapAttr)
-        }
-    }
-}
-
-/**
- * Resolve swap target from hx-target attribute.
- */
-const hxTarget = {
-    requires: ['swaps'],
-    config: {attributeFilter: ['hx-target']},
-    on: {
-        'htmx:before:swap': (detail, api) => {
-            // Skip nested OOB/partial swaps (they have their own target)
-            if (detail.swap?._oob || !detail.element) return
-            const target = api.attr(detail.element, 'hx-target')
-            if (target) {
-                detail.swap.target = api.find(target, {from: detail.element})
+            if (!form.checkValidity()) {
+                form.reportValidity()
+                return false // cancel the request
             }
-        }
+        },
     }
-}
+})
+/**
+ * Merge JSON values from hx-vals into request body or URL query params.
+ */
+htmx.install('hx-vals', {
+    requires: ['form-data', 'parser'],
+    config: {attributeFilter: ['hx-vals']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const valsAttr = api.attr(detail.element, 'hx-vals')
+            if (!valsAttr) return
 
+            let vals
+            // js: or javascript: prefix — evaluate as expression
+            const jsMatch = valsAttr.match(/^(?:js|javascript):(.*)$/s)
+            if (jsMatch) {
+                let expr = jsMatch[1].trim()
+                if (expr[0] !== '{') expr = '{' + expr + '}'
+                try { vals = new Function('return (' + expr + ')')() } catch { return }
+            } else {
+                // Try JSON first, then fall back to config syntax
+                try { vals = JSON.parse(valsAttr) } catch {
+                    vals = api.parse(valsAttr)
+                }
+            }
+
+            if (!vals || typeof vals !== 'object') return
+
+            const method = detail.request.method?.toUpperCase()
+            const usesQueryParams = /GET|DELETE/.test(method)
+
+            if (usesQueryParams) {
+                const url = new URL(detail.request.url, document.baseURI)
+                for (const [k, v] of Object.entries(vals)) {
+                    url.searchParams.set(k, String(v))
+                }
+                detail.request.url = url.origin === location.origin
+                    ? url.pathname + url.search
+                    : url.href
+            } else {
+                if (!detail.request.body) detail.request.body = new URLSearchParams()
+                for (const [k, v] of Object.entries(vals)) {
+                    if (detail.request.body instanceof URLSearchParams) {
+                        detail.request.body.set(k, String(v))
+                    }
+                }
+            }
+        },
+    }
+})
+/**
+ * Merge JSON headers from hx-headers into request headers.
+ */
+htmx.install('hx-headers', {
+    config: {attributeFilter: ['hx-headers']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const headersAttr = api.attr(detail.element, 'hx-headers')
+            if (!headersAttr) return
+            let headers
+            try {
+                // js: or javascript: prefix — evaluate as expression
+                const jsMatch = headersAttr.match(/^(?:js|javascript):(.*)$/s)
+                if (jsMatch) {
+                    let code = jsMatch[1].trim()
+                    if (!code.startsWith('{')) code = '{' + code + '}'
+                    const result = new Function('return (' + code + ')')()
+                    headers = {}
+                    for (const [k, v] of Object.entries(result)) {
+                        headers[k] = String(v)
+                    }
+                } else {
+                    // Try parsing as JSON (with or without braces)
+                    let jsonStr = headersAttr.trim()
+                    if (!jsonStr.startsWith('{')) jsonStr = '{' + jsonStr + '}'
+                    headers = JSON.parse(jsonStr)
+                }
+                detail.request.headers = {...detail.request.headers, ...headers}
+            } catch (e) {
+                console.error('[htmx] Failed to parse hx-headers:', e)
+            }
+        },
+    }
+})
+/**
+ * Process HX-* response headers (redirect, refresh, retarget, reswap, etc).
+ */
+htmx.install('response-headers', {
+    requires: ['ajax'],
+    on: {
+        'htmx:after:request': (detail, api) => {
+            if (!detail.response?.raw?.headers) return
+            const h = detail.response.raw.headers
+
+            // Store extracted HX headers on detail for other extensions
+            detail.hx = {}
+            for (const [k, v] of h) {
+                if (k.toLowerCase().startsWith('hx-')) {
+                    detail.hx[k.toLowerCase().replace('hx-', '')] = v
+                }
+            }
+        },
+
+        'htmx:before:response': (detail, api) => {
+            if (!detail.hx) return
+
+            // HX-Redirect: navigate away
+            if (detail.hx.redirect) {
+                location.href = detail.hx.redirect
+                return false // cancel further processing
+            }
+
+            // HX-Refresh: reload page
+            if (detail.hx.refresh === 'true') {
+                location.reload()
+                return false
+            }
+
+            // HX-Location: ajax navigation
+            if (detail.hx.location) {
+                let path = detail.hx.location
+                if (path.startsWith('{')) {
+                    try {
+                        const opts = JSON.parse(path)
+                        path = opts.path
+                    } catch {}
+                }
+                api.ajax({request: {url: path, method: 'GET'}})
+                return false
+            }
+
+            // HX-Trigger: fire events on source element
+            if (detail.hx.trigger) {
+                const value = detail.hx.trigger
+                if (value.startsWith('{')) {
+                    try {
+                        const triggers = JSON.parse(value)
+                        for (const [name, eventDetail] of Object.entries(triggers)) {
+                            api.emit(detail.element, name, typeof eventDetail === 'object' ? eventDetail : {})
+                        }
+                    } catch {}
+                } else {
+                    api.emit(detail.element, value, {})
+                }
+            }
+
+            // HX-Retarget: change swap target
+            if (detail.hx.retarget) {
+                detail.swap = detail.swap || {}
+                detail.swap.target = detail.hx.retarget
+            }
+
+            // HX-Reswap: change swap style
+            if (detail.hx.reswap) {
+                detail.swap = detail.swap || {}
+                detail.swap.style = detail.hx.reswap
+            }
+
+            // HX-Reselect: change selection
+            if (detail.hx.reselect) {
+                detail.swap = detail.swap || {}
+                detail.swap.select = detail.hx.reselect
+            }
+        },
+    }
+})
+/**
+ * Skip swap for 204, 304 responses.
+ */
+htmx.install('no-swap', {
+    requires: ['ajax'],
+    config: { noSwap: [204, 304] },
+    on: {
+        'htmx:before:response': (detail, api) => {
+            if (api.config.noSwap.includes(detail.response?.status)) {
+                detail.swap = detail.swap || {}
+                detail.swap.style = 'none'
+            }
+        },
+    }
+})
+/**
+ * Store ETag from response headers and send If-None-Match on subsequent requests.
+ */
+htmx.install('etag-cache', {
+    requires: ['ajax'],
+    on: {
+        'htmx:before:request': (detail) => {
+            const etag = detail.element?._htmx?.etag
+            if (etag) {
+                detail.request.headers['If-none-match'] = etag
+            }
+        },
+        'htmx:after:request': (detail) => {
+            const etag = detail.response?.headers?.etag || detail.response?.raw?.headers?.get?.('Etag')
+            if (etag) {
+                detail.element._htmx = detail.element._htmx || {}
+                detail.element._htmx.etag = etag
+            }
+        },
+    }
+})
+/**
+ * Prevent requests from disconnected elements (removed from the DOM).
+ */
+htmx.install('disconnected-guard', {
+    on: {
+        'htmx:before:trigger': (detail) => {
+            if (!detail.element?.isConnected) return false
+        },
+    }
+})
+/**
+ * Show confirmation dialog before trigger, with full event protocol:
+ * - htmx:config:request fires first (ctx.confirm can be modified/nullified)
+ * - htmx:confirm fires with detail.ctx and detail.issueRequest
+ * - Supports js: prefix for custom evaluation
+ * - Supports async custom confirmation UI via issueRequest callback
+ */
+htmx.install('hx-confirm', {
+    config: {attributeFilter: ['hx-confirm']},
+    on: {
+        'htmx:before:trigger': (detail, api) => {
+            const el = detail.element
+            // Bypass confirm on re-trigger from issueRequest
+            if (el._htmxConfirmBypass) return
+
+            const confirmMsg = api.attr(el, 'hx-confirm')
+            if (!confirmMsg) return
+
+            const ctx = {confirm: confirmMsg}
+
+            // Fire htmx:config:request so listeners can modify ctx.confirm
+            el.dispatchEvent(new CustomEvent('htmx:config:request', {
+                detail: {element: el, ctx},
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+            }))
+
+            // If ctx.confirm was nullified, skip confirmation entirely
+            if (ctx.confirm == null) return
+
+            // Check for js: prefix — evaluate expression
+            if (ctx.confirm.startsWith('js:')) {
+                const expr = ctx.confirm.slice(3)
+                try {
+                    const result = new Function('element', `return ${expr}`).call(el, el)
+                    if (!result) return false
+                } catch (e) {
+                    console.error('[htmx] hx-confirm js: evaluation error:', e)
+                    return false
+                }
+                return
+            }
+
+            // issueRequest support for async custom confirmation
+            const issueRequest = (confirmed) => {
+                if (confirmed) {
+                    el._htmxConfirmBypass = true
+                    if (api.emit(el, 'htmx:before:trigger', {element: el, event: detail.event}) !== false) {
+                        api.emit(el, 'htmx:after:trigger', {element: el, event: detail.event})
+                    }
+                    el._htmxConfirmBypass = false
+                }
+            }
+
+            // Fire htmx:confirm event on the element
+            const dispatched = el.dispatchEvent(new CustomEvent('htmx:confirm', {
+                detail: {element: el, ctx, issueRequest},
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+            }))
+
+            // If htmx:confirm was prevented, the listener will call issueRequest later
+            if (!dispatched) return false
+
+            // Default behavior: window.confirm
+            if (!window.confirm(ctx.confirm)) return false
+        },
+    }
+})
 /**
  * Parse hx-trigger for multi-trigger, load, every, from.
  */
-const hxTrigger = {
+htmx.install('hx-trigger', {
     requires: ['parser'],
     config: {attributeFilter: ['hx-trigger']},
     on: {
@@ -992,188 +1318,147 @@ const hxTrigger = {
             if (detail.trigger) detail.trigger.eventName = null
         }
     }
-}
-
+})
 /**
- * Boost <a> and <form> inside hx-boost containers.
+ * Issue GET request to hx-get URL on trigger.
  */
-const hxBoost = {
+htmx.install('hx-get', {
     requires: ['ajax'],
-    config: {attributeFilter: ['hx-boost']},
+    config: {attributeFilter: ['hx-get']},
     on: {
-        'htmx:after:walk:init': (detail, api) => {
-            const root = detail.element
-            const boostSel = '[hx-boost],[hx-boost\\:inherited]'
-            const containers = [
-                ...(root.matches?.(boostSel) ? [root] : []),
-                ...root.querySelectorAll(boostSel)
-            ]
-            for (const container of containers) {
-                const boost = api.attr(container, 'hx-boost')
-                if (!boost || boost === 'false') continue
-                // Include the container itself if it's a boostable element (form/anchor)
-                const boostable = [
-                    ...(container.matches('a[href], form') ? [container] : []),
-                    ...container.querySelectorAll('a[href], form'),
-                ]
-                for (const el of boostable) {
-                    if (el._htmxBoosted) continue
-                    el._htmxBoosted = true
-                    const eventType = el.matches('a') ? 'click' : 'submit'
-                    el.addEventListener(eventType, (evt) => {
-                        let url, method
-                        if (el.matches('a[href]')) {
-                            url = el.getAttribute('href')
-                            method = 'GET'
-                            // Don't boost anchors with fragment-only hrefs (e.g. #section)
-                            if (url && url.startsWith('#') && url.length > 1) return
-                        } else {
-                            const submitter = evt.submitter
-                            // Don't boost dialog forms or buttons with formmethod="dialog"
-                            const resolvedMethod = submitter?.getAttribute('formmethod')
-                                || el.getAttribute('method') || 'GET'
-                            if (resolvedMethod.toLowerCase() === 'dialog') return
-                            url = submitter?.getAttribute('formaction')
-                                || el.getAttribute('action') || ''
-                            method = resolvedMethod.toUpperCase()
-                        }
-                        evt.preventDefault()
-                        const swap = api.attr(el, 'hx-swap') || null
-                        const targetSel = api.attr(el, 'hx-target')
-                        const target = targetSel ? api.find(targetSel, {from: el}) : null
-                        api.ajax({
-                            element: el,
-                            request: {url, method, headers: {'HX-Boosted': 'true'}},
-                            swap: {style: swap, target: target || null},
-                        })
-                    })
-                }
-            }
-        },
-    }
-}
-
-
-// ── Defaults & Policies ─────────────────────────────────────────────────
-
-/**
- * Default trigger — wire click/change/submit based on element type.
- */
-const defaultTrigger = {
-    on: {
-        'htmx:before:init': (detail, api) => {
-            // Don't override if another extension already set up trigger
-            if (detail.trigger) return
-
-            // Only wire a default trigger for elements that have a request action.
-            // Elements with only inherited/config attrs (e.g. hx-boost:inherited)
-            // should not get a click handler that calls preventDefault().
-            const el = detail.element
-            const hasAction = api.attr(el, 'hx-get') || api.attr(el, 'hx-post')
-                || api.attr(el, 'hx-put') || api.attr(el, 'hx-patch')
-                || api.attr(el, 'hx-delete') || api.attr(el, 'hx-trigger')
-            if (!hasAction) return
-
-            // Default trigger based on element type
-            let eventName
-            if (el.matches('form')) eventName = 'submit'
-            else if (el.matches('input:not([type=button]), select, textarea')) eventName = 'change'
-            else eventName = 'click'
-
-            detail.trigger = {
-                eventName,
-                execute: (event) => {
-                    // Don't preventDefault for anchors with real fragment identifiers
-                    // (e.g. href="#section"), only prevent for bare "#" or non-fragment hrefs
-                    if (event) {
-                        const href = el.getAttribute?.('href')
-                        const isFragmentLink = href && href.startsWith('#') && href.length > 1
-                        if (!isFragmentLink) {
-                            event.preventDefault()
-                        }
-                    }
-                    if (api.emit(el, 'htmx:before:trigger', {element: el, event}) === false) return
-                    api.emit(el, 'htmx:after:trigger', {element: el, event})
-                },
-            }
-
-            // Wrap init.execute to wire trigger listener
-            const originalInit = detail.init.execute
-            detail.init.execute = () => {
-                originalInit()
-                if (detail.trigger.eventName) {
-                    api.on(el, detail.trigger.eventName, detail.trigger.execute)
-                }
-            }
-        },
-    }
-}
-
-/**
- * Default swap style — apply config.defaultSwap when none is specified.
- */
-const defaultSwap = {
-    requires: ['swaps'],
-    config: {
-        /** @type {string} Apply this swap style when none is specified. */
-        defaultSwap: 'innerHTML',
-    },
-    on: {
-        'htmx:before:swap': (detail, api) => {
-            detail.swap.style ??= api.config.defaultSwap
-        },
-    }
-}
-
-/**
- * Default headers — merge config.defaultHeaders into every request.
- */
-const defaultHeaders = {
-    requires: ['ajax'],
-    config: {
-        /** @type {Object<string, string>} Include these headers on every request. */
-        defaultHeaders: {'HX-Request': 'true'},
-    },
-    on: {
-        'htmx:before:request': (detail, api) => {
-            detail.request.headers = {...api.config.defaultHeaders, ...detail.request.headers}
-            detail.request.headers['HX-Current-URL'] ??= location.href
-        },
-    }
-}
-
-/**
- * Add HX-Source, HX-Target, and HX-Request-Type headers to every request.
- * HX-Source identifies the triggering element, HX-Target identifies the swap target,
- * and HX-Request-Type indicates whether the server should return a full page or fragment.
- */
-const requestIdentifiers = {
-    requires: ['ajax'],
-    on: {
-        'htmx:before:request': (detail, api) => {
-            function ident(el) {
-                if (el === document.body) return 'body'
-                const tag = el.tagName?.toLowerCase() || ''
-                return el.id ? `${tag}#${el.id}` : tag
-            }
-
-            const el = detail.element
-            detail.request.headers['HX-Source'] = ident(el)
-
-            const targetAttr = api.attr(el, 'hx-target')
-            const selectAttr = api.attr(el, 'hx-select')
-            const target = targetAttr ? api.find(targetAttr, {from: el}) : el
-
-            if (target) detail.request.headers['HX-Target'] = ident(target)
-            detail.request.headers['HX-Request-Type'] = (target === document.body || selectAttr) ? 'full' : 'partial'
+        'htmx:before:trigger': (detail, api) => {
+            const url = api.attr(detail.element, 'hx-get')
+            if (url) api.ajax({element: detail.element, request: {url, method: 'GET'}})
         }
     }
-}
+})
+/**
+ * Issue POST request to hx-post URL on trigger.
+ */
+htmx.install('hx-post', {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-post']},
+    on: {
+        'htmx:before:trigger': (detail, api) => {
+            const url = api.attr(detail.element, 'hx-post')
+            if (url) api.ajax({element: detail.element, request: {url, method: 'POST'}})
+        }
+    }
+})
+/**
+ * Issue PUT request to hx-put URL on trigger.
+ */
+htmx.install('hx-put', {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-put']},
+    on: {
+        'htmx:before:trigger': (detail, api) => {
+            const url = api.attr(detail.element, 'hx-put')
+            if (url) api.ajax({element: detail.element, request: {url, method: 'PUT'}})
+        }
+    }
+})
+/**
+ * Issue PATCH request to hx-patch URL on trigger.
+ */
+htmx.install('hx-patch', {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-patch']},
+    on: {
+        'htmx:before:trigger': (detail, api) => {
+            const url = api.attr(detail.element, 'hx-patch')
+            if (url) api.ajax({element: detail.element, request: {url, method: 'PATCH'}})
+        }
+    }
+})
+/**
+ * Issue DELETE request to hx-delete URL on trigger.
+ */
+htmx.install('hx-delete', {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-delete']},
+    on: {
+        'htmx:before:trigger': (detail, api) => {
+            const url = api.attr(detail.element, 'hx-delete')
+            if (url) api.ajax({element: detail.element, request: {url, method: 'DELETE'}})
+        }
+    }
+})
+/**
+ * Set swap style and modifiers from hx-swap attribute.
+ */
+htmx.install('hx-swap', {
+    requires: ['swaps', 'parser'],
+    config: {attributeFilter: ['hx-swap']},
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            // Skip nested OOB/partial swaps (they have their own style)
+            if (detail.swap?._oob || !detail.element) return
+            const swapAttr = api.parse(api.attr(detail.element, 'hx-swap'), {as: 'style'})
+            if (swapAttr) Object.assign(detail.swap, swapAttr)
+        }
+    }
+})
+/**
+ * Handles scroll and delay modifiers on swap specifications.
+ */
+htmx.install('swap-modifiers', {
+    requires: ['hx-swap'],
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            const swap = detail.swap
+            if (!swap) return
 
+            // Non-blocking swap delay: swap:Nms with transition:false
+            if (swap.swap && swap.transition === false) {
+                const ms = parseInt(swap.swap, 10)
+                if (ms > 0) {
+                    const originalExecute = swap.execute
+                    swap.execute = () => {
+                        setTimeout(() => originalExecute(), ms)
+                    }
+                }
+            }
+        },
+        'htmx:after:swap': (detail, api) => {
+            const swap = detail.swap
+            if (!swap) return
+
+            const target = swap.target
+            if (!(target instanceof Element)) return
+
+            // scroll:top modifier
+            if (swap.scroll === 'top') {
+                target.scrollTop = 0
+            }
+            // scroll:bottom modifier
+            if (swap.scroll === 'bottom') {
+                target.scrollTop = target.scrollHeight
+            }
+        },
+    }
+})
+/**
+ * Resolve swap target from hx-target attribute.
+ */
+htmx.install('hx-target', {
+    requires: ['swaps'],
+    config: {attributeFilter: ['hx-target']},
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            // Skip nested OOB/partial swaps (they have their own target)
+            if (detail.swap?._oob || !detail.element) return
+            const target = api.attr(detail.element, 'hx-target')
+            if (target) {
+                detail.swap.target = api.find(target, {from: detail.element})
+            }
+        }
+    }
+})
 /**
  * Friendly swap names — before, prepend, append, after, remove.
  */
-const swapAliases = {
+htmx.install('swap-aliases', {
     requires: ['swaps'],
     on: {
         'htmx:before:swap': (detail, api) => {
@@ -1187,12 +1472,11 @@ const swapAliases = {
             if (detail.swap.style in aliases) detail.swap.style = aliases[detail.swap.style]
         }
     }
-}
-
+})
 /**
  * Request timeout via AbortSignal (default 60s).
  */
-const requestTimeout = {
+htmx.install('request-timeout', {
     requires: ['ajax'],
     config: {
         /** @type {number} Abort requests after this many milliseconds (0 = no timeout). */
@@ -1209,10 +1493,8 @@ const requestTimeout = {
             }
         },
     }
-}
-
-
-const requestQueueExt = {
+})
+htmx.install('request-queue', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-sync']},
     wrap: {
@@ -1304,315 +1586,12 @@ const requestQueueExt = {
             }
         })(),
     }
-}
-
-/**
- * History management — push/replace URL on successful requests, handle popstate.
- */
-const historyMgmt = {
-    requires: ['ajax'],
-    config: {
-        history: true,
-        attributeFilter: ['hx-push-url', 'hx-replace-url'],
-    },
-    on: {
-        'htmx:boot': (detail, api) => {
-            if (!api.config.history) return
-            if (!history.state) {
-                history.replaceState({htmx: true}, '', location.pathname + location.search)
-            }
-            window.addEventListener('popstate', (event) => {
-                if (event.state?.htmx) {
-                    const path = location.pathname + location.search
-                    if (api.emit(document.body, 'htmx:before:restore:history', {path, cacheMiss: true})) {
-                        if (api.config.history === 'reload') {
-                            location.reload()
-                        } else {
-                            api.ajax({
-                                request: {
-                                    url: path,
-                                    method: 'GET',
-                                    headers: {'HX-History-Restore-Request': 'true'}
-                                },
-                                swap: {target: document.body, style: 'innerHTML'},
-                            })
-                        }
-                    }
-                }
-            })
-        },
-
-        'htmx:done': (detail, api) => {
-            if (!api.config.history) return
-            const el = detail.element
-
-            // Check attributes
-            let push = api.attr(el, 'hx-push-url')
-            let replace = api.attr(el, 'hx-replace-url')
-
-            // Check response headers
-            if (detail.hx?.push || detail.hx?.pushurl) push = push || detail.hx.push || detail.hx.pushurl
-            if (detail.hx?.replaceurl) replace = replace || detail.hx.replaceurl
-
-            // Boosted elements default to push
-            if (!push && !replace && api.attr(el, 'hx-boost')) push = 'true'
-
-            const pathSource = push || replace
-            if (!pathSource || pathSource === 'false') return
-
-            let path = pathSource
-            if (path === 'true') {
-                path = detail.response?.url || detail.request?.url || location.href
-                try {
-                    const url = new URL(path, location.href)
-                    path = url.pathname + url.search
-                } catch {}
-            }
-
-            const type = push ? 'push' : 'replace'
-            const historyDetail = {history: {type, path}, element: el}
-
-            if (api.emit(document.body, 'htmx:before:history:update', historyDetail) === false) return
-
-            if (type === 'push') {
-                history.pushState({htmx: true}, '', path)
-                api.emit(document.body, 'htmx:after:push:into:history', {path})
-            } else {
-                history.replaceState({htmx: true}, '', path)
-                api.emit(document.body, 'htmx:after:replace:into:history', {path})
-            }
-
-            api.emit(document.body, 'htmx:after:history:update', historyDetail)
-        },
-    }
-}
-
-
-// ── Primitive Enhancers ─────────────────────────────────────────────────
-
-/**
- * Extended selector syntax — closest, next, previous, this, find.
- */
-const extendedSelectors = {
-    wrap: {
-        find: (original, selector, options) => {
-            const el = options?.from
-            const multiple = options?.multiple
-            const match = (result) => multiple ? (result ? [result] : []) : result ?? null
-
-            if (typeof selector !== 'string') return original(selector, options)
-
-            // Named targets
-            if (selector === 'this') return match(el)
-            if (selector === 'body') return match(document.body)
-            if (selector === 'document') return multiple ? [document] : document
-            if (selector === 'window') return multiple ? [window] : window
-
-            if (!el) return original(selector, options)
-
-            // Immediate relatives (require context element)
-            if (selector === 'next') return match(el.nextElementSibling)
-            if (selector === 'previous') return match(el.previousElementSibling)
-            if (selector === 'host') return match(el.getRootNode()?.host)
-
-            // Traversal
-            if (selector.startsWith('closest ')) return match(el.closest(selector.slice(8)))
-            if (selector.startsWith('next ')) {
-                for (const candidate of (el.getRootNode() || document).querySelectorAll(selector.slice(5))) {
-                    if (candidate.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) return match(candidate)
-                }
-                return match(null)
-            }
-            if (selector.startsWith('previous ')) {
-                const all = (el.getRootNode() || document).querySelectorAll(selector.slice(9))
-                for (let i = all.length - 1; i >= 0; i--) {
-                    if (all[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) return match(all[i])
-                }
-                return match(null)
-            }
-
-            // Scoped search: search within the context element
-            if (selector.startsWith('find ')) {
-                const sel = selector.slice(5)
-                return multiple
-                    ? [...el.querySelectorAll(sel)]
-                    : el.querySelector(sel)
-            }
-
-            return original(selector, options)
-        }
-    }
-}
-
-/**
- * Attribute inheritance — walk up DOM via :inherited/:append.
- */
-const inheritance = {
-    config: {
-        /** Control how `attr()` walks up the DOM to resolve inherited values. */
-        inheritance: {
-            /** @type {'explicit'|'implicit'} Require `:inherited` suffix, or also match bare attributes. */
-            mode: 'explicit',
-            /** @type {string} Suffix marking an attribute as inheritable (e.g. `hx-get:inherited`). */
-            inheritSuffix: 'inherited',
-            /** @type {string} Suffix marking an attribute as appendable (e.g. `hx-swap:append`). */
-            appendSuffix: 'append',
-        },
-    },
-    wrap: {
-        attr: (original, element, name, options) => {
-            if (!element || options?.inherit === false) return original(element, name, options)
-
-            const {mode, inheritSuffix, appendSuffix} = htmx.config.inheritance
-            const inherited = `${name}:${inheritSuffix}`
-            const append = `${name}:${appendSuffix}`
-            const inheritedAppend = `${name}:${inheritSuffix}:${appendSuffix}`
-
-            // Direct attribute on element — pass {inherit: false} to avoid recursion
-            if (element.hasAttribute(name)) {
-                return original(element, name, {inherit: false})
-            }
-            if (element.hasAttribute(inherited)) {
-                return original(element, inherited, {inherit: false})
-            }
-
-            // Build ancestor selector
-            const parts = [`[${CSS.escape(inherited)}]`, `[${CSS.escape(inheritedAppend)}]`]
-            if (mode === 'implicit') parts.unshift(`[${CSS.escape(name)}]`)
-            const selector = parts.join(',')
-
-            // Collect :append chain + base, walking up
-            const chain = []
-
-            const selfAppend = element.getAttribute(append)
-                ?? element.getAttribute(inheritedAppend)
-            if (selfAppend !== null) chain.push(selfAppend)
-
-            let ancestor = element.parentElement?.closest(selector)
-            while (ancestor) {
-                const base = ancestor.getAttribute(inherited)
-                    ?? (mode === 'implicit' ? ancestor.getAttribute(name) : null)
-                if (base !== null) {
-                    if (base === 'this') {
-                        const attrName = ancestor.hasAttribute(inherited) ? inherited : name
-                        chain.push(`closest [${CSS.escape(attrName)}="this"]`)
-                    } else {
-                        chain.push(base)
-                    }
-                    break
-                }
-
-                const ancestorAppend = ancestor.getAttribute(inheritedAppend)
-                if (ancestorAppend !== null) {
-                    chain.push(ancestorAppend)
-                    ancestor = ancestor.parentElement?.closest(selector)
-                    continue
-                }
-
-                break
-            }
-
-            if (!chain.length) return null
-            return chain.reverse().join(',')
-        }
-    },
-}
-
-/**
- * Debounce via options.delay on api.on().
- */
-const delayEvents = {
-    wrap: {
-        on: (original, element, eventName, handler, options) => {
-            if (options?.delay !== undefined) {
-                const ms = options.delay
-                let timeout
-                const orig = handler
-                handler = (event) => {
-                    clearTimeout(timeout)
-                    timeout = setTimeout(() => orig(event), ms)
-                }
-            }
-            return original(element, eventName, handler, options)
-        }
-    }
-}
-
-/**
- * Rate-limit via options.throttle on api.on().
- */
-const throttleEvents = {
-    wrap: {
-        on: (original, element, eventName, handler, options) => {
-            if (options?.throttle !== undefined) {
-                const ms = options.throttle
-                let last = 0
-                const orig = handler
-                handler = (event) => {
-                    const now = Date.now()
-                    if (now - last >= ms) {
-                        last = now
-                        orig(event)
-                    }
-                }
-            }
-            return original(element, eventName, handler, options)
-        }
-    }
-}
-
-
-// ── hx-select ──────────────────────────────────────────────────────────
-
-/**
- * Filter response content to only include elements matching the hx-select selector.
- */
-const hxSelect = {
-    requires: ['swaps'],
-    config: {attributeFilter: ['hx-select']},
-    on: {
-        'htmx:before:swap': (detail, api) => {
-            // Skip nested (OOB/partial) swaps
-            if (detail.swap?._oob) return
-            const selectAttr = detail.swap?.select || (detail.element ? api.attr(detail.element, 'hx-select') : null)
-            if (!selectAttr) return
-
-            const content = detail.swap?.content
-            if (!(content instanceof DocumentFragment)) return
-
-            // Find matching elements in the fragment
-            const matches = content.querySelectorAll(selectAttr)
-
-            // Replace content with only matched elements
-            const newFrag = document.createDocumentFragment()
-            for (const match of matches) {
-                newFrag.appendChild(match)
-            }
-
-            // Clear the fragment and replace with filtered content
-            while (content.firstChild) content.removeChild(content.firstChild)
-            content.appendChild(newFrag)
-        },
-    }
-}
-
-
-/**
- * Parse an hx-swap-oob attribute value into { style, target, swap, ... }.
- * Supports:
- *   "true" → { style: 'outerHTML' }
- *   "innerHTML" → { style: 'innerHTML' }
- *   "innerHTML:#selector" → legacy format { style: 'innerHTML', target: '#selector' }
- *   "innerHTML target:#sel swap:100ms" → new format with modifiers
- *   'innerHTML target:".foo .bar"' → quoted multi-word selector
- */
-// ── OOB Swap ───────────────────────────────────────────────────────────
-
+})
 /**
  * Processes out-of-band swaps from response content.
  * Handles hx-swap-oob attributes on response elements and hx-select-oob on triggers.
  */
-const oobSwap = {
+htmx.install('oob-swap', {
     requires: ['swaps'],
     config: {attributeFilter: ['hx-select-oob']},
     on: {
@@ -1831,15 +1810,42 @@ const oobSwap = {
             }
         },
     }
-}
+})
+/**
+ * Filter response content to only include elements matching the hx-select selector.
+ */
+htmx.install('hx-select', {
+    requires: ['swaps'],
+    config: {attributeFilter: ['hx-select']},
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            // Skip nested (OOB/partial) swaps
+            if (detail.swap?._oob) return
+            const selectAttr = detail.swap?.select || (detail.element ? api.attr(detail.element, 'hx-select') : null)
+            if (!selectAttr) return
 
+            const content = detail.swap?.content
+            if (!(content instanceof DocumentFragment)) return
 
-// ── Script Processing ──────────────────────────────────────────────────
+            // Find matching elements in the fragment
+            const matches = content.querySelectorAll(selectAttr)
 
+            // Replace content with only matched elements
+            const newFrag = document.createDocumentFragment()
+            for (const match of matches) {
+                newFrag.appendChild(match)
+            }
+
+            // Clear the fragment and replace with filtered content
+            while (content.firstChild) content.removeChild(content.firstChild)
+            content.appendChild(newFrag)
+        },
+    }
+})
 /**
  * Re-creates script tags in swapped content to trigger execution.
  */
-const scriptProcessing = {
+htmx.install('script-processing', {
     on: {
         'htmx:after:swap': (detail, api) => {
             // Collect all scripts to process
@@ -1880,90 +1886,11 @@ const scriptProcessing = {
             }
         },
     }
-}
-
-
-// ── hx-confirm ─────────────────────────────────────────────────────────
-
-/**
- * Show confirmation dialog before trigger, with full event protocol:
- * - htmx:config:request fires first (ctx.confirm can be modified/nullified)
- * - htmx:confirm fires with detail.ctx and detail.issueRequest
- * - Supports js: prefix for custom evaluation
- * - Supports async custom confirmation UI via issueRequest callback
- */
-const hxConfirm = {
-    config: {attributeFilter: ['hx-confirm']},
-    on: {
-        'htmx:before:trigger': (detail, api) => {
-            const el = detail.element
-            // Bypass confirm on re-trigger from issueRequest
-            if (el._htmxConfirmBypass) return
-
-            const confirmMsg = api.attr(el, 'hx-confirm')
-            if (!confirmMsg) return
-
-            const ctx = {confirm: confirmMsg}
-
-            // Fire htmx:config:request so listeners can modify ctx.confirm
-            el.dispatchEvent(new CustomEvent('htmx:config:request', {
-                detail: {element: el, ctx},
-                bubbles: true,
-                cancelable: true,
-                composed: true,
-            }))
-
-            // If ctx.confirm was nullified, skip confirmation entirely
-            if (ctx.confirm == null) return
-
-            // Check for js: prefix — evaluate expression
-            if (ctx.confirm.startsWith('js:')) {
-                const expr = ctx.confirm.slice(3)
-                try {
-                    const result = new Function('element', `return ${expr}`).call(el, el)
-                    if (!result) return false
-                } catch (e) {
-                    console.error('[htmx] hx-confirm js: evaluation error:', e)
-                    return false
-                }
-                return
-            }
-
-            // issueRequest support for async custom confirmation
-            const issueRequest = (confirmed) => {
-                if (confirmed) {
-                    el._htmxConfirmBypass = true
-                    if (api.emit(el, 'htmx:before:trigger', {element: el, event: detail.event}) !== false) {
-                        api.emit(el, 'htmx:after:trigger', {element: el, event: detail.event})
-                    }
-                    el._htmxConfirmBypass = false
-                }
-            }
-
-            // Fire htmx:confirm event on the element
-            const dispatched = el.dispatchEvent(new CustomEvent('htmx:confirm', {
-                detail: {element: el, ctx, issueRequest},
-                bubbles: true,
-                cancelable: true,
-                composed: true,
-            }))
-
-            // If htmx:confirm was prevented, the listener will call issueRequest later
-            if (!dispatched) return false
-
-            // Default behavior: window.confirm
-            if (!window.confirm(ctx.confirm)) return false
-        },
-    }
-}
-
-
-// ── hx-indicator ───────────────────────────────────────────────────────
-
+})
 /**
  * Manages loading indicator CSS classes with reference counting.
  */
-const hxIndicator = {
+htmx.install('hx-indicator', {
     config: {
         attributeFilter: ['hx-indicator'],
         indicatorClass: 'htmx-indicator',
@@ -2004,16 +1931,12 @@ const hxIndicator = {
             }
         },
     }
-}
-
-
-// ── hx-disable ─────────────────────────────────────────────────────────
-
+})
 /**
  * Disables elements during request with reference counting.
  * Disabling is synchronous (htmx:before:request); re-enabling is async (htmx:finally).
  */
-const hxDisable = {
+htmx.install('hx-disable', {
     config: {attributeFilter: ['hx-disable']},
     on: {
         'htmx:before:request': (detail, api) => {
@@ -2047,24 +1970,18 @@ const hxDisable = {
             el._htmxDisabledElements = []
         },
     }
-}
-
-
-// ── hx-on:* ────────────────────────────────────────────────────────────
-
+})
 /**
  * Wire up inline JavaScript event handlers from hx-on:eventName attributes.
  */
-const hxOn = {
+htmx.install('hx-on', {
     on: {
         'htmx:before:init': (detail, api) => {
             const el = detail.element
             const handlers = []
             for (const attrName of el.getAttributeNames()) {
                 if (!attrName.startsWith('hx-on:') && !attrName.startsWith('hx-on-')) continue
-                const eventName = attrName.startsWith('hx-on:')
-                    ? attrName.slice(6).replace(/-/g, ':')
-                    : attrName.slice(6).replace(/-/g, ':')
+                const eventName = attrName.slice(6).replace(/-/g, ':')
                 const code = el.getAttribute(attrName)
                 handlers.push({eventName, code})
             }
@@ -2095,15 +2012,11 @@ const hxOn = {
             }
         },
     }
-}
-
-
-// ── hx-preserve ────────────────────────────────────────────────────────
-
+})
 /**
  * Preserves elements across swaps by saving and restoring them.
  */
-const hxPreserve = {
+htmx.install('hx-preserve', {
     config: {attributeFilter: ['hx-preserve']},
     on: {
         'htmx:before:swap': (detail, api) => {
@@ -2136,15 +2049,11 @@ const hxPreserve = {
             }
         },
     }
-}
-
-
-// ── hx-ignore ──────────────────────────────────────────────────────────
-
+})
 /**
  * Focus elements with the autofocus attribute after swap.
  */
-const autofocusAfterSwap = {
+htmx.install('autofocus', {
     on: {
         'htmx:after:swap': (detail) => {
             const target = detail.swap?.target
@@ -2153,124 +2062,361 @@ const autofocusAfterSwap = {
             if (el) el.focus()
         },
     }
-}
-
-/**
- * Prevent requests from disconnected elements (removed from the DOM).
- */
-const disconnectedGuard = {
-    on: {
-        'htmx:before:trigger': (detail) => {
-            if (!detail.element?.isConnected) return false
-        },
-    }
-}
-
+})
 /**
  * Mark initialized elements with data-htmx-powered attribute for cleanup tracking.
  */
-const htmxPowered = {
+htmx.install('htmx-powered', {
     on: {
         'htmx:after:init': (detail) => {
             detail.element.setAttribute('data-htmx-powered', 'true')
         },
     }
-}
-
+})
 /**
  * Prevents processing of elements within hx-ignore containers.
  */
-const hxIgnore = {
+htmx.install('hx-ignore', {
     on: {
         'htmx:before:init': (detail, api) => {
             if (detail.element.closest('[hx-ignore]')) return false
         },
     }
-}
-
-
-// ── Config ─────────────────────────────────────────────────────────────
-
+})
 /**
- * Default configuration values for htmx core.
+ * Boost <a> and <form> inside hx-boost containers.
  */
-const defaultConfig = {
-    config: {
-        logAll: false,
-        prefix: '',
-        transitions: false,
-        history: true,
-        mode: 'same-origin',
-        defaultFocusScroll: false,
-        defaultTimeout: 60000,
-        extensions: '',
-        implicitInheritance: false,
-        defaultSettleDelay: 1,
-        inlineScriptNonce: null,
-        inlineStyleNonce: null,
+htmx.install('hx-boost', {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-boost']},
+    on: {
+        'htmx:after:walk:init': (detail, api) => {
+            const root = detail.element
+            const boostSel = '[hx-boost],[hx-boost\\:inherited]'
+            const containers = [
+                ...(root.matches?.(boostSel) ? [root] : []),
+                ...root.querySelectorAll(boostSel)
+            ]
+            for (const container of containers) {
+                const boost = api.attr(container, 'hx-boost')
+                if (!boost || boost === 'false') continue
+                // Include the container itself if it's a boostable element (form/anchor)
+                const boostable = [
+                    ...(container.matches('a[href], form') ? [container] : []),
+                    ...container.querySelectorAll('a[href], form'),
+                ]
+                for (const el of boostable) {
+                    if (el._htmxBoosted) continue
+                    el._htmxBoosted = true
+                    const eventType = el.matches('a') ? 'click' : 'submit'
+                    api.on(el, eventType, (evt) => {
+                        let url, method
+                        if (el.matches('a[href]')) {
+                            url = el.getAttribute('href')
+                            method = 'GET'
+                            // Don't boost anchors with fragment-only hrefs (e.g. #section)
+                            if (url && url.startsWith('#') && url.length > 1) return
+                        } else {
+                            const submitter = evt.submitter
+                            // Don't boost dialog forms or buttons with formmethod="dialog"
+                            const resolvedMethod = submitter?.getAttribute('formmethod')
+                                || el.getAttribute('method') || 'GET'
+                            if (resolvedMethod.toLowerCase() === 'dialog') return
+                            url = submitter?.getAttribute('formaction')
+                                || el.getAttribute('action') || ''
+                            method = resolvedMethod.toUpperCase()
+                        }
+                        evt.preventDefault()
+                        const swap = api.attr(el, 'hx-swap') || null
+                        const targetSel = api.attr(el, 'hx-target')
+                        const target = targetSel ? api.find(targetSel, {from: el}) : null
+                        api.ajax({
+                            element: el,
+                            request: {url, method, headers: {'HX-Boosted': 'true'}},
+                            swap: {style: swap, target: target || null},
+                        })
+                    })
+                }
+            }
+        },
     }
-}
-
+})
 /**
- * Reads <meta name="htmx-config"> and merges its JSON content into config.
+ * hx-action attribute — auto-detects HTTP method from element type.
+ * GET for links/buttons, POST for forms, or from hx-config method override.
  */
-const metaConfig = {
+htmx.install('hx-action', {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-action']},
+    on: {
+        'htmx:after:walk:init': (detail, api) => {
+            const root = detail.element
+            const actionSel = '[hx-action]'
+            const elements = [
+                ...(root.matches?.(actionSel) ? [root] : []),
+                ...root.querySelectorAll(actionSel)
+            ]
+            for (const el of elements) {
+                if (el._htmxActionBound) continue
+                el._htmxActionBound = true
+                const url = el.getAttribute('hx-action')
+                if (!url) continue
+                const isForm = el.matches('form')
+                const eventType = isForm ? 'submit' : 'click'
+                const method = isForm ? 'POST' : 'GET'
+                api.on(el, eventType, (evt) => {
+                    evt.preventDefault()
+                    api.ajax({element: el, request: {url, method}})
+                })
+            }
+        },
+    }
+})
+/**
+ * hx-config attribute — per-element configuration overrides merged into request context.
+ * Supports JSON values with optional + prefix for merging object properties.
+ */
+htmx.install('hx-config', {
+    requires: ['ajax'],
+    config: {attributeFilter: ['hx-config']},
+    on: {
+        'htmx:before:request': (detail, api) => {
+            const el = detail.element
+            if (!el) return
+            const configAttr = api.attr(el, 'hx-config')
+            if (!configAttr) return
+
+            let parsed
+            try { parsed = JSON.parse(configAttr) } catch { return }
+
+            // Apply parsed config to detail.request
+            for (let key in parsed) {
+                let val = parsed[key]
+                let merge = false
+                if (key.startsWith('+')) {
+                    merge = true
+                    key = key.slice(1)
+                }
+
+                if (key === 'action') {
+                    detail.request.url = val
+                    detail.request.shouldActivate = val
+                } else if (key === 'method') {
+                    detail.request.method = val
+                } else if (merge && val && typeof val === 'object' && !Array.isArray(val)
+                    && detail.request[key] && typeof detail.request[key] === 'object') {
+                    Object.assign(detail.request[key], val)
+                } else {
+                    detail.request[key] = val
+                }
+            }
+
+            // Fire htmx:config:request event with ctx
+            const ctx = {request: detail.request}
+            el.dispatchEvent(new CustomEvent('htmx:config:request', {
+                detail: {element: el, ctx},
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+            }))
+        },
+    }
+})
+/**
+ * hx-status:NNN attribute — per-status-code swap overrides.
+ * Supports exact matches (hx-status:404), 2-digit wildcards (hx-status:50x),
+ * and 1-digit wildcards (hx-status:5xx).
+ */
+htmx.install('hx-status', {
+    requires: ['ajax'],
+    on: {
+        'htmx:before:response': (detail, api) => {
+            if (!detail.response?.raw) return
+            const status = detail.response.raw.status
+            const el = detail.element
+            if (!el) return
+
+            const str = status + ''
+            // Try patterns: exact (404), 2-digit wildcard (40x), 1-digit wildcard (4xx)
+            for (const pattern of [str, str.slice(0, 2) + 'x', str[0] + 'xx']) {
+                const attrName = 'hx-status:' + pattern
+                const statusValue = el.getAttribute(attrName)
+                if (statusValue != null) {
+                    // Parse and store overrides for application during swap
+                    const overrides = {}
+                    const tokens = statusValue.trim().split(/\s+/)
+                    for (const token of tokens) {
+                        const colonIdx = token.indexOf(':')
+                        if (colonIdx > 0) {
+                            const key = token.slice(0, colonIdx)
+                            let val = token.slice(colonIdx + 1)
+                            if (val === 'true') val = true
+                            else if (val === 'false') val = false
+                            overrides[key] = val
+                        }
+                    }
+
+                    // Handle push/replace-url immediately (needs element attribute change)
+                    if (overrides.push === false || overrides.push === 'false') {
+                        el.removeAttribute('hx-push-url')
+                    }
+
+                    // Store overrides on swap object (persists into before:swap detail)
+                    detail.swap = detail.swap || {}
+                    detail.swap._statusOverrides = overrides
+                    return // First match wins
+                }
+            }
+        },
+
+        'htmx:before:swap': (detail, api) => {
+            // Apply status overrides stored during before:response on the swap object
+            const overrides = detail.swap?._statusOverrides
+            if (!overrides) return
+
+            if (overrides.swap) {
+                detail.swap.style = overrides.swap
+            }
+            if (overrides.target) {
+                detail.swap.target = api.find(overrides.target, {from: detail.element})
+            }
+            if (overrides.select) {
+                // Re-filter content with the status-specific selector
+                const content = detail.swap?.content
+                if (content instanceof DocumentFragment) {
+                    const matches = content.querySelectorAll(overrides.select)
+                    const newFrag = document.createDocumentFragment()
+                    for (const match of matches) newFrag.appendChild(match)
+                    while (content.firstChild) content.removeChild(content.firstChild)
+                    content.appendChild(newFrag)
+                }
+            }
+        },
+    }
+})
+/**
+ * strip:true swap modifier — extracts children from top-level wrapper elements.
+ * For each top-level element child in the content fragment, replaces it with its children.
+ */
+htmx.install('strip-modifier', {
+    requires: ['swaps'],
+    on: {
+        'htmx:before:swap': (detail, api) => {
+            if (!detail.swap) return
+
+            // Check if strip is set directly (from hxSwap parse or OOB swap)
+            let shouldStrip = detail.swap.strip
+
+            // Also check if strip is embedded in the style string (from partials)
+            if (shouldStrip === undefined && detail.swap.style && typeof detail.swap.style === 'string' && detail.swap.style.includes('strip:')) {
+                const match = detail.swap.style.match(/\bstrip:(true|false)\b/)
+                if (match) {
+                    shouldStrip = match[1] === 'true'
+                    // Pre-parse the style to remove the strip modifier (so execute() doesn't re-process)
+                    detail.swap.strip = shouldStrip
+                    detail.swap.style = detail.swap.style.replace(/\s*strip:(true|false)\b/, '').trim()
+                }
+            }
+
+            if (!shouldStrip) return
+            const content = detail.swap.content
+            if (!(content instanceof DocumentFragment)) return
+
+            // For each top-level element child, replace with its children
+            for (const child of [...content.childNodes]) {
+                if (child.nodeType === Node.ELEMENT_NODE) {
+                    const childNodes = [...child.childNodes]
+                    child.replaceWith(...childNodes)
+                }
+            }
+        },
+    }
+})
+/**
+ * History management — push/replace URL on successful requests, handle popstate.
+ */
+htmx.install('history', {
+    requires: ['ajax'],
+    config: {
+        history: true,
+        attributeFilter: ['hx-push-url', 'hx-replace-url'],
+    },
     on: {
         'htmx:boot': (detail, api) => {
-            const meta = document.querySelector('meta[name="htmx-config"]')
-            if (meta) {
+            if (!api.config.history) return
+            if (!history.state) {
+                history.replaceState({htmx: true}, '', location.pathname + location.search)
+            }
+            window.addEventListener('popstate', (event) => {
+                if (event.state?.htmx) {
+                    const path = location.pathname + location.search
+                    if (api.emit(document.body, 'htmx:before:restore:history', {path, cacheMiss: true})) {
+                        if (api.config.history === 'reload') {
+                            location.reload()
+                        } else {
+                            api.ajax({
+                                request: {
+                                    url: path,
+                                    method: 'GET',
+                                    headers: {'HX-History-Restore-Request': 'true'}
+                                },
+                                swap: {target: document.body, style: 'innerHTML'},
+                            })
+                        }
+                    }
+                }
+            })
+        },
+
+        'htmx:done': (detail, api) => {
+            if (!api.config.history) return
+            const el = detail.element
+
+            // Check attributes
+            let push = api.attr(el, 'hx-push-url')
+            let replace = api.attr(el, 'hx-replace-url')
+
+            // Check response headers
+            if (detail.hx?.push || detail.hx?.pushurl) push = push || detail.hx.push || detail.hx.pushurl
+            if (detail.hx?.replaceurl) replace = replace || detail.hx.replaceurl
+
+            // Boosted elements default to push
+            if (!push && !replace && api.attr(el, 'hx-boost')) push = 'true'
+
+            const pathSource = push || replace
+            if (!pathSource || pathSource === 'false') return
+
+            let path = pathSource
+            if (path === 'true') {
+                path = detail.response?.url || detail.request?.url || location.href
                 try {
-                    const parsed = JSON.parse(meta.content)
-                    Object.assign(api.config, parsed)
-                } catch (e) {
-                    console.error('[htmx] Invalid htmx-config meta tag:', e)
-                }
+                    const url = new URL(path, location.href)
+                    path = url.pathname + url.search
+                } catch {}
             }
-        }
-    }
-}
 
-/**
- * Wraps attr() to support a configurable attribute name prefix (e.g. "data-hx-" instead of "hx-").
- */
-const prefix = {
-    wrap: {
-        attr: (original, element, name, options) => {
-            if (htmx.config.prefix) {
-                let prefixed = htmx.config.prefix + name
-                let result = original(element, prefixed, options)
-                if (result !== undefined && result !== null) return result
+            const type = push ? 'push' : 'replace'
+            const historyDetail = {history: {type, path}, element: el}
+
+            if (api.emit(document.body, 'htmx:before:history:update', historyDetail) === false) return
+
+            if (type === 'push') {
+                history.pushState({htmx: true}, '', path)
+                api.emit(document.body, 'htmx:after:push:into:history', {path})
+            } else {
+                history.replaceState({htmx: true}, '', path)
+                api.emit(document.body, 'htmx:after:replace:into:history', {path})
             }
-            return original(element, name, options)
-        }
+
+            api.emit(document.body, 'htmx:after:history:update', historyDetail)
+        },
     }
-}
-
-/**
- * Wraps attr() to replace ":" in attribute names with a configurable meta character.
- */
-const metaCharacter = {
-    wrap: {
-        attr: (original, element, name, options) => {
-            if (htmx.config.metaCharacter) {
-                let adjusted = name.replace(/:/g, htmx.config.metaCharacter)
-                if (adjusted !== name) {
-                    let result = original(element, adjusted, options)
-                    if (result !== undefined && result !== null) return result
-                }
-            }
-            return original(element, name, options)
-        }
-    }
-}
-
-// ── Morph ─────────────────────────────────────────────────────────────
-
+})
 /**
  * DOM morphing algorithm — intelligently patches existing DOM nodes to match
  * new content while preserving element identity, focus state, and animations.
  */
-const morph = {
+htmx.install('morph', {
     config: {
         morphScanLimit: 10,
         morphIgnore: ['data-htmx-powered'],
@@ -2519,15 +2665,11 @@ const morph = {
             return original(swap, options)
         },
     },
-}
-
-
-// ── Public API ──────────────────────────────────────────────────────────
-
+})
 /**
  * Ergonomic htmx.swap(), htmx.ajax(), htmx.parse() wrappers.
  */
-const publicApi = {
+htmx.install('public-api', {
     requires: ['swaps', 'ajax'],
     wrap: {
         // on() — flexible public signature:
@@ -2886,344 +3028,4 @@ const publicApi = {
             }
         }
     }
-}
-
-
-// ── hx-action ──────────────────────────────────────────────────────────
-
-/**
- * hx-action attribute — auto-detects HTTP method from element type.
- * GET for links/buttons, POST for forms, or from hx-config method override.
- */
-const hxAction = {
-    requires: ['ajax'],
-    config: {attributeFilter: ['hx-action']},
-    on: {
-        'htmx:after:walk:init': (detail, api) => {
-            const root = detail.element
-            const actionSel = '[hx-action]'
-            const elements = [
-                ...(root.matches?.(actionSel) ? [root] : []),
-                ...root.querySelectorAll(actionSel)
-            ]
-            for (const el of elements) {
-                if (el._htmxActionBound) continue
-                el._htmxActionBound = true
-                const url = el.getAttribute('hx-action')
-                if (!url) continue
-                const isForm = el.matches('form')
-                const eventType = isForm ? 'submit' : 'click'
-                const method = isForm ? 'POST' : 'GET'
-                el.addEventListener(eventType, (evt) => {
-                    evt.preventDefault()
-                    api.ajax({element: el, request: {url, method}})
-                })
-            }
-        },
-    }
-}
-
-
-// ── hx-config ──────────────────────────────────────────────────────────
-
-/**
- * hx-config attribute — per-element configuration overrides merged into request context.
- * Supports JSON values with optional + prefix for merging object properties.
- */
-const hxConfig = {
-    requires: ['ajax'],
-    config: {attributeFilter: ['hx-config']},
-    on: {
-        'htmx:before:request': (detail, api) => {
-            const el = detail.element
-            if (!el) return
-            const configAttr = api.attr(el, 'hx-config')
-            if (!configAttr) return
-
-            let parsed
-            try { parsed = JSON.parse(configAttr) } catch { return }
-
-            // Apply parsed config to detail.request
-            for (let key in parsed) {
-                let val = parsed[key]
-                let merge = false
-                if (key.startsWith('+')) {
-                    merge = true
-                    key = key.slice(1)
-                }
-
-                if (key === 'action') {
-                    detail.request.url = val
-                    detail.request.shouldActivate = val
-                } else if (key === 'method') {
-                    detail.request.method = val
-                } else if (merge && val && typeof val === 'object' && !Array.isArray(val)
-                    && detail.request[key] && typeof detail.request[key] === 'object') {
-                    Object.assign(detail.request[key], val)
-                } else {
-                    detail.request[key] = val
-                }
-            }
-
-            // Fire htmx:config:request event with ctx
-            const ctx = {request: detail.request}
-            el.dispatchEvent(new CustomEvent('htmx:config:request', {
-                detail: {element: el, ctx},
-                bubbles: true,
-                cancelable: true,
-                composed: true,
-            }))
-        },
-    }
-}
-
-
-// ── hx-status:NNN ──────────────────────────────────────────────────────
-
-/**
- * hx-status:NNN attribute — per-status-code swap overrides.
- * Supports exact matches (hx-status:404), 2-digit wildcards (hx-status:50x),
- * and 1-digit wildcards (hx-status:5xx).
- */
-const hxStatus = {
-    requires: ['ajax'],
-    on: {
-        'htmx:before:response': (detail, api) => {
-            if (!detail.response?.raw) return
-            const status = detail.response.raw.status
-            const el = detail.element
-            if (!el) return
-
-            const str = status + ''
-            // Try patterns: exact (404), 2-digit wildcard (40x), 1-digit wildcard (4xx)
-            for (const pattern of [str, str.slice(0, 2) + 'x', str[0] + 'xx']) {
-                const attrName = 'hx-status:' + pattern
-                const statusValue = el.getAttribute(attrName)
-                if (statusValue != null) {
-                    // Parse and store overrides for application during swap
-                    const overrides = {}
-                    const tokens = statusValue.trim().split(/\s+/)
-                    for (const token of tokens) {
-                        const colonIdx = token.indexOf(':')
-                        if (colonIdx > 0) {
-                            const key = token.slice(0, colonIdx)
-                            let val = token.slice(colonIdx + 1)
-                            if (val === 'true') val = true
-                            else if (val === 'false') val = false
-                            overrides[key] = val
-                        }
-                    }
-
-                    // Handle push/replace-url immediately (needs element attribute change)
-                    if (overrides.push === false || overrides.push === 'false') {
-                        el.removeAttribute('hx-push-url')
-                    }
-
-                    // Store overrides on swap object (persists into before:swap detail)
-                    detail.swap = detail.swap || {}
-                    detail.swap._statusOverrides = overrides
-                    return // First match wins
-                }
-            }
-        },
-
-        'htmx:before:swap': (detail, api) => {
-            // Apply status overrides stored during before:response on the swap object
-            const overrides = detail.swap?._statusOverrides
-            if (!overrides) return
-
-            if (overrides.swap) {
-                detail.swap.style = overrides.swap
-            }
-            if (overrides.target) {
-                detail.swap.target = api.find(overrides.target, {from: detail.element})
-            }
-            if (overrides.select) {
-                // Re-filter content with the status-specific selector
-                const content = detail.swap?.content
-                if (content instanceof DocumentFragment) {
-                    const matches = content.querySelectorAll(overrides.select)
-                    const newFrag = document.createDocumentFragment()
-                    for (const match of matches) newFrag.appendChild(match)
-                    while (content.firstChild) content.removeChild(content.firstChild)
-                    content.appendChild(newFrag)
-                }
-            }
-        },
-    }
-}
-
-
-// ── strip modifier ─────────────────────────────────────────────────────
-
-/**
- * strip:true swap modifier — extracts children from top-level wrapper elements.
- * For each top-level element child in the content fragment, replaces it with its children.
- */
-const stripModifier = {
-    requires: ['swaps'],
-    on: {
-        'htmx:before:swap': (detail, api) => {
-            if (!detail.swap) return
-
-            // Check if strip is set directly (from hxSwap parse or OOB swap)
-            let shouldStrip = detail.swap.strip
-
-            // Also check if strip is embedded in the style string (from partials)
-            if (shouldStrip === undefined && detail.swap.style && typeof detail.swap.style === 'string' && detail.swap.style.includes('strip:')) {
-                const match = detail.swap.style.match(/\bstrip:(true|false)\b/)
-                if (match) {
-                    shouldStrip = match[1] === 'true'
-                    // Pre-parse the style to remove the strip modifier (so execute() doesn't re-process)
-                    detail.swap.strip = shouldStrip
-                    detail.swap.style = detail.swap.style.replace(/\s*strip:(true|false)\b/, '').trim()
-                }
-            }
-
-            if (!shouldStrip) return
-            const content = detail.swap.content
-            if (!(content instanceof DocumentFragment)) return
-
-            // For each top-level element child, replace with its children
-            for (const child of [...content.childNodes]) {
-                if (child.nodeType === Node.ELEMENT_NODE) {
-                    const childNodes = [...child.childNodes]
-                    child.replaceWith(...childNodes)
-                }
-            }
-        },
-    }
-}
-
-
-// ── hx-validate ─────────────────────────────────────────────────────────
-
-/**
- * Form validation — check form validity before issuing a request.
- * When hx-validate="true", the enclosing form must pass checkValidity()
- * and reportValidity() before the request proceeds.
- */
-const hxValidate = {
-    requires: ['ajax'],
-    config: {attributeFilter: ['hx-validate']},
-    on: {
-        'htmx:before:request': (detail, api) => {
-            const el = detail.element
-            if (!el) return
-            const validate = api.attr(el, 'hx-validate')
-            if (validate === 'false') return
-            if (!validate) return
-
-            const form = el.closest?.('form')
-            if (!form) return
-
-            if (!form.checkValidity()) {
-                form.reportValidity()
-                return false // cancel the request
-            }
-        },
-    }
-}
-
-
-// ── Swap Modifiers ─────────────────────────────────────────────────────
-
-/**
- * Handles scroll and delay modifiers on swap specifications.
- */
-const swapModifiers = {
-    requires: ['hx-swap'],
-    on: {
-        'htmx:before:swap': (detail, api) => {
-            const swap = detail.swap
-            if (!swap) return
-
-            // Non-blocking swap delay: swap:Nms with transition:false
-            if (swap.swap && swap.transition === false) {
-                const ms = parseInt(swap.swap, 10)
-                if (ms > 0) {
-                    const originalExecute = swap.execute
-                    swap.execute = () => {
-                        setTimeout(() => originalExecute(), ms)
-                    }
-                }
-            }
-        },
-        'htmx:after:swap': (detail, api) => {
-            const swap = detail.swap
-            if (!swap) return
-
-            const target = swap.target
-            if (!(target instanceof Element)) return
-
-            // scroll:top modifier
-            if (swap.scroll === 'top') {
-                target.scrollTop = 0
-            }
-            // scroll:bottom modifier
-            if (swap.scroll === 'bottom') {
-                target.scrollTop = target.scrollHeight
-            }
-        },
-    }
-}
-
-
-// ── Installation ────────────────────────────────────────────────────────
-// Order matters: dependencies must be installed before dependents.
-
-htmx.install('parser', parser)
-htmx.install('default-config', defaultConfig)
-htmx.install('meta-config', metaConfig)
-htmx.install('prefix', prefix)
-htmx.install('meta-character', metaCharacter)
-htmx.install('fragment-parsing', fragmentParsing)
-htmx.install('swaps', swaps)
-htmx.install('extended-selectors', extendedSelectors)
-htmx.install('inheritance', inheritance)
-htmx.install('delay-events', delayEvents)
-htmx.install('throttle-events', throttleEvents)
-htmx.install('ajax', ajax)
-htmx.install('default-trigger', defaultTrigger)
-htmx.install('default-swap', defaultSwap)
-htmx.install('default-headers', defaultHeaders)
-htmx.install('request-identifiers', requestIdentifiers)
-htmx.install('form-data', formData)
-htmx.install('hx-validate', hxValidate)
-htmx.install('hx-vals', hxVals)
-htmx.install('hx-headers', hxHeaders)
-htmx.install('response-headers', responseHeaders)
-htmx.install('no-swap', noSwap)
-htmx.install('etag-cache', etagCache)
-htmx.install('disconnected-guard', disconnectedGuard)
-htmx.install('hx-confirm', hxConfirm)
-htmx.install('hx-trigger', hxTrigger)
-htmx.install('hx-get', hxGet)
-htmx.install('hx-post', hxPost)
-htmx.install('hx-put', hxPut)
-htmx.install('hx-patch', hxPatch)
-htmx.install('hx-delete', hxDelete)
-htmx.install('hx-swap', hxSwap)
-htmx.install('swap-modifiers', swapModifiers)
-htmx.install('hx-target', hxTarget)
-htmx.install('swap-aliases', swapAliases)
-htmx.install('request-timeout', requestTimeout)
-htmx.install('request-queue', requestQueueExt)
-htmx.install('oob-swap', oobSwap)
-htmx.install('hx-select', hxSelect)
-htmx.install('script-processing', scriptProcessing)
-htmx.install('hx-indicator', hxIndicator)
-htmx.install('hx-disable', hxDisable)
-htmx.install('hx-on', hxOn)
-htmx.install('hx-preserve', hxPreserve)
-htmx.install('autofocus', autofocusAfterSwap)
-htmx.install('htmx-powered', htmxPowered)
-htmx.install('hx-ignore', hxIgnore)
-htmx.install('hx-boost', hxBoost)
-htmx.install('hx-action', hxAction)
-htmx.install('hx-config', hxConfig)
-htmx.install('hx-status', hxStatus)
-htmx.install('strip-modifier', stripModifier)
-htmx.install('history', historyMgmt)
-htmx.install('morph', morph)
-htmx.install('public-api', publicApi)
+})

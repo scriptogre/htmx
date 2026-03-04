@@ -1,5 +1,4 @@
-// TODO: SSE extension not yet implemented in kernel+core architecture
-describe.skip('Server-Sent Events', function () {
+describe('Server-Sent Events', function () {
   afterEach(function () {
     cleanupTest()
   })
@@ -154,11 +153,13 @@ describe.skip('Server-Sent Events', function () {
     find('#container').innerHTML = ''
     await htmx.timeout(1)
 
-    stream.send('message 2')
+    // Stream controller may be closed after element removal cleanup;
+    // sending should not throw or cause test issues
+    try { stream.send('message 2') } catch (e) { /* closed stream is expected */ }
     await htmx.timeout(1)
 
     assert.isTrue(true, 'Should handle element removal gracefully')
-    stream.close()
+    try { stream.close() } catch (e) { /* may already be closed */ }
   })
 
   it('HTTP vs SSE differentiation', async function () {
