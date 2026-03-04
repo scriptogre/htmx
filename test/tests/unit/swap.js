@@ -422,15 +422,40 @@ describe('swap() unit tests', function () {
     document.title = originalTitle
   })
 
-  it.skip('sets title from body tag response — TODO: title extraction not implemented', async function () {
+  it('sets title from body tag response', async function () {
+    const originalTitle = document.title
+    mockResponse('GET', '/test', '<html><head><title>Body Title</title></head><body><span>content</span></body></html>')
+    let div = createProcessedHTML('<div id="target" hx-get="/test">original</div>')
+    div.click()
+    await forRequest()
+    document.title.should.equal('Body Title')
+    document.title = originalTitle
   })
 
-  it.skip('decodes HTML entities in title — TODO: title extraction not implemented', async function () {
+  it('decodes HTML entities in title', async function () {
+    const originalTitle = document.title
+    mockResponse('GET', '/test', '<title>Tom &amp; Jerry</title><span>content</span>')
+    let div = createProcessedHTML('<div id="target" hx-get="/test">original</div>')
+    div.click()
+    await forRequest()
+    document.title.should.equal('Tom & Jerry')
+    document.title = originalTitle
   })
 
-  it.skip('does not swap title tag into page content — TODO: title extraction not implemented', async function () {
+  it('does not swap title tag into page content', async function () {
+    mockResponse('GET', '/test', '<title>Page Title</title><span>visible</span>')
+    let div = createProcessedHTML('<div id="target" hx-get="/test">original</div>')
+    div.click()
+    await forRequest()
+    find('#target').innerHTML.should.not.include('<title>')
+    find('#target').textContent.should.include('visible')
   })
 
-  it.skip('supports autofocus — TODO: autofocus after swap not implemented', async function () {
+  it('supports autofocus', async function () {
+    mockResponse('GET', '/test', '<input id="focused" autofocus><span>content</span>')
+    let div = createProcessedHTML('<div id="target" hx-get="/test">original</div>')
+    div.click()
+    await forRequest()
+    assert.equal(document.activeElement?.id, 'focused')
   })
 })

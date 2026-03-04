@@ -7,10 +7,7 @@ describe('ETag Tests', function () {
     cleanupTest()
   })
 
-  // TODO: ETag caching has not been implemented in the new kernel+core architecture yet.
-  // Re-enable these tests once ETag support is added.
-
-  it.skip('stores ETag from response header on element', async function () {
+  it('stores ETag from response header on element', async function () {
     mockResponse('GET', '/test', 'Response 1', {
       headers: { Etag: '"abc123"' },
     })
@@ -22,7 +19,7 @@ describe('ETag Tests', function () {
     assert.equal(button._htmx.etag, '"abc123"')
   })
 
-  it.skip('sends If-None-Match header on subsequent request with stored ETag', async function () {
+  it('sends If-None-Match header on subsequent request with stored ETag', async function () {
     mockResponse('GET', '/test', 'Response 1', {
       headers: { Etag: '"abc123"' },
     })
@@ -48,7 +45,7 @@ describe('ETag Tests', function () {
     assert.equal(secondCall.request.headers['If-none-match'], '"abc123"')
   })
 
-  it.skip('updates stored ETag when new ETag received', async function () {
+  it('updates stored ETag when new ETag received', async function () {
     mockResponse('GET', '/test1', 'Response 1', {
       headers: { Etag: '"abc123"' },
     })

@@ -70,10 +70,7 @@ describe('request lifecycle tests', function () {
     assert.equal(calls.length, 0)
   })
 
-  // TODO: hx-confirm is installed after hx-get in extension order, so it currently
-  // cannot prevent the request from being issued. This test should pass once
-  // hx-confirm is installed before hx-get/hx-post/etc.
-  it.skip('returns early if confirm returns false', async function () {
+  it('returns early if confirm returns false', async function () {
     let originalConfirm = window.confirm
     window.confirm = () => false
 

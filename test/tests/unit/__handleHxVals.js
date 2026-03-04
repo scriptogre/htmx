@@ -79,11 +79,7 @@ describe('hx-vals processing tests', function () {
     assert.include(call.url, 'key=value')
   })
 
-  // TODO: The following tests are skipped because the new architecture only supports
-  // JSON format for hx-vals. Config syntax (key:value) and js:/javascript: prefix
-  // are not implemented in the kernel+core hx-vals extension.
-
-  it.skip('handles basic key-value config syntax', async function () {
+  it('handles basic key-value config syntax', async function () {
     mockResponse('POST', '/test', 'ok')
     let btn = createProcessedHTML(
       '<button hx-post="/test" hx-swap="none" hx-vals="foo:bar">Click</button>',
@@ -97,7 +93,7 @@ describe('hx-vals processing tests', function () {
     assert.equal(params.get('foo'), 'bar')
   })
 
-  it.skip('handles multiple key-value pairs in config syntax', async function () {
+  it('handles multiple key-value pairs in config syntax', async function () {
     mockResponse('POST', '/test', 'ok')
     let btn = createProcessedHTML(
       '<button hx-post="/test" hx-swap="none" hx-vals="a:1, b:2, c:3">Click</button>',
@@ -113,7 +109,7 @@ describe('hx-vals processing tests', function () {
     assert.equal(params.get('c'), '3')
   })
 
-  it.skip('handles quoted string values in config syntax', async function () {
+  it('handles quoted string values in config syntax', async function () {
     mockResponse('POST', '/test', 'ok')
     let btn = createProcessedHTML(
       '<button hx-post="/test" hx-swap="none" hx-vals=\'name:"John Doe", age:30\'>Click</button>',
@@ -128,7 +124,7 @@ describe('hx-vals processing tests', function () {
     assert.equal(params.get('age'), '30')
   })
 
-  it.skip('handles js: prefix with object return', async function () {
+  it('handles js: prefix with object return', async function () {
     mockResponse('POST', '/test', 'ok')
     let btn = createProcessedHTML(
       '<button hx-post="/test" hx-swap="none" hx-vals="js:{foo: \'bar\', num: 42}">Click</button>',
@@ -143,7 +139,7 @@ describe('hx-vals processing tests', function () {
     assert.equal(params.get('num'), '42')
   })
 
-  it.skip('handles js: prefix with dynamic values', async function () {
+  it('handles js: prefix with dynamic values', async function () {
     window.testValue = 'dynamic'
     mockResponse('POST', '/test', 'ok')
     let btn = createProcessedHTML(
@@ -159,7 +155,7 @@ describe('hx-vals processing tests', function () {
     delete window.testValue
   })
 
-  it.skip('handles javascript: prefix', async function () {
+  it('handles javascript: prefix', async function () {
     mockResponse('POST', '/test', 'ok')
     let btn = createProcessedHTML(
       '<button hx-post="/test" hx-swap="none" hx-vals="javascript:{foo: \'baz\'}">Click</button>',

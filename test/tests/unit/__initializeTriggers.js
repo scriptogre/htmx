@@ -127,16 +127,54 @@ describe('trigger initialization behavior tests', function () {
     assert.equal(calls.length, 2, 'click after throttle window should fire')
   })
 
-  // TODO: consume modifier not yet implemented in kernel+core architecture
-  it.skip('consume modifier stops event propagation', function () {
+  it('consume modifier stops event propagation', async function () {
+    mockResponse('GET', '/test', 'ok')
+    let container = createProcessedHTML(
+      '<div id="outer"><button hx-get="/test" hx-swap="none" hx-trigger="click consume">Click</button></div>',
+    )
+    let propagated = false
+    container.addEventListener('click', () => { propagated = true })
+    container.querySelector('button').click()
+    await forRequest()
+    assert.isFalse(propagated, 'click should not propagate to parent')
   })
 
-  // TODO: changed modifier not yet implemented in kernel+core architecture
-  it.skip('changed modifier only triggers when value changes', function () {
+  it('changed modifier only triggers when value changes', async function () {
+    mockResponse('GET', /\/test.*/, 'ok')
+    let input = createProcessedHTML(
+      '<input hx-get="/test" hx-swap="none" hx-trigger="keyup changed" value="initial">',
+    )
+    // Fire keyup without changing value — should NOT trigger
+    input.dispatchEvent(new Event('keyup'))
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(fetchMock.getCalls().length, 0, 'should not fire when value unchanged')
+
+    // Change value and fire keyup — should trigger
+    input.value = 'updated'
+    input.dispatchEvent(new Event('keyup'))
+    await forRequest()
+    assert.equal(fetchMock.getCalls().length, 1, 'should fire when value changed')
+
+    // Fire keyup again without changing — should NOT trigger
+    input.dispatchEvent(new Event('keyup'))
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(fetchMock.getCalls().length, 1, 'should not fire again when value unchanged')
   })
 
-  // TODO: event filters (bracket syntax) not yet implemented in kernel+core architecture
-  it.skip('event filter evaluates condition', function () {
+  it('event filter evaluates condition', async function () {
+    mockResponse('GET', '/test', 'ok')
+    let btn = createProcessedHTML(
+      '<button hx-get="/test" hx-swap="none" hx-trigger="click[ctrlKey]">Click</button>',
+    )
+    // Click without ctrlKey — should NOT trigger
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: false }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(fetchMock.getCalls().length, 0, 'should not fire without ctrlKey')
+
+    // Click with ctrlKey — should trigger
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }))
+    await forRequest()
+    assert.equal(fetchMock.getCalls().length, 1, 'should fire with ctrlKey')
   })
 
   it('from modifier listens on different element', async function () {

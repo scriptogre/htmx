@@ -53,9 +53,7 @@ describe('HX response header handling tests', function () {
     assert.include(find('#target').innerHTML, '<span>appended</span>')
   })
 
-  // TODO: HX-Reselect sets detail.swap.select but the swap function doesn't consume
-  // the select property yet. This test should pass once select filtering is implemented.
-  it.skip('handles HX-Reselect header by selecting specific content', async function () {
+  it('handles HX-Reselect header by selecting specific content', async function () {
     mockResponse('GET', '/test', '<div id="keep">wanted</div><div id="discard">unwanted</div>', {
       headers: { 'HX-Reselect': '#keep' },
     })

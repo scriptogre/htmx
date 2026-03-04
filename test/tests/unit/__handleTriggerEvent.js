@@ -7,10 +7,7 @@ describe('trigger event handling tests', function () {
     cleanupTest()
   })
 
-  // TODO: In the kernel+core architecture, disconnected elements can still
-  // issue requests since click handlers remain bound. The kernel emits events
-  // on document.body for disconnected elements.
-  it.skip('does not issue request if element not connected', async function () {
+  it('does not issue request if element not connected', async function () {
     mockResponse('GET', '/test', 'response')
     let div = createProcessedHTML('<div hx-get="/test"></div>')
     div.remove()

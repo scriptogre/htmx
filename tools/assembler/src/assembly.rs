@@ -48,6 +48,8 @@ struct EmitSite {
     event_name: String,
     line_start: usize,
     indent: String,
+    /// The source text of the third argument to api.emit() (the detail object).
+    detail_arg: String,
 }
 
 struct Wrap {
@@ -77,7 +79,7 @@ enum InjectKind {
     DefineFns,
     ApiMembers,
     Boot,
-    EmitSite { event_name: String, indent: String },
+    EmitSite { event_name: String, indent: String, detail_arg: String },
     FnRewrite { body_start: usize },
 }
 
@@ -847,7 +849,13 @@ fn find_emit_calls_recursive(node: Node, src: &[u8], source: &str, out: &mut Vec
                                 let emit_pos = node.start_byte();
                                 let line_start = source[..emit_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
                                 let indent = source[line_start..emit_pos].chars().take_while(|c| c.is_whitespace()).collect();
-                                out.push(EmitSite { event_name, line_start, indent });
+                                // Third arg is the detail object passed to handlers
+                                let detail_arg = if args.len() >= 3 {
+                                    args[2].utf8_text(src).unwrap().to_string()
+                                } else {
+                                    "detail".to_string()
+                                };
+                                out.push(EmitSite { event_name, line_start, indent, detail_arg });
                             }
                         }
                         // Don't return — still recurse into children in case there are
@@ -948,8 +956,10 @@ fn inject_handlers_in_text_recursive(
             out.push_str(&indent(&processed, &extra_indent));
             out.push('\n');
             out.push_str(&format!("{}}}\n", site.indent));
-            out.push_str(&format!("{}if ({}({}, {}) === false) return false\n",
-                site.indent, fn_name, handler.params.0, handler.params.1));
+            // Call with the emit site's actual argument names (detail, api),
+            // not the handler's parameter names which may be different.
+            out.push_str(&format!("{}if ({}({}, api) === false) return false\n",
+                site.indent, fn_name, site.detail_arg));
             out.push_str(&format!("{}// ── {} {}\n\n", site.indent, close_tag, dash(&close_tag)));
         }
 
@@ -2009,6 +2019,7 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
             inject_points.push((site.line_start, InjectKind::EmitSite {
                 event_name: site.event_name.clone(),
                 indent: site.indent.clone(),
+                detail_arg: site.detail_arg.clone(),
             }));
         }
     }
@@ -2132,7 +2143,7 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
 
                 cursor = end_line_end;
             }
-            InjectKind::EmitSite { event_name, indent: site_indent } => {
+            InjectKind::EmitSite { event_name, indent: site_indent, detail_arg } => {
                 if let Some(handlers) = event_handlers.get(event_name.as_str()) {
                     out.push('\n');
                     for &(ext_idx, h_idx) in handlers {
@@ -2156,8 +2167,10 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
                         out.push_str(&indent(&processed, &extra_indent));
                         out.push('\n');
                         out.push_str(&format!("{}}}\n", site_indent));
-                        out.push_str(&format!("{}if ({}({}, {}) === false) return false\n",
-                            site_indent, fn_name, handler.params.0, handler.params.1));
+                        // Call with the emit site's actual argument names, not the handler's
+                        // parameter names which may differ.
+                        out.push_str(&format!("{}if ({}({}, api) === false) return false\n",
+                            site_indent, fn_name, detail_arg));
                         out.push_str(&format!("{}// ── {} {}\n\n", site_indent, close_tag, dash(&close_tag)));
                     }
                 }

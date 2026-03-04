@@ -374,7 +374,7 @@ const parser = {
  * Merge JSON values from hx-vals into request body or URL query params.
  */
 const hxVals = {
-    requires: ['form-data'],
+    requires: ['form-data', 'parser'],
     config: {attributeFilter: ['hx-vals']},
     on: {
         'htmx:before:request': (detail, api) => {
@@ -382,7 +382,20 @@ const hxVals = {
             if (!valsAttr) return
 
             let vals
-            try { vals = JSON.parse(valsAttr) } catch { return }
+            // js: or javascript: prefix — evaluate as expression
+            const jsMatch = valsAttr.match(/^(?:js|javascript):(.*)$/s)
+            if (jsMatch) {
+                let expr = jsMatch[1].trim()
+                if (expr[0] !== '{') expr = '{' + expr + '}'
+                try { vals = new Function('return (' + expr + ')')() } catch { return }
+            } else {
+                // Try JSON first, then fall back to config syntax
+                try { vals = JSON.parse(valsAttr) } catch {
+                    vals = api.parse(valsAttr)
+                }
+            }
+
+            if (!vals || typeof vals !== 'object') return
 
             const method = detail.request.method?.toUpperCase()
             const usesQueryParams = /GET|DELETE/.test(method)
@@ -538,6 +551,28 @@ const noSwap = {
             if (api.config.noSwap.includes(detail.response?.status)) {
                 detail.swap = detail.swap || {}
                 detail.swap.style = 'none'
+            }
+        },
+    }
+}
+
+/**
+ * Store ETag from response headers and send If-None-Match on subsequent requests.
+ */
+const etagCache = {
+    requires: ['ajax'],
+    on: {
+        'htmx:before:request': (detail) => {
+            const etag = detail.element?._htmx?.etag
+            if (etag) {
+                detail.request.headers['If-none-match'] = etag
+            }
+        },
+        'htmx:after:request': (detail) => {
+            const etag = detail.response?.headers?.etag || detail.response?.raw?.headers?.get?.('Etag')
+            if (etag) {
+                detail.element._htmx = detail.element._htmx || {}
+                detail.element._htmx.etag = etag
             }
         },
     }
@@ -899,7 +934,14 @@ const hxTrigger = {
                     // Build a filtered+consume-aware handler wrapping execute
                     const targetFilter = t.target || null
                     const consume = !!t.consume
+                    const changed = !!t.changed
+                    let lastValue = changed ? element.value : undefined
                     const handler = (event) => {
+                        // Changed modifier: only fire when the element's value actually changed
+                        if (changed) {
+                            if (element.value === lastValue) return
+                            lastValue = element.value
+                        }
                         // Evaluate filter expression against the event
                         // Properties of the event are available as bare names (e.g. [ctrlKey], [foo])
                         if (filterExpr !== null) {
@@ -1097,6 +1139,34 @@ const defaultHeaders = {
             detail.request.headers = {...api.config.defaultHeaders, ...detail.request.headers}
             detail.request.headers['HX-Current-URL'] ??= location.href
         },
+    }
+}
+
+/**
+ * Add HX-Source, HX-Target, and HX-Request-Type headers to every request.
+ * HX-Source identifies the triggering element, HX-Target identifies the swap target,
+ * and HX-Request-Type indicates whether the server should return a full page or fragment.
+ */
+const requestIdentifiers = {
+    requires: ['ajax'],
+    on: {
+        'htmx:before:request': (detail, api) => {
+            function ident(el) {
+                if (el === document.body) return 'body'
+                const tag = el.tagName?.toLowerCase() || ''
+                return el.id ? `${tag}#${el.id}` : tag
+            }
+
+            const el = detail.element
+            detail.request.headers['HX-Source'] = ident(el)
+
+            const targetAttr = api.attr(el, 'hx-target')
+            const selectAttr = api.attr(el, 'hx-select')
+            const target = targetAttr ? api.find(targetAttr, {from: el}) : el
+
+            if (target) detail.request.headers['HX-Target'] = ident(target)
+            detail.request.headers['HX-Request-Type'] = (target === document.body || selectAttr) ? 'full' : 'partial'
+        }
     }
 }
 
@@ -2070,6 +2140,42 @@ const hxPreserve = {
 
 
 // ── hx-ignore ──────────────────────────────────────────────────────────
+
+/**
+ * Focus elements with the autofocus attribute after swap.
+ */
+const autofocusAfterSwap = {
+    on: {
+        'htmx:after:swap': (detail) => {
+            const target = detail.swap?.target
+            if (!target) return
+            const el = target.querySelector?.('[autofocus]')
+            if (el) el.focus()
+        },
+    }
+}
+
+/**
+ * Prevent requests from disconnected elements (removed from the DOM).
+ */
+const disconnectedGuard = {
+    on: {
+        'htmx:before:trigger': (detail) => {
+            if (!detail.element?.isConnected) return false
+        },
+    }
+}
+
+/**
+ * Mark initialized elements with data-htmx-powered attribute for cleanup tracking.
+ */
+const htmxPowered = {
+    on: {
+        'htmx:after:init': (detail) => {
+            detail.element.setAttribute('data-htmx-powered', 'true')
+        },
+    }
+}
 
 /**
  * Prevents processing of elements within hx-ignore containers.
@@ -3081,12 +3187,15 @@ htmx.install('ajax', ajax)
 htmx.install('default-trigger', defaultTrigger)
 htmx.install('default-swap', defaultSwap)
 htmx.install('default-headers', defaultHeaders)
+htmx.install('request-identifiers', requestIdentifiers)
 htmx.install('form-data', formData)
 htmx.install('hx-validate', hxValidate)
 htmx.install('hx-vals', hxVals)
 htmx.install('hx-headers', hxHeaders)
 htmx.install('response-headers', responseHeaders)
 htmx.install('no-swap', noSwap)
+htmx.install('etag-cache', etagCache)
+htmx.install('disconnected-guard', disconnectedGuard)
 htmx.install('hx-confirm', hxConfirm)
 htmx.install('hx-trigger', hxTrigger)
 htmx.install('hx-get', hxGet)
@@ -3107,6 +3216,8 @@ htmx.install('hx-indicator', hxIndicator)
 htmx.install('hx-disable', hxDisable)
 htmx.install('hx-on', hxOn)
 htmx.install('hx-preserve', hxPreserve)
+htmx.install('autofocus', autofocusAfterSwap)
+htmx.install('htmx-powered', htmxPowered)
 htmx.install('hx-ignore', hxIgnore)
 htmx.install('hx-boost', hxBoost)
 htmx.install('hx-action', hxAction)
