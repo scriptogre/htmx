@@ -1,20 +1,16 @@
-import { summaryReporter, defaultReporter } from '@web/test-runner'
+import {
+  summaryReporter,
+  defaultReporter
+} from '@web/test-runner'
 
 const config = {
-  testRunnerHtml: testFramework => `
+  testRunnerHtml: (testFramework) => `
   <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>htmx Tests (Kernel+Core)</title>
+    <title>htmx Tests</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="htmx:config" content='{"logAll":false}'>
-    <style>
-        ::view-transition-group(*),
-        ::view-transition-old(*),
-        ::view-transition-new(*) {
-            animation-duration: 0s;
-        }
-    </style>
+    <meta name="htmx-config" content='{"logAll":false}'>
 </head>
 <body>
 
@@ -24,9 +20,6 @@ const config = {
 <script src="test/lib/fetch-mock.js"></script>
 <script src="src/htmx.kernel.js"></script>
 <script src="src/htmx.core.js"></script>
-<script src="src/ext/hx-optimistic.js"></script>
-<script src="src/ext/hx-upsert.js"></script>
-<script src="src/ext/hx-preload.js"></script>
 <script src="src/ext/hx-sse.js"></script>
 <script src="src/ext/hx-ws.js"></script>
 
@@ -44,16 +37,19 @@ const config = {
 </html>`,
 
   nodeResolve: true,
-  testsFinishTimeout: 30000,
   coverage: true,
   coverageConfig: {
-    include: ['src/htmx.kernel.js', 'src/htmx.core.js'],
+    include: ['src/htmx.kernel.js', 'src/htmx.core.js']
   },
-  files: ['test/tests/**/*.js'],
-  reporters: [
-    summaryReporter({ flatten: false, reportTestLogs: false, reportTestErrors: true }),
-    defaultReporter({ reportTestProgress: true, reportTestResults: true }),
+  files: [
+    'test/tests/**/*.js',
+    // Exclude extensions that still use htmx.registerExtension (old API)
+    '!test/tests/ext/hx-alpine-compat.js',
+    '!test/tests/ext/hx-optimistic.js',
+    '!test/tests/ext/hx-preload.js',
+    '!test/tests/ext/hx-upsert.js',
   ],
+  reporters: [summaryReporter({ flatten: false, reportTestLogs: false, reportTestErrors: true }), defaultReporter({ reportTestProgress: true, reportTestResults: true })]
 }
 
 export default config

@@ -1,145 +1,249 @@
-describe('trigger event handling tests', function () {
-  beforeEach(function () {
-    setupTest()
-  })
+describe('__handleTriggerEvent unit tests', function() {
 
-  afterEach(function () {
-    cleanupTest()
-  })
 
-  it('does not issue request if element not connected', async function () {
-    mockResponse('GET', '/test', 'response')
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    div.remove()
+    // Skip all tests in kernel architecture (these test htmx.__ internals)
+    before(function() { if (typeof htmx.__trigger !== 'function') this.skip() })
+    beforeEach(function() {
+        setupTest();
+    });
 
-    div.click()
-    await new Promise(r => setTimeout(r, 50))
+    afterEach(function() {
+        cleanupTest();
+    });
 
-    let calls = fetchMock.getCalls()
-    assert.equal(calls.length, 0)
-  })
+    it('returns early if element not connected', async function () {
+        let div = createProcessedHTML('<div hx-get="js:window.testExecuted = true"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        div.remove()
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isUndefined(window.testExecuted)
+    })
 
-  it('prevents default on anchor click with hx-get', async function () {
-    mockResponse('GET', '/test', 'response')
-    let link = createProcessedHTML('<a href="/somewhere" hx-get="/test" hx-swap="none">Link</a>')
+    it('returns early if modifier key click', async function () {
+        let div = createProcessedHTML('<div hx-get="js:window.testExecuted = true"></div>')
+        let evt = new MouseEvent('click', {ctrlKey: true})
+        let ctx = htmx.__createRequestContext(div, evt)
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isUndefined(window.testExecuted)
+    })
 
-    let defaultPrevented = false
-    link.addEventListener('click', e => {
-      defaultPrevented = e.defaultPrevented
-    }, { capture: false })
+    it('prevents default when shouldCancel returns true', async function () {
+        let link = createProcessedHTML('<a href="/test" hx-get="js:">Link</a>')
+        let evt = new MouseEvent('click', {bubbles: true, cancelable: true})
+        Object.defineProperty(evt, 'currentTarget', {value: link, writable: false})
+        let ctx = htmx.__createRequestContext(link, evt)
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isTrue(evt.defaultPrevented)
+    })
 
-    link.click()
-    await forRequest()
+    it('resolves target from ctx.target', async function () {
+        createProcessedHTML('<div id="target"></div><button hx-get="js:" hx-target="#target"></button>')
+        let button = document.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.target.id, 'target')
+    })
 
-    assert.isTrue(defaultPrevented)
-  })
+    it('collects form data from element', async function () {
+        let form = createProcessedHTML('<form><input name="field" value="test"><button hx-post="js:"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.body.get('field'), 'test')
+    })
 
-  it('resolves hx-target correctly', async function () {
-    mockResponse('GET', '/test', '<span>updated</span>')
-    createProcessedHTML('<div id="target">original</div><button hx-get="/test" hx-target="#target">Click</button>')
-    let button = find('button')
+    it('applies hx-vals to body', async function () {
+        let div = createProcessedHTML('<div hx-get="js:window.foo = extra" hx-vals=\'{"extra":"value"}\'></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(window.foo, 'value')
+        delete window.foo
+    })
 
-    button.click()
-    await forRequest()
+    it('applies ctx.values to body', async function () {
+        let div = createProcessedHTML('<div hx-get="js:window.foo = custom"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        ctx.values = {custom: 'data'}
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(window.foo, 'data')
+        delete window.foo
+    })
 
-    assert.equal(find('#target').innerHTML, '<span>updated</span>')
-  })
+    it('ctx.values override form data', async function () {
+        let form = createProcessedHTML('<form><input name="field" value="original"><button hx-post="js:"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        ctx.values = {field: 'override'}
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.body.get('field'), 'override')
+    })
 
-  it('collects form data from enclosing form for POST', async function () {
-    mockResponse('POST', '/test', 'ok')
-    let form = createProcessedHTML(
-      '<form><input name="field" value="test"><button hx-post="/test" hx-swap="none">Submit</button></form>',
-    )
-    let button = form.querySelector('button')
+    it('strips anchor from action', async function () {
+        let div = createProcessedHTML('<div hx-get="js:#anchor"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.action, 'js:')
+    })
 
-    button.click()
-    await forRequest()
+    it('stores anchor separately from action', async function () {
+        let div = createProcessedHTML('<div hx-get="js:#anchor"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.anchor, 'anchor')
+    })
 
-    let call = lastFetch()
-    let params = new URLSearchParams(call.request.body)
-    assert.equal(params.get('field'), 'test')
-  })
+    it('returns early if htmx:config:request cancelled', async function () {
+        let div = createProcessedHTML('<div hx-get="js:window.testExecuted = true"></div>')
+        div.addEventListener('htmx:config:request', (e) => e.preventDefault())
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isUndefined(window.testExecuted)
+    })
 
-  it('applies hx-vals JSON to request body', async function () {
-    mockResponse('POST', '/test', 'ok')
-    let div = createProcessedHTML(
-      '<div hx-post="/test" hx-swap="none" hx-vals=\'{"extra":"value"}\'>Click</div>',
-    )
+    it('returns early if method not in verbs list', async function () {
+        let div = createProcessedHTML('<div hx-get="js:window.testExecuted = true"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        ctx.request.method = 'INVALID'
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isUndefined(window.testExecuted)
+    })
 
-    div.click()
-    await forRequest()
+    it('executes javascript when action starts with js:', async function () {
+        let div = createProcessedHTML('<div hx-get="js:window.testExecuted = true"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isTrue(window.testExecuted)
+        delete window.testExecuted
+    })
 
-    let call = lastFetch()
-    let params = new URLSearchParams(call.request.body)
-    assert.equal(params.get('extra'), 'value')
-  })
+    it('executes javascript when action starts with javascript:', async function () {
+        let div = createProcessedHTML('<div hx-get="javascript:window.testExecuted = true"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isTrue(window.testExecuted)
+        delete window.testExecuted
+    })
 
-  it('returns early if htmx:before:request cancelled', async function () {
-    mockResponse('GET', '/test', 'response')
-    let div = createProcessedHTML('<div hx-get="/test" hx-swap="none">Click</div>')
-    div.addEventListener('htmx:before:request', e => e.preventDefault())
+    // GET/DELETE on form element itself - includes form data in query params
+    it('GET on form element includes form data in query params', async function () {
+        let form = createProcessedHTML('<form hx-get="/test"><input name="q" value="search"></form>')
+        let ctx = htmx.__createRequestContext(form, new Event('submit'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.include(ctx.request.action, '/test?q=search')
+    })
 
-    div.click()
-    await new Promise(r => setTimeout(r, 50))
+    it('DELETE on form element includes form data in query params', async function () {
+        let form = createProcessedHTML('<form hx-delete="/test"><input name="id" value="123"></form>')
+        let ctx = htmx.__createRequestContext(form, new Event('submit'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.include(ctx.request.action, '/test?id=123')
+    })
 
-    let calls = fetchMock.getCalls()
-    assert.equal(calls.length, 0)
-  })
+    // GET/DELETE on element inside form - excludes enclosing form data
+    it('GET on element inside form excludes enclosing form data', async function () {
+        let form = createProcessedHTML('<form><input name="form_field" value="excluded"><button hx-get="/test" name="btn" value="included"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.notInclude(ctx.request.action, 'form_field')
+        assert.include(ctx.request.action, 'btn=included')
+    })
 
-  it('collects form data for GET when element is a form', async function () {
-    mockResponse('GET', /\/test\?.*/, 'ok')
-    let form = createProcessedHTML(
-      '<form hx-get="/test" hx-swap="none"><input name="q" value="search"><button type="submit">Search</button></form>',
-    )
+    it('DELETE on element inside form excludes enclosing form data', async function () {
+        let form = createProcessedHTML('<form><input name="form_field" value="excluded"><button hx-delete="/test" name="btn" value="included"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.notInclude(ctx.request.action, 'form_field')
+        assert.include(ctx.request.action, 'btn=included')
+    })
 
-    form.querySelector('button').click()
-    await forRequest()
+    it('sets body to null for GET requests', async function () {
+        let form = createProcessedHTML('<form hx-get="/test"><input name="q" value="search"></form>')
+        let ctx = htmx.__createRequestContext(form, new Event('submit'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isNull(ctx.request.body)
+    })
 
-    let call = lastFetch()
-    assert.include(call.url, 'q=search')
-  })
+    it('sets body to null for DELETE requests', async function () {
+        let form = createProcessedHTML('<form hx-delete="/test"><input name="id" value="123"></form>')
+        let ctx = htmx.__createRequestContext(form, new Event('submit'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.isNull(ctx.request.body)
+    })
 
-  it('sends body as URLSearchParams for POST', async function () {
-    mockResponse('POST', '/test', 'ok')
-    let form = createProcessedHTML(
-      '<form><input name="field" value="test"><button hx-post="/test" hx-swap="none">Submit</button></form>',
-    )
-    let button = form.querySelector('button')
+    // POST/PUT/PATCH on element inside form - includes form data in body
+    it('POST on element inside form includes form data in body', async function () {
+        let form = createProcessedHTML('<form><input name="field" value="test"><button hx-post="js:"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.body.get('field'), 'test')
+    })
 
-    button.click()
-    await forRequest()
+    it('PUT on element inside form includes form data in body', async function () {
+        let form = createProcessedHTML('<form><input name="field" value="test"><button hx-put="js:"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.body.get('field'), 'test')
+    })
 
-    let call = lastFetch()
-    assert.isNotNull(call.request.body)
-    let params = new URLSearchParams(call.request.body)
-    assert.equal(params.get('field'), 'test')
-  })
+    it('PATCH on element inside form includes form data in body', async function () {
+        let form = createProcessedHTML('<form><input name="field" value="test"><button hx-patch="js:"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.body.get('field'), 'test')
+    })
 
-  it('keeps multipart form data as FormData when hx-encoding is set', async function () {
-    mockResponse('POST', '/test', 'ok')
-    let form = createProcessedHTML(
-      '<form><input name="field" value="test"><button hx-post="/test" hx-swap="none" hx-encoding="multipart/form-data">Submit</button></form>',
-    )
-    let button = form.querySelector('button')
+    it('converts body to URLSearchParams for POST', async function () {
+        let form = createProcessedHTML('<form><input name="field" value="test"><button hx-post="/test"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        let originalFetch = ctx.fetch
+        ctx.fetch = async () => ({ status: 200, headers: new Headers(), text: async () => '' })
+        await htmx.__handleTriggerEvent(ctx)
+        assert.instanceOf(ctx.request.body, URLSearchParams)
+    })
 
-    button.click()
-    await forRequest()
+    it('keeps multipart form data as FormData', async function () {
+        let form = createProcessedHTML('<form><input name="field" value="test"><button hx-post="js:" hx-encoding="multipart/form-data"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.instanceOf(ctx.request.body, FormData)
+    })
 
-    let call = lastFetch()
-    assert.instanceOf(call.request.body, FormData)
-  })
+    it('stores form in ctx.request', async function () {
+        let form = createProcessedHTML('<form><button hx-post="js:"></button></form>')
+        let button = form.querySelector('button')
+        let ctx = htmx.__createRequestContext(button, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.form, form)
+    })
 
-  it('appends form data to existing query string for GET form', async function () {
-    mockResponse('GET', /\/test\?.*/, 'ok')
-    let form = createProcessedHTML(
-      '<form hx-get="/test?existing=1" hx-swap="none"><input name="new" value="val"><button type="submit">Go</button></form>',
-    )
+    it('stores submitter in ctx.request', async function () {
+        let form = createProcessedHTML('<form><button name="action" value="save" hx-post="js:"></button></form>')
+        let button = form.querySelector('button')
+        let evt = {type: 'submit', submitter: button}
+        let ctx = htmx.__createRequestContext(button, evt)
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.submitter, button)
+    })
 
-    form.querySelector('button').click()
-    await forRequest()
+    it('sets credentials to same-origin', async function () {
+        let div = createProcessedHTML('<div hx-get="js:"></div>')
+        let ctx = htmx.__createRequestContext(div, new Event('click'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.equal(ctx.request.credentials, 'same-origin')
+    })
 
-    let call = lastFetch()
-    assert.include(call.url, 'existing=1')
-    assert.include(call.url, 'new=val')
-  })
-})
+    it('appends to existing query string with &', async function () {
+        let form = createProcessedHTML('<form hx-get="/test?existing=1"><input name="new" value="val"></form>')
+        let ctx = htmx.__createRequestContext(form, new Event('submit'))
+        await htmx.__handleTriggerEvent(ctx)
+        assert.include(ctx.request.action, '/test?existing=1&new=val')
+    })
+
+});

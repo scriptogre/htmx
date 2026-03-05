@@ -96,7 +96,6 @@ htmx_after_init: (elt) => {
 - `getSelectors()` was used to tell htmx which elements to process
 - In htmx 4, all elements are processed and you check attributes in hooks
 - This is more flexible as you can check any condition, not just selectors
-- Note: SSE is now built into htmx 4 core, no extension needed
 
 ---
 
@@ -455,7 +454,7 @@ htmx_config_request: (elt, detail) => {
 
 1. **Event-based hooks** instead of single `onEvent` callback
 2. **Underscores** in hook names (not colons)
-3. **Extension approval** required via meta tag
+3. **No `hx-ext`** — extensions load by including the script (config whitelist is optional)
 4. **Detail object** contains full context (`detail.ctx`)
 5. **Internal API** provided via `init` hook
 6. **No `getSelectors()`** - use element-level hooks instead

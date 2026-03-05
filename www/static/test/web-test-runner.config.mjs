@@ -7,14 +7,7 @@ const config = {
     <meta charset="utf-8" />
     <title>htmx Tests</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="htmx:config" content='{"logAll":false, "extensions": "hx-optimistic,preload"}'>
-    <style>
-        ::view-transition-group(*),
-        ::view-transition-old(*),
-        ::view-transition-new(*) {
-            animation-duration: 0s;
-        }
-    </style>
+    <meta name="htmx-config" content='{"logAll":false}'>
 </head>
 <body>
 
@@ -23,8 +16,6 @@ const config = {
 <script src="node_modules/chai/chai.js"></script>
 <script src="test/lib/fetch-mock.js"></script>
 <script src="src/htmx.js"></script>
-<script src="../src/ext/hx-optimistic.js"></script>
-<script src="../src/ext/hx-preload.js"></script>
 
 <script class="mocha-init">
     window.should = window.chai.should()

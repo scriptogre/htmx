@@ -332,6 +332,9 @@ htmx.install('swaps', {
                     case 'delete':
                         target.remove();
                         break
+                    case 'textContent':
+                        target.textContent = content.textContent;
+                        break
                     case 'none':
                         break
                     default:
@@ -874,8 +877,10 @@ htmx.install('form-data', {
 })
 /**
  * Form validation — check form validity before issuing a request.
- * When hx-validate="true", the enclosing form must pass checkValidity()
- * and reportValidity() before the request proceeds.
+ * By default, forms validate unless novalidate is set.
+ * hx-validate="true" forces validation (overrides novalidate).
+ * hx-validate="false" disables validation.
+ * formnovalidate on the triggering button skips validation.
  */
 htmx.install('hx-validate', {
     requires: ['ajax'],
@@ -884,16 +889,39 @@ htmx.install('hx-validate', {
         'htmx:before:request': (detail, api) => {
             const el = detail.element
             if (!el) return
-            const validate = api.attr(el, 'hx-validate')
-            if (validate === 'false') return
-            if (!validate) return
 
-            const form = el.closest?.('form')
+            const validate = api.attr(el, 'hx-validate')
+
+            // hx-validate="false" — skip validation entirely
+            if (validate === 'false') return
+
+            // Find the enclosing form (or the element itself if it is a form)
+            const form = el.matches?.('form') ? el : el.closest?.('form')
+
+            // For elements with hx-validate="true", validate even without a form
+            if (validate === 'true' || validate === '') {
+                // Validate included elements or the form
+                const target = form || el
+                if (target.checkValidity && !target.checkValidity()) {
+                    target.reportValidity?.()
+                    return false
+                }
+                return
+            }
+
+            // No explicit hx-validate — use default form validation behavior
             if (!form) return
 
+            // formnovalidate on the element skips validation
+            if (el.hasAttribute?.('formnovalidate')) return
+
+            // novalidate on the form disables validation by default
+            if (form.noValidate) return
+
+            // Default: validate the form
             if (!form.checkValidity()) {
                 form.reportValidity()
-                return false // cancel the request
+                return false
             }
         },
     }
@@ -909,7 +937,7 @@ htmx.install('hx-vals', {
             const valsAttr = api.attr(detail.element, 'hx-vals')
             if (!valsAttr) return
 
-            let vals
+            let vals = {}
             // js: or javascript: prefix — evaluate as expression
             const jsMatch = valsAttr.match(/^(?:js|javascript):(.*)$/s)
             if (jsMatch) {
@@ -917,9 +945,13 @@ htmx.install('hx-vals', {
                 if (expr[0] !== '{') expr = '{' + expr + '}'
                 try { vals = new Function('return (' + expr + ')')() } catch { return }
             } else {
-                // Try JSON first, then fall back to config syntax
-                try { vals = JSON.parse(valsAttr) } catch {
-                    vals = api.parse(valsAttr)
+                // Handle comma-separated JSON objects from inheritance chain
+                // e.g. '{"a":1},{"b":2}' from inherited+append
+                const parts = valsAttr.split(/(?<=\})\s*,\s*(?=\{)/)
+                for (const part of parts) {
+                    try { Object.assign(vals, JSON.parse(part)) } catch {
+                        Object.assign(vals, api.parse(part) || {})
+                    }
                 }
             }
 
@@ -1154,7 +1186,7 @@ htmx.install('hx-confirm', {
             }
 
             // issueRequest support for async custom confirmation
-            const issueRequest = (confirmed) => {
+            const issueRequest = (confirmed = true) => {
                 if (confirmed) {
                     el._htmxConfirmBypass = true
                     if (api.emit(el, 'htmx:before:trigger', {element: el, event: detail.event}) !== false) {
@@ -2201,10 +2233,11 @@ htmx.install('hx-config', {
 
                 if (key === 'action') {
                     detail.request.url = val
+                    detail.request.action = val
                     detail.request.shouldActivate = val
                 } else if (key === 'method') {
                     detail.request.method = val
-                } else if (merge && val && typeof val === 'object' && !Array.isArray(val)
+                } else if ((merge || key === 'headers') && val && typeof val === 'object' && !Array.isArray(val)
                     && detail.request[key] && typeof detail.request[key] === 'object') {
                     Object.assign(detail.request[key], val)
                 } else {

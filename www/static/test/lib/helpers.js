@@ -67,6 +67,29 @@ function cleanupTest() {
   history.replaceState(null, '', savedUrl)
 }
 
+//================================================================================
+// Extension backup/restore helpers
+//================================================================================
+
+function backupExtensions() {
+    return {
+        extMethods: new Map(htmx.__extMethods),
+        registeredExt: new Set(htmx.__registeredExt),
+        approvedExt: htmx.__approvedExt
+    };
+}
+
+function restoreExtensions(backup) {
+    htmx.__extMethods = backup.extMethods;
+    htmx.__registeredExt = backup.registeredExt;
+    htmx.__approvedExt = backup.approvedExt;
+}
+
+function clearExtensions() {
+    htmx.__extMethods.clear();
+    htmx.__registeredExt.clear();
+}
+
 function debug(test) {
   test.timeout(0)
   testDebugging = true
@@ -84,7 +107,7 @@ function createProcessedHTML(innerHTML) {
     pg.innerHTML = innerHTML
     htmx.process(pg)
   }
-  return pg.childNodes[0]
+  return pg.firstElementChild
 }
 
 // This function waits for the mutation observer to process the new content
@@ -114,6 +137,10 @@ function mockResponse(action, pattern, response, options = {}) {
 
 function mockFailure(action, pattern, message = 'Network failure') {
   fetchMock.mockFailure(action, pattern, message)
+}
+
+function mockSequentialResponses(method, urlPattern, response, options = {}) {
+  return fetchMock.mockSequentialResponses(method, urlPattern, response, options);
 }
 
 function mockStreamResponse(url) {
@@ -172,6 +199,10 @@ function waitForEvent(eventName, timeout = 200) {
 
 function forRequest(timeout = 200) {
   return waitForEvent('htmx:finally:request', timeout)
+}
+
+function forRequestWithDelay(timeout = 200) {
+  return htmx.timeout(50).then(() => forRequest(timeout));
 }
 
 function playground() {

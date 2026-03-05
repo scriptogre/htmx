@@ -15,8 +15,8 @@ If you're migrating an extension from htmx 2.x, here's a quick reference:
 | `getSelectors()`                      | `htmx_after_init`     | Check `api.attributeValue(elt, "attr")` instead of returning selectors.                |
 | `onEvent(name, evt)`                  | Specific hooks        | Replace with `htmx_before_request`, `htmx_after_swap`, etc. (use underscores)          |
 | `transformResponse(text, xhr, elt)`   | `htmx_after_request`  | Modify `detail.ctx.text` directly (check if exists first as not set for SSE responses) |
-| `isInlineSwap(swapStyle)`             | Not needed            | Move logic into `htmx_handle_swap`. For OOB outer swaps, use `detail.unstripped`       |
-| `handleSwap(style, target, fragment)` | `htmx_handle_swap`    | Access via `detail.swapSpec.style` and `detail.fragment`, return false                 |
+| `isInlineSwap(swapStyle)`             | Not needed            | Move logic into `handle_swap`. For OOB outer swaps, use `detail.unstripped`            |
+| `handleSwap(style, target, fragment)` | `handle_swap`         | Args are `(swapStyle, target, fragment, swapSpec)`, return truthy if handled            |
 | `encodeParameters(xhr, params, elt)`  | `htmx_config_request` | Modify `detail.ctx.request.body` (FormData) and headers directly                       |
 
 For detailed migration examples, see the
@@ -24,37 +24,38 @@ For detailed migration examples, see the
 
 ## Defining an Extension
 
-Extensions are defined using `htmx.defineExtension()`:
+Extensions are defined using `htmx.registerExtension()`:
 
 ```javascript
-htmx.defineExtension('my-ext', {
-  init: internalAPI => {
-    // Called once when extension is registered
-    // Store internalAPI reference if needed
-  },
+htmx.registerExtension("my-ext", {
+    init: (internalAPI) => {
+        // Called once when extension is registered
+        // Store internalAPI reference if needed
+    },
 
-  htmx_before_request: (elt, detail) => {
-    // Called before each request
-    // Return false to cancel
-  },
+    htmx_before_request: (elt, detail) => {
+        // Called before each request
+        // Return false to cancel
+    },
 
-  htmx_after_request: (elt, detail) => {
-    // Called after each request
-  },
-})
+    htmx_after_request: (elt, detail) => {
+        // Called after each request
+    },
+});
 ```
 
-## Extension Approval
+## Loading Extensions
 
-Extensions can be approved via the `extensions` config option in a meta tag:
+Extensions are loaded by including the script file. They apply page-wide automatically.
+
+To restrict which extensions can register, use the `extensions` config as a whitelist:
 
 ```html
-<meta name="htmx:config" content='{"extensions": "my-ext,another-ext"}' />
+<meta name="htmx-config" content='{"extensions": "my-ext,another-ext"}'>
 ```
 
-If this is set then only approved extensions will be loaded. This prevents
-unauthorized extensions from running. By default without this config set in a
-meta tag all extensions will be approved.
+When this config is set, only the listed extensions will be loaded. Without it, all registered
+extensions are active.
 
 ## Event Hooks
 
@@ -78,18 +79,20 @@ of colons:
 | ---------------------- | ---------------------- | --------------- | -------------------------------- |
 | `htmx_config_request`  | `htmx:config:request`  | `(elt, detail)` | Configure request before sending |
 | `htmx_before_request`  | `htmx:before:request`  | `(elt, detail)` | Before request is sent           |
+| `htmx_before_response` | `htmx:before:response` | `(elt, detail)` | After fetch, before body consumed |
 | `htmx_after_request`   | `htmx:after:request`   | `(elt, detail)` | After request completes          |
 | `htmx_finally_request` | `htmx:finally:request` | `(elt, detail)` | Always called after request      |
 | `htmx_error`           | `htmx:error`           | `(elt, detail)` | On request error                 |
 
 ### Swap Events
 
-| Hook Name            | Triggered Event      | Parameters      | Description             |
-| -------------------- | -------------------- | --------------- | ----------------------- |
-| `htmx_before_swap`   | `htmx:before:swap`   | `(elt, detail)` | Before content swap     |
-| `htmx_after_swap`    | `htmx:after:swap`    | `(elt, detail)` | After content swap      |
-| `htmx_after_restore` | `htmx:after:restore` | `(elt, detail)` | After restoring content |
-| `htmx_handle_swap`   | `htmx:handle:swap`   | `(elt, detail)` | Custom swap handler     |
+| Hook Name             | Triggered Event       | Parameters      | Description             |
+| --------------------- | --------------------- | --------------- | ----------------------- |
+| `htmx_before_swap`    | `htmx:before:swap`    | `(elt, detail)` | Before content swap     |
+| `htmx_after_swap`     | `htmx:after:swap`     | `(elt, detail)` | After content swap      |
+| `htmx_before_settle`  | `htmx:before:settle`  | `(elt, detail)` | Before settle phase     |
+| `htmx_after_settle`   | `htmx:after:settle`   | `(elt, detail)` | After settle phase      |
+| `handle_swap`         | _(direct call)_       | `(swapStyle, target, fragment, swapSpec)` | Custom swap handler     |
 
 ### History Events
 
@@ -100,16 +103,6 @@ of colons:
 | `htmx_after_push_into_history`    | `htmx:after:push:into:history`    | `(elt, detail)` | After pushing to history      |
 | `htmx_after_replace_into_history` | `htmx:after:replace:into:history` | `(elt, detail)` | After replacing history       |
 | `htmx_before_restore_history`     | `htmx:before:restore:history`     | `(elt, detail)` | Before restoring from history |
-
-### SSE Events
-
-| Hook Name                   | Triggered Event             | Parameters      | Description                   |
-| --------------------------- | --------------------------- | --------------- | ----------------------------- |
-| `htmx_before_sse_reconnect` | `htmx:before:sse:reconnect` | `(elt, detail)` | Before SSE reconnection       |
-| `htmx_before_sse_stream`    | `htmx:before:sse:stream`    | `(elt, detail)` | Before SSE stream starts      |
-| `htmx_after_sse_stream`     | `htmx:after:sse:stream`     | `(elt, detail)` | After SSE stream ends         |
-| `htmx_before_sse_message`   | `htmx:before:sse:message`   | `(elt, detail)` | Before processing SSE message |
-| `htmx_after_sse_message`    | `htmx:after:sse:message`    | `(elt, detail)` | After processing SSE message  |
 
 ### View Transition Events
 
@@ -129,13 +122,13 @@ of colons:
 Return `false` or set `detail.cancelled = true` to cancel an event:
 
 ```javascript
-htmx.defineExtension('validator', {
-  htmx_before_request: (elt, detail) => {
-    if (!isValid(detail.ctx)) {
-      return false // Cancel request
-    }
-  },
-})
+htmx.registerExtension("validator", {
+    htmx_before_request: (elt, detail) => {
+        if (!isValid(detail.ctx)) {
+            return false; // Cancel request
+        }
+    },
+});
 ```
 
 ## Internal API
@@ -143,20 +136,20 @@ htmx.defineExtension('validator', {
 The `init` hook receives an internal API object with helper methods:
 
 ```javascript
-let api
+let api;
 
-htmx.defineExtension('my-ext', {
-  init: internalAPI => {
-    api = internalAPI
-  },
+htmx.registerExtension("my-ext", {
+    init: (internalAPI) => {
+        api = internalAPI;
+    },
 
-  htmx_after_init: elt => {
-    // Use internal API
-    let value = api.attributeValue(elt, 'hx-my-attr')
-    let specs = api.parseTriggerSpecs('click, keyup delay:500ms')
-    let { method, action } = api.determineMethodAndAction(elt, evt)
-  },
-})
+    htmx_after_init: (elt) => {
+        // Use internal API
+        let value = api.attributeValue(elt, "hx-my-attr");
+        let specs = api.parseTriggerSpecs("click, keyup delay:500ms");
+        let { method, action } = api.determineMethodAndAction(elt, evt);
+    },
+});
 ```
 
 Available internal API methods:
@@ -204,59 +197,61 @@ The `detail.ctx` object contains request information:
 Extensions can implement custom swap strategies:
 
 ```javascript
-htmx.defineExtension('my-swap', {
-  htmx_handle_swap: (target, detail) => {
-    let { swapSpec, fragment } = detail
-    if (swapSpec.style === 'my-custom-swap') {
-      // Implement custom swap logic
-      target.appendChild(fragment)
-      return true // Handled
-    }
-    return false // Not handled
-  },
-})
+htmx.registerExtension("my-swap", {
+    handle_swap: (swapStyle, target, fragment, swapSpec) => {
+        if (swapStyle === "my-custom-swap") {
+            // Implement custom swap logic
+            target.appendChild(fragment);
+            return true; // Handled
+        }
+        return false; // Not handled
+    },
+});
 ```
 
 ## Complete Example
 
 ```javascript
-;(() => {
-  let api
+(() => {
+    let api;
 
-  htmx.defineExtension('preload', {
-    init: internalAPI => {
-      api = internalAPI
-    },
+    htmx.registerExtension("preload", {
+        init: (internalAPI) => {
+            api = internalAPI;
+        },
 
-    htmx_after_init: elt => {
-      let preloadSpec = api.attributeValue(elt, 'hx-preload')
-      if (!preloadSpec) return
+        htmx_after_init: (elt) => {
+            let preloadSpec = api.attributeValue(elt, "hx-preload");
+            if (!preloadSpec) return;
 
-      let specs = api.parseTriggerSpecs(preloadSpec)
-      let eventName = specs[0].name
+            let specs = api.parseTriggerSpecs(preloadSpec);
+            let eventName = specs[0].name;
 
-      elt.addEventListener(eventName, async evt => {
-        let ctx = api.createRequestContext(elt, evt)
-        // Prefetch logic here
-      })
-    },
+            elt.addEventListener(eventName, async (evt) => {
+                let ctx = api.createRequestContext(elt, evt);
+                // Prefetch logic here
+            });
+        },
 
-    htmx_before_request: (elt, detail) => {
-      // Use prefetched response if available
-      if (elt._htmx?.preload) {
-        detail.ctx.fetch = () => elt._htmx.preload
-        delete elt._htmx.preload
-      }
-    },
+        htmx_before_request: (elt, detail) => {
+            // Use prefetched response if available
+            if (elt._htmx?.preload) {
+                detail.ctx.fetch = () => elt._htmx.preload;
+                delete elt._htmx.preload;
+            }
+        },
 
-    htmx_before_cleanup: elt => {
-      // Clean up listeners
-      if (elt._htmx?.preloadListener) {
-        elt.removeEventListener(elt._htmx.preloadEvent, elt._htmx.preloadListener)
-      }
-    },
-  })
-})()
+        htmx_before_cleanup: (elt) => {
+            // Clean up listeners
+            if (elt._htmx?.preloadListener) {
+                elt.removeEventListener(
+                    elt._htmx.preloadEvent,
+                    elt._htmx.preloadListener,
+                );
+            }
+        },
+    });
+})();
 ```
 
 ## Migration from htmx 2.x
@@ -266,27 +261,27 @@ The htmx 4 extension API is completely different from htmx 2.x:
 **Old API (htmx 2.x):**
 
 ```javascript
-htmx.defineExtension('old', {
-  onEvent: function (name, evt) {},
-  transformResponse: function (text, xhr, elt) {},
-  handleSwap: function (swapStyle, target, fragment, settleInfo) {},
-})
+htmx.defineExtension("old", {  // Note: htmx 2.x used defineExtension with different format
+    onEvent: function (name, evt) {},
+    transformResponse: function (text, xhr, elt) {},
+    handleSwap: function (swapStyle, target, fragment, settleInfo) {},
+});
 ```
 
 **New API (htmx 4):**
 
 ```javascript
-htmx.defineExtension('new', {
-  htmx_before_request: (elt, detail) => {},
-  htmx_after_request: (elt, detail) => {},
-  htmx_handle_swap: (elt, detail) => {},
-})
+htmx.registerExtension("new", {
+    htmx_before_request: (elt, detail) => {},
+    htmx_after_request: (elt, detail) => {},
+    handle_swap: (swapStyle, target, fragment, swapSpec) => {},
+});
 ```
 
 Key differences:
 
 - Event-based hooks instead of method callbacks
 - Underscores in hook names (not colons)
-- Extensions must be approved via config
+- Extensions load by including the script (config whitelist is optional)
 - Access to full request context via `detail.ctx`
 - Internal API provided via `init` hook

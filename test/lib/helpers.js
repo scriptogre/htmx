@@ -67,6 +67,23 @@ function cleanupTest() {
   history.replaceState(null, '', savedUrl)
 }
 
+//================================================================================
+// Extension backup/restore helpers
+//================================================================================
+
+function backupExtensions() {
+    // No-op for kernel architecture (extensions are installed at load time)
+    return {};
+}
+
+function restoreExtensions(backup) {
+    // No-op for kernel architecture
+}
+
+function clearExtensions() {
+    // No-op for kernel architecture
+}
+
 function debug(test) {
   test.timeout(0)
   testDebugging = true
@@ -84,7 +101,7 @@ function createProcessedHTML(innerHTML) {
     pg.innerHTML = innerHTML
     htmx.init(pg)
   }
-  return pg.childNodes[0]
+  return pg.firstElementChild
 }
 
 // This function waits for the mutation observer to process the new content
@@ -116,6 +133,10 @@ function mockFailure(action, pattern, message = 'Network failure') {
   fetchMock.mockFailure(action, pattern, message)
 }
 
+function mockSequentialResponses(method, urlPattern, response, options = {}) {
+  return fetchMock.mockSequentialResponses(method, urlPattern, response, options);
+}
+
 function mockStreamResponse(url) {
   const controllers = []
   const enc = new TextEncoder()
@@ -143,6 +164,10 @@ function mockStreamResponse(url) {
       if (!ctrl) return
       let msg = (event ? `event: ${event}\n` : '') + (id ? `id: ${id}\n` : '') + `data: ${data}\n\n`
       ctrl.enqueue(enc.encode(msg))
+    },
+    sendRaw(raw) {
+      const ctrl = controllers[controllers.length - 1];
+      if (ctrl) ctrl.enqueue(enc.encode(raw));
     },
     close: () => {
       // Close the most recent controller
@@ -183,6 +208,10 @@ function waitForEvent(eventName, timeout = 200) {
 
 function forRequest(timeout = 200) {
   return waitForEvent('htmx:finally', timeout)
+}
+
+function forRequestWithDelay(timeout = 200) {
+  return htmx.timeout(50).then(() => forRequest(timeout));
 }
 
 function playground() {

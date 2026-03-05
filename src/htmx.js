@@ -142,7 +142,7 @@ var htmx = (() => {
             this.__registeredExt.add(name);
             if (extension.init) extension.init(this.#internalAPI);
             Object.entries(extension).forEach(([key, value]) => {
-                if (!this.__extMethods.get(key)?.push(value)) this.__extMethods.set(key, [value]);
+                if(!this.__extMethods.get(key)?.push(value)) this.__extMethods.set(key, [value]);
             });
         }
 
@@ -164,9 +164,9 @@ var htmx = (() => {
 
         __normalizeSwapStyle(style) {
             return style === 'before' ? 'beforebegin' :
-                style === 'after' ? 'afterend' :
-                    style === 'prepend' ? 'afterbegin' :
-                        style === 'append' ? 'beforeend' : style;
+                   style === 'after' ? 'afterend' :
+                   style === 'prepend' ? 'afterbegin' :
+                   style === 'append' ? 'beforeend' : style;
         }
 
         __findThisElements(elt, attrName) {
@@ -498,7 +498,7 @@ var htmx = (() => {
                     });
                     if (!confirmed) return;
                 }
-
+                
                 ctx.fetch ||= window.fetch.bind(window)
                 if (!this.__trigger(elt, "htmx:before:request", {ctx})) return;
 
@@ -514,7 +514,7 @@ var htmx = (() => {
                 ctx.text = await response.text();
                 if (!this.__trigger(elt, "htmx:after:request", {ctx})) return;
 
-                if (this.__handleHeadersAndMaybeReturnEarly(ctx)) {
+                if(this.__handleHeadersAndMaybeReturnEarly(ctx)){
                     return
                 }
 
@@ -578,7 +578,7 @@ var htmx = (() => {
                 this.ajax('GET', path, opts);
                 return true // TODO this seems legit
             }
-            if (ctx.response?.headers?.get?.("Etag")) {
+            if(ctx.response?.headers?.get?.("Etag")) {
                 ctx.sourceElement._htmx ||= {}
                 ctx.sourceElement._htmx.etag = ctx.response.headers.get("Etag");
             }
@@ -919,7 +919,7 @@ var htmx = (() => {
                         return !elt.getAttribute('href')?.startsWith?.("#") && this.__isSameOrigin(elt.href)
                     }
                 } else if (elt.tagName === "FORM") {
-                    return elt.method !== 'dialog' && this.__isSameOrigin(elt.action);
+                    return elt.method !== 'dialog' &&  this.__isSameOrigin(elt.action);
                 }
             }
         }
@@ -1087,7 +1087,7 @@ var htmx = (() => {
 
             for (let templateElt of fragment.querySelectorAll('template[hx]')) {
                 let type = templateElt.getAttribute('type');
-
+                
                 if (type === 'partial') {
                     let target = templateElt.getAttribute(this.__prefix('hx-target')) || (templateElt.id ? '#' + CSS.escape(templateElt.id) : null);
                     this.__processScripts(templateElt.content);
@@ -1099,7 +1099,7 @@ var htmx = (() => {
                         sourceElement: ctx.sourceElement
                     });
                 } else {
-                    this.__triggerExtensions(templateElt, 'htmx:process:' + type, {ctx, tasks});
+                    this.__triggerExtensions(templateElt, 'htmx:process:' + type, { ctx, tasks });
                 }
                 templateElt.remove();
             }
@@ -1131,7 +1131,7 @@ var htmx = (() => {
                 if (scrollTarget) {
                     if (swapSpec.scroll === 'top') {
                         scrollTarget.scrollTop = 0;
-                    } else if (swapSpec.scroll === 'bottom') {
+                    } else if (swapSpec.scroll === 'bottom'){
                         scrollTarget.scrollTop = scrollTarget.scrollHeight;
                     }
                 }
@@ -1184,7 +1184,7 @@ var htmx = (() => {
                 tasks.unshift(mainSwap);
             }
 
-            if (!this.__trigger(ctx.sourceElement, "htmx:before:swap", {ctx, tasks})) {
+            if(!this.__trigger(ctx.sourceElement, "htmx:before:swap", {ctx, tasks})){
                 return
             }
 
@@ -1200,7 +1200,7 @@ var htmx = (() => {
 
             // submit all transition tasks in the transition queue w/no CSS transitions
             if (transitionTasks.length > 0) {
-                let tasksWrapper = async () => {
+                let tasksWrapper = async ()=> {
                     for (let task of transitionTasks) {
                         await this.__insertContent(task, false)
                     }
@@ -1348,7 +1348,7 @@ var htmx = (() => {
             if (focusInfo && !focusInfo.elt.isConnected) {
                 let newElt = document.getElementById(focusInfo.elt.id);
                 if (newElt) {
-                    let focusOptions = {preventScroll: swapSpec.focusScroll !== undefined ? !swapSpec.focusScroll : !this.config.defaultFocusScroll};
+                    let focusOptions = { preventScroll: swapSpec.focusScroll !== undefined ? !swapSpec.focusScroll : !this.config.defaultFocusScroll };
                     this.__setFocus(newElt, focusOptions, focusInfo.start, focusInfo.end);
                 }
             }
@@ -1376,7 +1376,7 @@ var htmx = (() => {
                 this.process(elt);
                 this.__handleAutoFocus(elt);
             }
-
+            
             this.__handleScroll(swapSpec, target);
         }
 
@@ -1422,7 +1422,7 @@ var htmx = (() => {
                     resolve(null);
                 }, timeout);
 
-                on.addEventListener(event, handler, {once: true});
+                on.addEventListener(event, handler, { once: true });
             })
         }
 
@@ -1444,7 +1444,7 @@ var htmx = (() => {
             let elt = document;
             if (callback === undefined) {
                 event = eventOrElt;
-                callback = eventOrCallback
+                callback =  eventOrCallback
             } else {
                 elt = this.__normalizeElement(eventOrElt);
                 event = eventOrCallback;
@@ -1481,7 +1481,6 @@ var htmx = (() => {
             let result = !detail.cancelled && target.dispatchEvent(evt);
             return result
         }
-
         // TODO - make async
         ajax(verb, path, context) {
             // Normalize context to object
@@ -1529,7 +1528,7 @@ var htmx = (() => {
             window.addEventListener('popstate', (event) => {
                 if (event.state && event.state.htmx) {
                     this.__restoreHistory();
-                }
+                } 
             });
         }
 
@@ -1669,7 +1668,7 @@ var htmx = (() => {
 
         __collectFormData(elt, form, submitter, validate) {
             if (validate && form && !form.reportValidity()) return
-
+            
             let formData = form ? new FormData(form) : new FormData()
             let included = form ? new Set(form.elements) : new Set()
             if (!form && elt.name) {
@@ -1869,7 +1868,7 @@ var htmx = (() => {
             let {persistentIds, idMap} = this.__createIdMaps(oldNode, fragment);
             let pantry = document.createElement("div");
             pantry.hidden = true;
-            document.body.after(pantry);
+            document.body.after( pantry);
             let ctx = {target: oldNode, idMap, persistentIds, pantry, futureMatches: new WeakSet()};
 
             if (innerHTML) {
@@ -2026,10 +2025,10 @@ var htmx = (() => {
 
         __morphNode(oldNode, newNode, ctx) {
             if (this.config.morphSkip && oldNode.matches?.(this.config.morphSkip)) return;
-
+                
             // Trigger extension hook - if returns false, skip morphing this node
             if (!this.__triggerExtensions(oldNode, "htmx:before:morph:node", {oldNode, newNode})) return;
-
+                
             this.__copyAttributes(oldNode, newNode);
             if (oldNode instanceof HTMLTextAreaElement && oldNode.defaultValue != newNode.defaultValue) {
                 oldNode.value = newNode.value;
@@ -2121,7 +2120,7 @@ var htmx = (() => {
         __submitTransitionTask(task) {
             return new Promise((resolve) => {
                 this.#transitionQueue ||= [];
-                this.#transitionQueue.push({task, resolve});
+                this.#transitionQueue.push({ task, resolve });
                 if (!this.#processingTransition) {
                     this.__processTransitionQueue();
                 }
@@ -2134,7 +2133,7 @@ var htmx = (() => {
             }
 
             this.#processingTransition = true;
-            let {task, resolve} = this.#transitionQueue.shift();
+            let { task, resolve } = this.#transitionQueue.shift();
 
             try {
                 if (document.startViewTransition) {
@@ -2163,7 +2162,7 @@ var htmx = (() => {
                 if (existing?.tagName === elt.tagName) {
                     let clone = elt.cloneNode(false); // shallow clone node
                     this.__copyAttributes(elt, existing)
-                    restoreTasks.push(() => {
+                    restoreTasks.push(()=>{
                         this.__copyAttributes(elt, clone)
                     })
                 }

@@ -6,19 +6,18 @@ description = """\
   updates for those with JavaScript enabled."""
 +++
 
-The `hx-boost` attribute allows you to "boost" normal anchors and form tags to use AJAX instead. This
-has the [nice fallback](https://en.wikipedia.org/wiki/Progressive_enhancement) that, if the user does not
+The `hx-boost` attribute allows you to "boost" normal anchors and form tags to use AJAX instead.  This
+has the [nice fallback](https://en.wikipedia.org/wiki/Progressive_enhancement) that, if the user does not 
 have javascript enabled, the site will continue to work.
 
 For anchor tags, clicking on the anchor will issue a `GET` request to the url specified in the `href` and
-will push the url so that a history entry is created. The target is the `<body>` tag, and the `innerHTML`
-swap strategy is used by default. All of these can be modified by using the appropriate attributes, except
+will push the url so that a history entry is created.  The target is the `<body>` tag, and the `innerHTML`
+swap strategy is used by default.  All of these can be modified by using the appropriate attributes, except
 the `click` trigger.
 
 For forms the request will be converted into a `GET` or `POST`, based on the method in the `method` attribute
-and will be triggered by a `submit`. Again, the target will be the `body` of the page, and the `innerHTML`
-swap will be used. The url will _not_ be pushed, however, and no history entry will be created. (You can use the
-[hx-push-url](@/attributes/hx-push-url.md) attribute if you want the url to be pushed.)
+and will be triggered by a `submit`.  Again, the target will be the `body` of the page, and the `innerHTML`
+swap will be used. The url will be pushed into the history, just like boosted links.
 
 Here is an example of some boosted links:
 
@@ -28,24 +27,69 @@ Here is an example of some boosted links:
   <a href="/page2">Go To Page 2</a>
 </div>
 ```
-
 These links will issue an ajax `GET` request to the respective URLs and replace the body's inner content with it.
 
 Here is an example of a boosted form:
 
 ```html
 <form hx-boost="true" action="/example" method="post">
-  <input name="email" type="email" placeholder="Enter email..." />
-  <button>Submit</button>
+    <input name="email" type="email" placeholder="Enter email...">
+    <button>Submit</button>
 </form>
 ```
-
 This form will issue an ajax `POST` to the given URL and replace the body's inner content with it.
+
+## Advanced Syntax
+
+You can configure boost behavior using an advanced syntax that combines multiple settings:
+
+```html
+<body hx-boost:inherited="swap:innerHTML target:#main select:#content">
+  <div id="main">
+    <!-- Boosted links inherit the config -->
+    <a href="/page1">Go To Page 1</a>
+    <a href="/page2">Go To Page 2</a>
+    
+    <!-- Override with different boost config -->
+    <div hx-boost:inherited="swap:outerHTML target:#result">
+      <a href="/page3">Page 3 (uses div config)</a>
+      
+      <!-- Disable boost for specific link -->
+      <a href="/external" hx-boost="false">External</a>
+      
+      <!-- Custom boost config overrides all -->
+      <a href="/page4" hx-boost="swap:beforeend target:#list">Page 4</a>
+    </div>
+    
+    <!-- Non-boosted elements are unaffected -->
+    <div hx-get="/data" hx-trigger="load">Loading...</div>
+  </div>
+</body>
+```
+
+The key advantage is that boost config only applies to boosted elements (links and forms), unlike inherited `hx-*` attributes which would affect all descendant elements.
+
+### Priority Order
+
+Boost config **overrides** explicit `hx-*` attributes:
+1. Boost config (highest priority)
+2. Explicit `hx-*` attributes
+3. Default values (lowest priority)
+
+This allows you to:
+- Set base defaults with `hx-target`, `hx-swap` on elements
+- Override them with `hx-boost:inherited` at any level
+- Use `hx-boost="true"` or `hx-boost="false"` to enable/disable
+
+Supported modifiers:
+- `swap:STYLE` - Swap strategy (innerHTML, outerHTML, etc.)
+- `target:SELECTOR` - Target element selector
+- `select:SELECTOR` - Content selection from response
 
 ## Notes
 
-- Only links that are to the same domain and that are not local anchors will be boosted
-- All requests are done via AJAX, so keep that in mind when doing things like redirects
-- To find out if the request results from a boosted anchor or form, look for [`HX-Boosted`](@/reference.md#request_headers) in the request header
-- Selectively disable boost on child elements with `hx-boost="false"`
-- Disable the replacement of elements via boost, and their children, with [`hx-preserve="true"`](@/attributes/hx-preserve.md)
+* Only links that are to the same domain and that are not local anchors will be boosted
+* All requests are done via AJAX, so keep that in mind when doing things like redirects
+* To find out if the request results from a boosted anchor or form, look for [`HX-Boosted`](@/reference.md#request_headers) in the request header
+* Selectively disable boost on child elements with `hx-boost="false"`
+* Disable the replacement of elements via boost, and their children, with [`hx-preserve="true"`](@/attributes/hx-preserve.md)

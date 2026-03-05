@@ -1,74 +1,93 @@
-describe('__handleHistoryUpdate unit tests', function () {
-  let originalUrl
-  let originalState
+describe('__handleHistoryUpdate unit tests', function() {
 
-  beforeEach(function () {
-    setupTest()
-    // Save current URL and state
-    originalUrl = window.location.href
-    originalState = history.state
-  })
+    let originalUrl
+    let originalState
 
-  afterEach(function () {
-    cleanupTest()
-    // Restore original URL and state
-    history.replaceState(originalState, '', originalUrl)
-  })
+    beforeEach(function() {
+        setupTest();
+        // Save current URL and state
+        originalUrl = window.location.href
+        originalState = history.state
+    });
 
-  it('does nothing when push and replace are false', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let ctx = {
-      sourceElement: div,
-      push: 'false',
-      replace: 'false',
-      response: { headers: new Headers() },
-      request: { originalAction: '/test' },
-    }
+    afterEach(function() {
+        cleanupTest();
+        // Restore original URL and state
+        history.replaceState(originalState, '', originalUrl)
+    });
 
-    htmx.__handleHistoryUpdate(ctx)
+    it('does nothing when push and replace are false', function () {
+        let div = createProcessedHTML('<div hx-get="/test"></div>')
+        let ctx = {
+            sourceElement: div,
+            push: 'false',
+            replace: 'false',
+            response: { headers: new Headers() },
+            request: { action: '/test' }
+        }
 
-    assert.equal(window.location.href, originalUrl)
-  })
+        htmx.__handleHistoryUpdate(ctx)
 
-  it('pushes URL when push is set to true', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let ctx = {
-      sourceElement: div,
-      push: 'true',
-      response: { headers: new Headers() },
-      request: { originalAction: '/test-path' },
-    }
+        assert.equal(window.location.href, originalUrl)
+    })
 
-    htmx.__handleHistoryUpdate(ctx)
+    it('pushes URL when push is set to true', function () {
+        let div = createProcessedHTML('<div hx-get="/test"></div>')
+        let ctx = {
+            sourceElement: div,
+            push: 'true',
+            response: { headers: new Headers() },
+            request: { action: '/test-path' }
+        }
 
-    assert.include(window.location.href, '/test-path')
-  })
+        htmx.__handleHistoryUpdate(ctx)
 
-  it('replaces URL when replace is set to true', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let ctx = {
-      sourceElement: div,
-      replace: 'true',
-      response: { headers: new Headers() },
-      request: { originalAction: '/replace-path' },
-    }
+        assert.include(window.location.href, '/test-path')
+    })
 
-    htmx.__handleHistoryUpdate(ctx)
+    it('replaces URL when replace is set to true', function () {
+        let div = createProcessedHTML('<div hx-get="/test"></div>')
+        let ctx = {
+            sourceElement: div,
+            replace: 'true',
+            response: { headers: new Headers() },
+            request: { action: '/replace-path' }
+        }
 
-    assert.include(window.location.href, '/replace-path')
-  })
+        htmx.__handleHistoryUpdate(ctx)
 
-  it('pushes specific URL when push is set to path', function () {
-    let div = createProcessedHTML('<div hx-get="/test"></div>')
-    let ctx = {
-      sourceElement: div,
-      push: '/custom-path',
-      response: { headers: new Headers() },
-      request: { originalAction: '/test' },
-    }
+        assert.include(window.location.href, '/replace-path')
+    })
 
-    htmx.__handleHistoryUpdate(ctx)
+    it('pushes specific URL when push is set to path', function () {
+        let div = createProcessedHTML('<div hx-get="/test"></div>')
+        let ctx = {
+            sourceElement: div,
+            push: '/custom-path',
+            response: { headers: new Headers() },
+            request: { action: '/test' }
+        }
 
-    assert.include(window.location.href, '/custom-path')
-  })
-})
+        htmx.__handleHistoryUpdate(ctx)
+
+        assert.include(window.location.href, '/custom-path')
+    })
+
+    it('pushes redirected URL when push is true and response has raw url', function () {
+        let div = createProcessedHTML('<div hx-get="/test"></div>')
+        let ctx = {
+            sourceElement: div,
+            push: 'true',
+            response: { 
+                headers: new Headers(),
+                raw: { url: 'http://localhost/redirected-path?foo=bar' }
+            },
+            request: { action: '/test' }
+        }
+
+        htmx.__handleHistoryUpdate(ctx)
+
+        assert.include(window.location.href, '/redirected-path?foo=bar')
+    })
+
+});

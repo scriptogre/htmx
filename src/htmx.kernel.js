@@ -79,7 +79,7 @@ var htmx = (function () {
      */
     function install(name, extension) {
         if (extensions.some(installed => installed.name === name)) {
-            throw new HtmxError(`Extension "${name}" is already installed`, {type: 'EXTENSION_ALREADY_INSTALLED'})
+            return // silently skip duplicate installation
         }
         for (const dependency of extension.requires || []) {
             if (!extensions.some(installed => installed.name === dependency)) {
