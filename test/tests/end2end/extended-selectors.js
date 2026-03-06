@@ -110,8 +110,7 @@ describe('Extended Selectors', function () {
     // global prefix
     // =========================================================================
 
-    // global prefix only supported in htmx.findAllExt, not in api.find/hx-target
-    it.skip('hx-target="global .target" finds element anywhere in the document', async function () {
+    it('hx-target="global .target" finds element anywhere in the document', async function () {
         mockResponse('GET', '/test', 'Swapped')
         createProcessedHTML(`
             <div>
@@ -172,8 +171,7 @@ describe('Extended Selectors', function () {
     // hyperscript-style selectors
     // =========================================================================
 
-    // hyperscript-style selectors only supported in htmx.findAllExt, not in api.find/hx-target
-    it.skip('hx-target with hyperscript-style <.foo/> selector works', async function () {
+    it('hx-target with hyperscript-style <.foo/> selector works', async function () {
         mockResponse('GET', '/test', 'Swapped')
         createProcessedHTML(`
             <div>

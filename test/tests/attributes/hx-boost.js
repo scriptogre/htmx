@@ -88,16 +88,15 @@ describe('hx-boost attribute', function() {
         fetchMock.calls.length.should.equal(0)
     })
 
-    // Advanced boost syntax (swap:X target:Y select:Z) requires __parseConfig/__mergeConfig - not yet in kernel
-    it.skip('hx-boost with advanced syntax applies swap config', async function() {
+    it('hx-boost with advanced syntax applies swap config', async function() {
         mockResponse('GET', '/test', 'Clicked')
         createProcessedHTML('<a hx-boost="swap:outerHTML" hx-target="this" id="a1" href="/test">Click Me</a>')
         find('#a1').click()
         await forRequest()
-        should.equal(document.querySelector('#a1'), null)
+        assert.isNull(document.querySelector('#a1'), 'element should be removed by outerHTML swap')
     })
 
-    it.skip('hx-boost with advanced syntax applies target config', async function() {
+    it('hx-boost with advanced syntax applies target config', async function() {
         mockResponse('GET', '/test', 'New Content')
         createProcessedHTML('<div id="target">Old</div><a hx-boost="target:#target" id="a1" href="/test">Click</a>')
         find('#a1').click()
@@ -105,7 +104,7 @@ describe('hx-boost attribute', function() {
         find('#target').innerHTML.should.equal('New Content')
     })
 
-    it.skip('hx-boost with advanced syntax applies select config', async function() {
+    it('hx-boost with advanced syntax applies select config', async function() {
         mockResponse('GET', '/test', '<div><span id="keep">Keep</span><span>Ignore</span></div>')
         createProcessedHTML('<div id="result"></div><a hx-boost="select:#keep" hx-target="#result" id="a1" href="/test">Click</a>')
         find('#a1').click()
@@ -114,21 +113,21 @@ describe('hx-boost attribute', function() {
         find('#result').innerHTML.should.not.contain('Ignore')
     })
 
-    it.skip('hx-boost with multiple advanced configs', async function() {
+    it('hx-boost with multiple advanced configs', async function() {
         mockResponse('GET', '/test', '<div id="main"><span id="result">Success</span></div>')
         createProcessedHTML('<div id="main">Old</div><a hx-boost="swap:outerHTML target:#main select:#result" id="a1" href="/test">Click</a>')
         find('#a1').click()
         await forRequest()
-        should.equal(document.querySelector('#main'), null)
+        assert.isNull(document.querySelector('#main'), '#main should be removed by outerHTML swap')
         find('#result').innerHTML.should.equal('Success')
     })
 
-    it.skip('boost config overrides explicit attributes', async function() {
+    it('boost config overrides explicit attributes', async function() {
         mockResponse('GET', '/test', 'Clicked')
         createProcessedHTML('<a hx-boost="swap:outerHTML" hx-swap="innerHTML" hx-target="this" id="a1" href="/test">Click</a>')
         find('#a1').click()
         await forRequest()
-        should.equal(document.querySelector('#a1'), null)
+        assert.isNull(document.querySelector('#a1'), 'boost config should override hx-swap')
     })
 
     it('hx-boost true still works as before', async function() {

@@ -74,8 +74,17 @@ describe('Lifecycle Events, Focus Restoration, and Inheritance Config', function
             assert.isTrue(afterFired, 'htmx:after:request should fire on server error')
         })
 
-        // htmx:after:request does not fire on network failure in kernel (htmx:error and htmx:finally do)
-        it.skip('fires after network failure', async function () {
+        it('fires after network failure', async function () {
+            mockFailure('GET', '/test', 'Network failure')
+            let afterFired = false
+            document.addEventListener('htmx:after:request', function handler(e) {
+                afterFired = true
+                document.removeEventListener('htmx:after:request', handler)
+            })
+            createProcessedHTML('<div id="d" hx-get="/test" hx-swap="none">Click</div>')
+            find('#d').click()
+            await htmx.timeout(100)
+            assert.isTrue(afterFired, 'htmx:after:request should fire on network failure')
         })
     })
 
@@ -238,8 +247,7 @@ describe('Lifecycle Events, Focus Restoration, and Inheritance Config', function
 
     describe('hx-disinherit', function () {
 
-        // hx-disinherit not implemented in kernel architecture
-        it.skip('hx-disinherit blocks specific attribute inheritance', async function () {
+        it('hx-disinherit blocks specific attribute inheritance', async function () {
             mockResponse('GET', '/test', 'Swapped')
             createProcessedHTML(`
                 <div hx-target:inherited="#target" hx-disinherit="hx-target">
@@ -254,8 +262,7 @@ describe('Lifecycle Events, Focus Restoration, and Inheritance Config', function
             assert.equal(find('#btn').innerHTML, 'Swapped')
         })
 
-        // hx-disinherit not implemented in kernel architecture
-        it.skip('hx-disinherit="*" blocks all attribute inheritance', async function () {
+        it('hx-disinherit="*" blocks all attribute inheritance', async function () {
             mockResponse('GET', '/test', 'Swapped')
             createProcessedHTML(`
                 <div hx-target:inherited="#target" hx-swap:inherited="outerHTML" hx-disinherit="*">

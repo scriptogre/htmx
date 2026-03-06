@@ -348,10 +348,13 @@ htmx.install('swaps', {
             if (api.emit(emitOn, 'htmx:before:swap', detail) === false) return
 
             const doSwap = () => {
+                // Settle phase: before:settle fires before DOM mutation, after:settle after
+                api.emit(emitOn, 'htmx:before:settle', detail)
                 detail.swap.execute()
                 // If the element was removed from the DOM by the swap (e.g. outerHTML),
                 // dispatch after:swap on document so listeners can still observe it
                 const afterSwapTarget = emitOn?.isConnected ? emitOn : document
+                api.emit(afterSwapTarget, 'htmx:after:settle', detail)
                 api.emit(afterSwapTarget, 'htmx:after:swap', detail)
                 api.emit(afterSwapTarget, 'htmx:after:restore', detail)
             }
@@ -380,6 +383,19 @@ htmx.install('extended-selectors', {
             const match = (result) => multiple ? (result ? [result] : []) : result ?? null
 
             if (typeof selector !== 'string') return original(selector, options)
+
+            // Strip hyperscript-style wrapper: <.foo/> → .foo
+            if (selector.startsWith('<') && selector.endsWith('/>')) {
+                selector = selector.slice(1, -2)
+            }
+
+            // Global prefix: search from document root, not from context element
+            if (selector.startsWith('global ')) {
+                selector = selector.slice(7)
+                return multiple
+                    ? [...document.querySelectorAll(selector)]
+                    : document.querySelector(selector)
+            }
 
             // Named targets
             if (selector === 'this') return match(el)
@@ -455,6 +471,7 @@ htmx.install('inheritance', {
             }
 
             // Build ancestor selector
+            const disinheritSel = '[hx-disinherit]'
             const parts = [`[${CSS.escape(inherited)}]`, `[${CSS.escape(inheritedAppend)}]`]
             if (mode === 'implicit') parts.unshift(`[${CSS.escape(name)}]`)
             const selector = parts.join(',')
@@ -466,8 +483,16 @@ htmx.install('inheritance', {
                 ?? element.getAttribute(inheritedAppend)
             if (selfAppend !== null) chain.push(selfAppend)
 
-            let ancestor = element.parentElement?.closest(selector)
+            let ancestor = element.parentElement?.closest(`${selector},${disinheritSel}`)
             while (ancestor) {
+                // Check hx-disinherit — blocks inheritance of specific or all attributes
+                const disinherit = ancestor.getAttribute('hx-disinherit')
+                if (disinherit) {
+                    if (disinherit === '*' || disinherit.split(/\s+/).includes(name)) {
+                        break
+                    }
+                }
+
                 const base = ancestor.getAttribute(inherited)
                     ?? (mode === 'implicit' ? ancestor.getAttribute(name) : null)
                 if (base !== null) {
@@ -483,7 +508,7 @@ htmx.install('inheritance', {
                 const ancestorAppend = ancestor.getAttribute(inheritedAppend)
                 if (ancestorAppend !== null) {
                     chain.push(ancestorAppend)
-                    ancestor = ancestor.parentElement?.closest(selector)
+                    ancestor = ancestor.parentElement?.closest(`${selector},${disinheritSel}`)
                     continue
                 }
 
@@ -644,6 +669,7 @@ htmx.install('ajax', {
             } catch (error) {
                 detail.error = error
                 console.error(error)
+                api.emit(element, 'htmx:after:request', detail)
                 api.emit(element, 'htmx:error', detail)
             } finally {
                 api.emit(element, 'htmx:finally', detail)
@@ -1426,7 +1452,8 @@ htmx.install('hx-swap', {
     on: {
         'htmx:before:swap': (detail, api) => {
             // Skip nested OOB/partial swaps (they have their own style)
-            if (detail.swap?._oob || !detail.element) return
+            // Skip boost-config swaps (boost config overrides explicit hx-* attrs)
+            if (detail.swap?._oob || detail.swap?._boostConfig || !detail.element) return
             const swapAttr = api.parse(api.attr(detail.element, 'hx-swap'), {as: 'style'})
             if (swapAttr) Object.assign(detail.swap, swapAttr)
         }
@@ -2133,6 +2160,19 @@ htmx.install('hx-boost', {
             for (const container of containers) {
                 const boost = api.attr(container, 'hx-boost')
                 if (!boost || boost === 'false') continue
+
+                // Parse advanced boost config: "swap:innerHTML target:#main select:#content"
+                let boostConfig = null
+                if (boost !== 'true') {
+                    boostConfig = {}
+                    for (const part of boost.split(/\s+/)) {
+                        const colonIdx = part.indexOf(':')
+                        if (colonIdx > 0) {
+                            boostConfig[part.slice(0, colonIdx)] = part.slice(colonIdx + 1)
+                        }
+                    }
+                }
+
                 // Include the container itself if it's a boostable element (form/anchor)
                 const boostable = [
                     ...(container.matches('a[href], form') ? [container] : []),
@@ -2141,6 +2181,25 @@ htmx.install('hx-boost', {
                 for (const el of boostable) {
                     if (el._htmxBoosted) continue
                     el._htmxBoosted = true
+
+                    // Per-element boost config: check direct hx-boost on the element itself
+                    let elConfig = boostConfig
+                    if (el !== container && el.hasAttribute('hx-boost')) {
+                        const elBoost = el.getAttribute('hx-boost')
+                        if (elBoost === 'false') continue
+                        if (elBoost !== 'true') {
+                            elConfig = {}
+                            for (const part of elBoost.split(/\s+/)) {
+                                const colonIdx = part.indexOf(':')
+                                if (colonIdx > 0) {
+                                    elConfig[part.slice(0, colonIdx)] = part.slice(colonIdx + 1)
+                                }
+                            }
+                        } else {
+                            elConfig = null
+                        }
+                    }
+
                     const eventType = el.matches('a') ? 'click' : 'submit'
                     api.on(el, eventType, (evt) => {
                         let url, method
@@ -2160,13 +2219,15 @@ htmx.install('hx-boost', {
                             method = resolvedMethod.toUpperCase()
                         }
                         evt.preventDefault()
-                        const swap = api.attr(el, 'hx-swap') || null
-                        const targetSel = api.attr(el, 'hx-target')
+                        // Boost config overrides explicit hx-* attrs
+                        const swap = elConfig?.swap || api.attr(el, 'hx-swap') || null
+                        const targetSel = elConfig?.target || api.attr(el, 'hx-target')
                         const target = targetSel ? api.find(targetSel, {from: el}) : null
+                        const select = elConfig?.select || api.attr(el, 'hx-select') || null
                         api.ajax({
                             element: el,
                             request: {url, method, headers: {'HX-Boosted': 'true'}},
-                            swap: {style: swap, target: target || null},
+                            swap: {style: swap, target: target || null, select, _boostConfig: !!elConfig},
                         })
                     })
                 }

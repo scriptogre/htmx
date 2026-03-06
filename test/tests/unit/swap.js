@@ -282,8 +282,7 @@ describe('swap() unit tests', function() {
         triggered.should.be.true;
     })
 
-    // settle event and view transitions not yet in kernel
-    it.skip('triggers htmx:after:settle event', async function () {
+    it('triggers htmx:after:settle event', async function () {
         let triggered = false;
         htmx.on('htmx:after:settle', () => {
             triggered = true;
