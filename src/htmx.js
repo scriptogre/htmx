@@ -621,7 +621,7 @@ var htmx = (() => {
 
         __initTimeout(ctx) {
             let timeout = ctx.request.timeout != null
-                ? this.parseInterval(ctx.request.timeout)
+                ? this.__parseInterval(ctx.request.timeout)
                 : this.config.defaultTimeout;
             if (timeout) {
                 ctx.requestTimeout = setTimeout(() => ctx.request?.abort?.(), timeout);
@@ -734,7 +734,7 @@ var htmx = (() => {
                     spec.handler = evt => {
                         clearTimeout(spec.timeout)
                         spec.timeout = setTimeout(() => original(evt),
-                            this.parseInterval(spec.delay));
+                            this.__parseInterval(spec.delay));
                     }
                 }
 
@@ -754,7 +754,7 @@ var htmx = (() => {
                                     spec.throttledEvent = null
                                     spec.handler(throttledEvent);
                                 }
-                            }, this.parseInterval(spec.throttle))
+                            }, this.__parseInterval(spec.throttle))
                         }
                     }
                 }
@@ -776,7 +776,7 @@ var htmx = (() => {
                         } else {
                             clearInterval(spec.interval)
                         }
-                    }, this.parseInterval(interval));
+                    }, this.__parseInterval(interval));
                 }
 
                 if (spec.consume) {
@@ -1434,7 +1434,7 @@ var htmx = (() => {
         }
 
         timeout(time) {
-            time = this.parseInterval(time);
+            time = this.__parseInterval(time);
             if (time > 0) {
                 return new Promise(resolve => setTimeout(resolve, time));
             }
@@ -1456,13 +1456,17 @@ var htmx = (() => {
             })
         }
 
+        /** @deprecated Use htmx.on('htmx:after:init', callback) instead */
         onLoad(callback) {
+            console.warn('[htmx] htmx.onLoad() is deprecated. Use htmx.on("htmx:after:init", cb) instead.');
             this.on(this.__maybeAdjustMetaCharacter("htmx:after:process"), (evt) => {
                 callback(evt.target)
             })
         }
 
+        /** @deprecated No replacement — use CSS classes or custom logic directly */
         takeClass(element, className, container = element.parentElement) {
+            console.warn('[htmx] htmx.takeClass() is deprecated and will be removed.');
             for (let elt of this.__findAllExt(this.__normalizeElement(container), "." + className)) {
                 elt.classList.remove(className);
             }
@@ -1487,16 +1491,24 @@ var htmx = (() => {
             return this.__findExt(selectorOrElt, selector)
         }
 
+        /** @deprecated Use htmx.find(selector, {multiple: true}) instead */
         findAll(selectorOrElt, selector) {
+            console.warn('[htmx] htmx.findAll() is deprecated. Use htmx.find(selector, {multiple: true}) instead.');
             return this.__findAllExt(selectorOrElt, selector)
         }
 
-        parseInterval(str) {
+        __parseInterval(str) {
             if (typeof str === 'number') return str;
             let m = {ms: 1, s: 1000, m: 60000};
             let [, n, u] = str?.match(/^([\d.]+)(ms|s|m)?$/) || [];
             let v = parseFloat(n) * (m[u] || 1);
             return isNaN(v) ? undefined : v;
+        }
+
+        /** @deprecated No public replacement — interval parsing is internal */
+        parseInterval(str) {
+            console.warn('[htmx] htmx.parseInterval() is deprecated and will be removed.');
+            return this.__parseInterval(str)
         }
 
         emit(on, eventName, detail = {}, bubbles = true) {

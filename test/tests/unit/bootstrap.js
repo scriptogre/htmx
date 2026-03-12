@@ -189,20 +189,22 @@ describe('bootstrap unit tests', function() {
     it("public API surface remains stable", function() {
         // This test ensures the public API doesn't accidentally change
         const expectedPublicMethods = [
+            // Current API
             'ajax',
             'emit',
             'find',
-            'findAll',
-            'forEvent',
             'init',
             'on',
-            'onLoad',
-            'parseInterval',
-            'process',        // @deprecated — use init()
             'swap',
-            'takeClass',
-            'timeout',
             'registerExtension',
+            // Deprecated — kept for backward compat, emit console.warn
+            'findAll',        // @deprecated — use find(selector, {multiple: true})
+            'forEvent',       // @deprecated
+            'onLoad',         // @deprecated — use on('htmx:after:init', cb)
+            'parseInterval',  // @deprecated — internal use only
+            'process',        // @deprecated — use init()
+            'takeClass',      // @deprecated
+            'timeout',        // @deprecated
             'trigger',        // @deprecated — use emit()
         ].sort();
 
