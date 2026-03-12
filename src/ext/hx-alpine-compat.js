@@ -71,7 +71,7 @@
             }
         },
 
-        htmx_finally_request: (elt, detail) => {
+        htmx_finally: (elt, detail) => {
             if (deferCount > 0) {
                 deferCount--;
             }

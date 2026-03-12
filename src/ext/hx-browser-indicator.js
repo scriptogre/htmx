@@ -75,7 +75,7 @@
             if (activeCount === 1) startIndicator();
         },
 
-        htmx_finally_request: (elt, detail) => {
+        htmx_finally: (elt, detail) => {
             if (!detail.ctx._browserIndicator) return;
             if (detail.ctx.request?.abort) activeAborts.delete(detail.ctx.request.abort);
             if (activeCount === 0) return;

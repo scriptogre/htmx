@@ -177,12 +177,12 @@ describe('__issueRequest unit tests', function() {
         assert.equal(capturedError, testError)
     })
 
-    it('always triggers htmx:finally:request', async function () {
+    it('always triggers htmx:finally', async function () {
         let div = createProcessedHTML('<div hx-get="/test" hx-swap="none"></div>')
         let ctx = htmx.__createRequestContext(div, new Event('click'))
 
         let finallyFired = false
-        div.addEventListener('htmx:finally:request', () => finallyFired = true)
+        div.addEventListener('htmx:finally', () => finallyFired = true)
 
         ctx.fetch = async () => { throw new Error('fail') }
 

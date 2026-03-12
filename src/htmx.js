@@ -566,7 +566,7 @@ var htmx = (() => {
                 this.__trigger(elt, "htmx:error", {ctx, error})
             } finally {
                 clearTimeout(ctx.requestTimeout);
-                this.__trigger(elt, "htmx:finally:request", {ctx})
+                this.__trigger(elt, "htmx:finally", {ctx})
                 if (!ctx.keepIndicators) {
                     this.__hideIndicators(indicators);
                     this.__enableElements(disableElements);
