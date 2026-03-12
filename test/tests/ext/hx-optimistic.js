@@ -87,7 +87,7 @@ describe('hx-optimistic attribute', function() {
         createProcessedHTML('<div id="result">Original</div><div id="opt" style="display:none">Optimistic</div><button hx-post="/submit" hx-target="#result" hx-swap="delete" hx-optimistic="#opt">Go</button>');
         find('button').click()
         await forRequest()
-        assert.isUndefined(find('#result'));
+        assert.isNull(find('#result'));
     })
 
     it('none swap uses default outerHTML-like behavior', async function () {

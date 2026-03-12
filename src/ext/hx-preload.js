@@ -1,96 +1,114 @@
-(()=>{
-    let api;
+(() => {
 
-    function initializePreload(elt) {
-        let preloadSpec = api.attributeValue(elt, "hx-preload");
-        if (!preloadSpec && !elt._htmx?.boosted) return;
-
-        let preloadEvents = []
-        let timeout = 5000;
-        if (preloadSpec) {
-            let specs = api.parseTriggerSpecs(preloadSpec);
-            if (specs.length === 0) return;
-            for (const spec of specs) {
-                preloadEvents.push(spec.name)
-                if (spec.timeout) {
-                    timeout = htmx.parseInterval(spec.timeout)
-                }
-            }
-        } else {
-            //only boosted links are supported
-            if (elt.tagName === "A") {
-                if(htmx.config?.preload?.boostTimeout) {
-                    timeout = htmx.parseInterval(htmx.config.preload.boostTimeout)
-                }
-                preloadEvents.push(htmx.config?.preload?.boostEvent || "mousedown");
-                preloadEvents.push("touchstart");
-            }
-        }
-
-        let preloadListener = async (evt) => {
-            let {method} = api.determineMethodAndAction(elt, evt);
-            if (method !== 'GET') return;
-
-            if (elt._htmx?.preload) return;
-
-            let ctx = api.createRequestContext(elt, evt);
-            let form = elt.form || elt.closest("form");
-            let body = api.collectFormData(elt, form, evt.submitter);
-            api.handleHxVals(elt, body);
-
-            let action = ctx.request.action.replace?.(/#.*$/, '');
-
-
-            let params = new URLSearchParams(body);
-            if (params.size) action += (/\?/.test(action) ? "&" : "?") + params;
-
-            elt._htmx.preload = {
-                prefetch: fetch(action, ctx.request),
-                action: action,
-                expiresAt: Date.now() + timeout
-            };
-
-            try {
-                await elt._htmx.preload.prefetch;
-            } catch (error) {
-                delete elt._htmx.preload;
-            }
-        };
-        for (let eventName of preloadEvents) {
-            elt.addEventListener(eventName, preloadListener);
-        }
-        elt._htmx.preloadListener = preloadListener;
-        elt._htmx.preloadEvents = preloadEvents;
+    function parseInterval(str) {
+        if (typeof str === 'number') return str
+        if (!str) return undefined
+        const m = str.match(/^(\d+\.?\d*)(ms|s|m)?$/)
+        if (!m) return undefined
+        const [, n, unit] = m
+        return unit === 's' ? n * 1000 : unit === 'm' ? n * 60000 : +n
     }
 
-    htmx.registerExtension('preload', {
-        init: (internalAPI) => {
-            api = internalAPI;
-        },
-
-        htmx_after_init: (elt) => {
-            initializePreload(elt);
-        },
-
-        htmx_before_request: (elt, detail) => {
-            let {ctx} = detail;
-            if (elt._htmx?.preload &&
-                elt._htmx.preload.action === ctx.request.action &&
-                Date.now() < elt._htmx.preload.expiresAt) {
-                let prefetch = elt._htmx.preload.prefetch;
-                ctx.fetch = () => prefetch;
-                delete elt._htmx.preload;
-            } else {
-                if (elt._htmx) delete elt._htmx.preload;
+    function parsePreloadSpec(spec) {
+        let events = [], timeout = null
+        if (!spec) return {events, timeout}
+        for (const token of spec.trim().split(/\s+/)) {
+            const timeoutMatch = token.match(/^timeout:(.+)$/)
+            if (timeoutMatch) {
+                timeout = parseInterval(timeoutMatch[1])
+            } else if (token) {
+                events.push(token)
             }
+        }
+        return {events, timeout}
+    }
+
+    function getPreloadUrl(elt, api) {
+        return api.attr(elt, 'hx-get') || elt.getAttribute('href')
+    }
+
+    function initializePreload(elt, api) {
+        let spec = api.attr(elt, 'hx-preload')
+        let isBoosted = !spec && api.attr(elt, 'hx-boost')
+
+        if (!spec && !isBoosted) return
+
+        let preloadEvents = [], timeout = 5000
+
+        if (spec) {
+            let parsed = parsePreloadSpec(spec)
+            if (parsed.events.length === 0) return
+            preloadEvents = parsed.events
+            if (parsed.timeout != null) timeout = parsed.timeout
+        } else {
+            // Boosted links only
+            if (elt.tagName === 'A') {
+                if (htmx.config?.preload?.boostTimeout) {
+                    timeout = parseInterval(htmx.config.preload.boostTimeout)
+                }
+                preloadEvents.push(htmx.config?.preload?.boostEvent || 'mousedown')
+                preloadEvents.push('touchstart')
+            }
+        }
+
+        let state = api.state.elements(elt)
+
+        for (let eventName of preloadEvents) {
+            api.on(elt, eventName, async () => {
+                let url = getPreloadUrl(elt, api)
+                if (!url) return
+
+                // Already preloaded and not expired
+                if (state.preload) return
+
+                url = url.replace(/#.*$/, '')
+
+                // Collect form data as query params
+                let form = elt.form || elt.closest('form')
+                if (form) {
+                    let params = new URLSearchParams(new FormData(form))
+                    if (params.size) url += (/\?/.test(url) ? '&' : '?') + params
+                }
+
+                state.preload = {
+                    prefetch: fetch(url, {method: 'GET'}),
+                    url: url,
+                    expiresAt: Date.now() + timeout
+                }
+
+                try {
+                    await state.preload.prefetch
+                } catch (error) {
+                    delete state.preload
+                }
+            })
+        }
+    }
+
+    htmx.install('hx-preload', {
+        config: {
+            attributeFilter: ['hx-preload']
         },
 
-        htmx_before_cleanup: (elt) => {
-            if (elt._htmx?.preloadListener) {
-                for (let eventName of elt._htmx.preloadEvents) {
-                    elt.removeEventListener(eventName, elt._htmx.preloadListener);
+        on: {
+            'htmx:after:init': (detail, api) => {
+                initializePreload(detail.element, api)
+            },
+
+            'htmx:before:request': (detail, api) => {
+                let elt = detail.element
+                let state = api.state.elements(elt)
+
+                if (state.preload &&
+                    state.preload.url === detail.request.url &&
+                    Date.now() < state.preload.expiresAt) {
+                    let prefetch = state.preload.prefetch
+                    detail.request.execute = () => prefetch
+                    delete state.preload
+                } else {
+                    delete state.preload
                 }
             }
         }
-    });
+    })
 })()

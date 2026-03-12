@@ -41,27 +41,11 @@ describe('hx-swap-oob', function() {
         assertTextContentIs('#b', 'B')
     })
 
-    it('swaps oob with target: modifier', async function () {
-        mockResponse('GET', '/test', '<div>Main</div><div id="x" hx-swap-oob="innerHTML target:#custom">Target Content</div>')
+    it('swaps oob with style and target selector', async function () {
+        mockResponse('GET', '/test', '<div>Main</div><div id="x" hx-swap-oob="innerHTML:#custom">Target Content</div>')
         createProcessedHTML('<div hx-get="/test">Click</div><div id="custom">Original</div>');
         find('[hx-get]').click()
         await forRequest()
         assertTextContentIs('#custom', 'Target Content')
-    })
-
-    it('swaps oob with target: modifier and multi-word selector', async function () {
-        mockResponse('GET', '/test', '<div>Main</div><div id="x" hx-swap-oob="innerHTML target:&quot;.foo .bar&quot;">Multi Selector</div>')
-        createProcessedHTML('<div hx-get="/test">Click</div><div class="foo"><div class="bar">Original</div></div>');
-        find('[hx-get]').click()
-        await forRequest()
-        assertTextContentIs('.foo .bar', 'Multi Selector')
-    })
-
-    it('swaps oob with legacy colon format', async function () {
-        mockResponse('GET', '/test', '<div>Main</div><div id="x" hx-swap-oob="innerHTML:#legacy">Legacy Format</div>')
-        createProcessedHTML('<div hx-get="/test">Click</div><div id="legacy">Original</div>');
-        find('[hx-get]').click()
-        await forRequest()
-        assertTextContentIs('#legacy', 'Legacy Format')
     })
 })

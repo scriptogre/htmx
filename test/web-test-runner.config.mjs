@@ -20,8 +20,16 @@ const config = {
 <script src="test/lib/fetch-mock.js"></script>
 <script src="src/htmx.kernel.js"></script>
 <script src="src/htmx.core.js"></script>
+<script src="src/htmx.alpha.js"></script>
 <script src="src/ext/hx-sse.js"></script>
 <script src="src/ext/hx-ws.js"></script>
+<script src="src/ext/hx-head.js"></script>
+<script src="src/ext/hx-browser-indicator.js"></script>
+<script src="src/ext/htmx-2-compat.js"></script>
+<script src="src/ext/hx-optimistic.js"></script>
+<script src="src/ext/hx-preload.js"></script>
+<script src="src/ext/hx-upsert.js"></script>
+<script src="src/ext/hx-alpine-compat.js"></script>
 
 <script class="mocha-init">
     window.should = window.chai.should()
@@ -43,11 +51,6 @@ const config = {
   },
   files: [
     'test/tests/**/*.js',
-    // Exclude extensions that still use htmx.registerExtension (old API)
-    '!test/tests/ext/hx-alpine-compat.js',
-    '!test/tests/ext/hx-optimistic.js',
-    '!test/tests/ext/hx-preload.js',
-    '!test/tests/ext/hx-upsert.js',
   ],
   reporters: [summaryReporter({ flatten: false, reportTestLogs: false, reportTestErrors: true }), defaultReporter({ reportTestProgress: true, reportTestResults: true })]
 }

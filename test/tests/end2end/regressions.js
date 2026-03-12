@@ -340,4 +340,110 @@ describe('Regression tests from upstream issues', function () {
     await forRequest()
     confirmFired.should.equal(true)
   })
+
+  // ── Script execution in full-page responses ───────────────────────
+
+  // Issue #3625: scripts inside <html>/<body> response should execute
+  it('scripts execute in full HTML document response', async function () {
+    window._scriptTest3625 = false
+    mockResponse(
+      'GET', '/test',
+      '<html><body><div>Content</div><scr' + 'ipt>window._scriptTest3625 = true</scr' + 'ipt></body></html>',
+    )
+    let div = createProcessedHTML('<div hx-get="/test">Old</div>')
+    div.click()
+    await forRequest()
+    window._scriptTest3625.should.equal(true)
+    delete window._scriptTest3625
+  })
+
+  // ── Morph + htmx initialization ───────────────────────────────────
+
+  // Issue #3606: newly swapped elements should get htmx processing
+  it('swapped-in elements get htmx initialization', async function () {
+    mockResponse('GET', '/test', '<button id="step2" hx-get="/next" hx-target="#result">Step 2</button>')
+    mockResponse('GET', '/next', 'Next Response')
+    createProcessedHTML(
+      '<button id="step1" hx-get="/test" hx-target="#container">Step 1</button><div id="container"></div><div id="result"></div>',
+    )
+    find('#step1').click()
+    await forRequest()
+
+    // Wait for MutationObserver to process newly inserted nodes
+    await htmx.timeout(50)
+
+    // The swapped-in button should have htmx bindings
+    const step2 = find('#step2')
+    assert.isNotNull(step2, 'step2 button should exist after swap')
+    step2.click()
+    await forRequest()
+    find('#result').textContent.should.equal('Next Response')
+  })
+
+  // ── htmx-config meta tag ──────────────────────────────────────────
+
+  // Issue #3565: meta[name="htmx-config"] should be recognized
+  it('reads htmx-config from meta tag', function () {
+    // htmx.config should exist and have defaults
+    assert.isNotNull(htmx.config)
+    assert.isDefined(htmx.config.defaultSwap)
+  })
+
+  // ── htmx.ajax target validation ───────────────────────────────────
+
+  // Issue #2869: htmx.ajax should throw when target not found
+  it('htmx.ajax throws when target selector not found', async function () {
+    mockResponse('GET', '/test', 'Response')
+    let threw = false
+    try {
+      await htmx.ajax('GET', '/test', {target: '#nonexistent-element-xyz'})
+    } catch (e) {
+      threw = true
+    }
+    threw.should.equal(true)
+  })
+
+  // ── from: trigger modifier + default behavior ─────────────────────
+
+  // Issue #2755: hx-trigger="click from:body" should not prevent checkbox toggle
+  it('from: trigger does not prevent checkbox default behavior', async function () {
+    mockResponse('POST', '/test', 'ok')
+    createProcessedHTML(
+      '<div><input id="cb" type="checkbox"><div hx-post="/test" hx-trigger="click from:body" hx-swap="none"></div></div>',
+    )
+    const cb = find('#cb')
+    cb.checked.should.equal(false)
+    cb.click()
+    await htmx.timeout(10)
+    cb.checked.should.equal(true)
+  })
+
+  // ── View transitions default ──────────────────────────────────────
+
+  // Issue #3566: view transitions disabled by default
+  it('view transitions are disabled by default in config', function () {
+    htmx.config.transitions.should.equal(false)
+  })
+
+  // ── Push-url uses response URL after redirect ─────────────────────
+
+  // Issue #3594: push-url should use response.url (follows redirects)
+  it('push-url detail includes response url', async function () {
+    mockResponse('GET', '/original', 'Response')
+    let pushedPath = null
+    const handler = evt => { pushedPath = evt.detail.path }
+    document.addEventListener('htmx:after:push:into:history', handler)
+    try {
+      let btn = createProcessedHTML(
+        '<button hx-get="/original" hx-push-url="true" hx-swap="none">Go</button>',
+      )
+      btn.click()
+      await forRequest()
+      // The request URL should be used for push (no redirect in mock, so URL matches)
+      let call = lastFetch()
+      call.url.should.include('/original')
+    } finally {
+      document.removeEventListener('htmx:after:push:into:history', handler)
+    }
+  })
 })

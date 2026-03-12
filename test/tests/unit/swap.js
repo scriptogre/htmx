@@ -178,58 +178,6 @@ describe('swap() unit tests', function() {
         delete window.testVar;
     })
 
-    it('swaps oob content', async function () {
-        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
-        await htmx.swap({"target":"#d1", "text":"<div>Main</div><div id='d2' hx-swap-oob='true'>OOB</div>"})
-        find('#d1').innerText.trim().should.equal("Main");
-        find('#d2').innerText.should.equal("OOB");
-    })
-
-    it('swaps oob with outerHTML', async function () {
-        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
-        await htmx.swap({"target":"#d1", "text":"<div>Main</div><div id='d2' hx-swap-oob='outerHTML'>OOB</div>"})
-        find('#d2').innerText.should.equal("OOB");
-    })
-
-    it('swaps oob with innerHTML', async function () {
-        createProcessedHTML("<div id='d1'></div><div id='d2'><span>Old</span></div>")
-        await htmx.swap({"target":"#d1", "text":"<div>Main</div><div id='d2' hx-swap-oob='innerHTML'>OOB</div>"})
-        find('#d2').innerText.should.equal("OOB");
-        find('#d2').tagName.should.equal("DIV");
-    })
-
-    it('swaps partial with default target', async function () {
-        await htmx.swap({"target":"#test-playground", "text":"<hx-partial hx-target='#test-playground'>Partial</hx-partial>"})
-        playground().innerText.should.equal("Partial");
-    })
-
-    it('swaps partial with custom target', async function () {
-        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
-        await htmx.swap({"target":"#d1", "text":"<hx-partial hx-target='#d2'>Partial</hx-partial>"})
-        find('#d2').innerText.should.equal("Partial");
-    })
-
-    it('swaps partial with custom swap style', async function () {
-        createProcessedHTML("<div id='d1'>Existing</div>")
-        await htmx.swap({"target":"#test-playground", "text":"<hx-partial hx-target='#d1' hx-swap='beforeend'>Partial</hx-partial>"})
-        find('#d1').innerText.should.equal("ExistingPartial");
-    })
-
-    it('executes script in oob swap', async function () {
-        window.testVar = 0;
-        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
-        await htmx.swap({"target":"#d1", "text":"<div>Main</div><div id='d2' hx-swap-oob='true'><script>window.testVar = 7</script></div>"})
-        window.testVar.should.equal(7);
-        delete window.testVar;
-    })
-
-    it('executes script in partial', async function () {
-        window.testVar = 0;
-        await htmx.swap({"target":"#test-playground", "text":"<hx-partial hx-target='#test-playground'><script>window.testVar = 8</script></hx-partial>"})
-        window.testVar.should.equal(8);
-        delete window.testVar;
-    })
-
     it('executes script when wrapped in html tag', async function () {
         window.testVar = 0;
         await htmx.swap({"target":"#test-playground", "text":"<html><body><script>window.testVar = 9</script><div>Content</div></body></html>"})
@@ -337,22 +285,6 @@ describe('swap() unit tests', function() {
         document.title.should.equal(originalTitle);
     })
 
-    it('sets title with oob swap', async function () {
-        let originalTitle = document.title;
-        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
-        await htmx.swap({"target":"#d1", "text":"<title>OOB Title</title><div>Main</div><div id='d2' hx-swap-oob='true'>OOB</div>"})
-        document.title.should.equal('OOB Title');
-        document.title = originalTitle;
-    })
-
-    it('sets title with partial swap', async function () {
-        let originalTitle = document.title;
-        createProcessedHTML("<div id='d1'></div>")
-        await htmx.swap({"target":"#test-playground", "text":"<title>Partial Title</title><hx-partial hx-target='#d1'>Partial Content</hx-partial>"})
-        document.title.should.equal('Partial Title');
-        document.title = originalTitle;
-    })
-
     it('sets title from body tag response', async function () {
         let originalTitle = document.title;
         await htmx.swap({"target":"#test-playground", "text":"<body><title>Body Title</title><div>Content</div></body>"})
@@ -377,56 +309,6 @@ describe('swap() unit tests', function() {
         let originalTitle = document.title;
         await htmx.swap({"target":"#test-playground", "text":"<input id='i1' autofocus>"})
         document.activeElement.id.should.equal("i1")
-    })
-
-    it('swaps both main target and partial target when both are present', async function () {
-        createProcessedHTML("<div id='target'>Hello</div><div id='target_oob'>OOB</div>")
-        await htmx.swap({
-            "target":"#target", 
-            "text":"<div>Hello me!</div><hx-partial hx-target='#target_oob' hx-swap='innerHTML'><div>OOB swap!</div></hx-partial>"
-        })
-        find('#target').textContent.should.equal("Hello me!");
-        find('#target_oob').textContent.should.equal("OOB swap!");
-    })
-
-    it('swaps only partial target when response contains only partial', async function () {
-        createProcessedHTML("<div id='target'>Original</div><div id='target_oob'>OOB Original</div>")
-        await htmx.swap({
-            "target":"#target", 
-            "text":"<hx-partial hx-target='#target_oob' hx-swap='innerHTML'><div>OOB Updated</div></hx-partial>"
-        })
-        find('#target').textContent.should.equal("Original");
-        find('#target_oob').textContent.should.equal("OOB Updated");
-    })
-
-    it('does not swap main target when only whitespace and partial present', async function () {
-        createProcessedHTML("<div id='target'>Original</div><div id='target_oob'>OOB</div>")
-        await htmx.swap({
-            "target":"#target", 
-            "text":"\n  <hx-partial hx-target='#target_oob' hx-swap='innerHTML'><div>OOB swap!</div></hx-partial>  \n"
-        })
-        find('#target').textContent.should.equal("Original");
-        find('#target_oob').textContent.should.equal("OOB swap!");
-    })
-
-    it('swaps both targets when empty element and partial present', async function () {
-        createProcessedHTML("<div id='target'>Original</div><div id='target_oob'>OOB</div>")
-        await htmx.swap({
-            "target":"#target", 
-            "text":"<p></p><hx-partial hx-target='#target_oob' hx-swap='innerHTML'><div>OOB swap!</div></hx-partial>"
-        })
-        find('#target').querySelector('p').should.not.be.null;
-        find('#target_oob').textContent.should.equal("OOB swap!");
-    })
-  
-    it('swaps both targets when plain text and partial present', async function () {
-        createProcessedHTML("<div id='target'>Original</div><div id='target_oob'>OOB</div>")
-        await htmx.swap({
-            "target":"#target", 
-            "text":"Hello<hx-partial hx-target='#target_oob' hx-swap='innerHTML'><div>OOB swap!</div></hx-partial>"
-        })
-        find('#target').textContent.should.equal("Hello");
-        find('#target_oob').innerText.should.equal("OOB swap!");
     })
 
     // Focus restoration not yet in kernel

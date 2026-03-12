@@ -1,124 +1,101 @@
-(() => {
-    let api;
-    
+/**
+ * htmx WebSocket Extension
+ *
+ * Provides WebSocket connectivity via hx-ws:connect and hx-ws:send attributes.
+ * Supports connection sharing, reconnection, JSON envelope protocol, and
+ * HTML partial swapping.
+ *
+ * Usage:
+ *   <div hx-ws:connect="/ws/chat">
+ *     <div id="messages"></div>
+ *     <form hx-ws:send>
+ *       <input name="message">
+ *       <button>Send</button>
+ *     </form>
+ *   </div>
+ */
+
+;(() => {
+    let api
+
     // ========================================
     // ATTRIBUTE HELPERS
     // ========================================
-    
-    // Helper to build proper attribute name respecting htmx prefix
-    function buildAttrName(suffix) {
-        // htmx.config.prefix replaces 'hx-' entirely, e.g. 'data-hx-' 
-        // So 'hx-ws:connect' becomes 'data-hx-ws:connect'
-        let prefix = htmx.config.prefix || 'hx-';
-        return prefix + 'ws' + suffix;
-    }
-    
-    // Helper to get attribute value, checking colon, hyphen, and plain variants
-    // Uses api.attributeValue for automatic prefix handling and inheritance support
+
     function getWsAttribute(element, attrName) {
-        // Try colon variant first (hx-ws:connect) - prefix applied automatically by htmx
-        let colonValue = api.attributeValue(element, 'hx-ws:' + attrName);
-        if (colonValue != null) return colonValue;
-        
-        // Try hyphen variant for JSX (hx-ws-connect)
-        let hyphenValue = api.attributeValue(element, 'hx-ws-' + attrName);
-        if (hyphenValue != null) return hyphenValue;
-        
-        // For 'send', also check plain 'hx-ws' (marker attribute)
+        let val = api.attr(element, 'hx-ws:' + attrName)
+        if (val != null) return val
+        val = api.attr(element, 'hx-ws-' + attrName)
+        if (val != null) return val
         if (attrName === 'send') {
-            let plainValue = api.attributeValue(element, 'hx-ws');
-            if (plainValue != null) return plainValue;
+            val = api.attr(element, 'hx-ws')
+            if (val != null) return val
         }
-        
-        return null;
+        return null
     }
-    
-    // Helper to check if element has WebSocket attribute (any variant)
+
     function hasWsAttribute(element, attrName) {
-        let value = getWsAttribute(element, attrName);
-        return value !== null && value !== undefined;
+        return getWsAttribute(element, attrName) != null
     }
-    
-    // Build selector for WS attributes
+
     function buildWsSelector(attrName) {
-        let colonAttr = buildAttrName(':' + attrName);
-        let hyphenAttr = buildAttrName('-' + attrName);
-        // Escape colon for CSS selector
-        return `[${colonAttr.replace(':', '\\:')}],[${hyphenAttr}]`;
+        const prefix = htmx.config.prefix || 'hx-'
+        const colonAttr = prefix + 'ws:' + attrName
+        const hyphenAttr = prefix + 'ws-' + attrName
+        return `[${colonAttr.replace(':', '\\:')}],[${hyphenAttr}]`
     }
-    
+
     // ========================================
     // CONFIGURATION
     // ========================================
-    
+
     function getConfig() {
         const defaults = {
             reconnect: true,
             reconnectDelay: 1000,
             reconnectMaxDelay: 30000,
             reconnectJitter: true,
-            // Note: closeOnHide is NOT implemented for WebSockets. Reconnection continues in background tabs.
-            // To implement visibility-aware behavior, listen for htmx:ws:reconnect and cancel if needed.
-            pendingRequestTTL: 30000  // TTL for pending requests in ms
-        };
-        return { ...defaults, ...(htmx.config.websockets || {}) };
+            pendingRequestTTL: 30000
+        }
+        return {...defaults, ...(htmx.config.websockets || {})}
     }
-    
+
     // ========================================
     // URL NORMALIZATION
     // ========================================
-    
+
     function normalizeWebSocketUrl(url) {
-        // Already a WebSocket URL
-        if (url.startsWith('ws://') || url.startsWith('wss://')) {
-            return url;
-        }
-        
-        // Convert http(s):// to ws(s)://
-        if (url.startsWith('http://')) {
-            return 'ws://' + url.slice(7);
-        }
-        if (url.startsWith('https://')) {
-            return 'wss://' + url.slice(8);
-        }
-        
-        // Relative URL - build absolute ws(s):// URL based on current location
-        let protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let host = window.location.host;
-        
-        if (url.startsWith('//')) {
-            // Protocol-relative URL
-            return protocol + url;
-        }
-        
-        if (url.startsWith('/')) {
-            // Absolute path
-            return protocol + '//' + host + url;
-        }
-        
-        // Relative path - resolve against current location
-        let basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-        return protocol + '//' + host + basePath + url;
+        if (url.startsWith('ws://') || url.startsWith('wss://')) return url
+        if (url.startsWith('http://')) return 'ws://' + url.slice(7)
+        if (url.startsWith('https://')) return 'wss://' + url.slice(8)
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        const host = window.location.host
+
+        if (url.startsWith('//')) return protocol + url
+        if (url.startsWith('/')) return protocol + '//' + host + url
+
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1)
+        return protocol + '//' + host + basePath + url
     }
-    
+
     // ========================================
     // CONNECTION REGISTRY
     // ========================================
-    
-    const connectionRegistry = new Map();
-    
+
+    const connectionRegistry = new Map()
+
     function getOrCreateConnection(url, element) {
-        let normalizedUrl = normalizeWebSocketUrl(url);
-        
+        const normalizedUrl = normalizeWebSocketUrl(url)
+
         if (connectionRegistry.has(normalizedUrl)) {
-            let entry = connectionRegistry.get(normalizedUrl);
-            entry.refCount++;
-            entry.elements.add(element);
-            return entry;
+            const entry = connectionRegistry.get(normalizedUrl)
+            entry.refCount++
+            entry.elements.add(element)
+            return entry
         }
-        
-        // Create entry but DON'T add to registry yet - wait for before:ws:connect
-        let entry = {
+
+        const entry = {
             url: normalizedUrl,
             socket: null,
             refCount: 1,
@@ -126,628 +103,482 @@
             reconnectAttempts: 0,
             reconnectTimer: null,
             pendingRequests: new Map(),
-            listeners: {}  // Store listener references for proper cleanup
-        };
-        
-        // Fire cancelable event BEFORE storing in registry
-        if (!triggerEvent(element, 'htmx:before:ws:connect', { url: normalizedUrl })) {
-            // Event was cancelled - don't create connection or store entry
-            return null;
+            listeners: {}
         }
-        
-        // Event passed - now store in registry and create socket
-        connectionRegistry.set(normalizedUrl, entry);
-        createWebSocket(normalizedUrl, entry);
-        return entry;
+
+        if (!triggerEvent(element, 'htmx:before:ws:connect', {url: normalizedUrl})) {
+            return null
+        }
+
+        connectionRegistry.set(normalizedUrl, entry)
+        createWebSocket(normalizedUrl, entry)
+        return entry
     }
-    
+
     function createWebSocket(url, entry) {
-        let firstElement = entry.elements.values().next().value;
-        
-        // Close and remove listeners from old socket properly
+        const firstElement = entry.elements.values().next().value
+
         if (entry.socket) {
-            let oldSocket = entry.socket;
-            entry.socket = null;
-            
-            // Remove listeners using stored references
-            if (entry.listeners.open) oldSocket.removeEventListener('open', entry.listeners.open);
-            if (entry.listeners.message) oldSocket.removeEventListener('message', entry.listeners.message);
-            if (entry.listeners.close) oldSocket.removeEventListener('close', entry.listeners.close);
-            if (entry.listeners.error) oldSocket.removeEventListener('error', entry.listeners.error);
-            
+            const oldSocket = entry.socket
+            entry.socket = null
+            if (entry.listeners.open) oldSocket.removeEventListener('open', entry.listeners.open)
+            if (entry.listeners.message) oldSocket.removeEventListener('message', entry.listeners.message)
+            if (entry.listeners.close) oldSocket.removeEventListener('close', entry.listeners.close)
+            if (entry.listeners.error) oldSocket.removeEventListener('error', entry.listeners.error)
             try {
                 if (oldSocket.readyState === WebSocket.OPEN || oldSocket.readyState === WebSocket.CONNECTING) {
-                    oldSocket.close();
+                    oldSocket.close()
                 }
             } catch (e) {}
         }
-        
+
         try {
-            entry.socket = new WebSocket(url);
-            
-            // Create and store listener references
+            entry.socket = new WebSocket(url)
+
             entry.listeners.open = () => {
-                // Reset reconnect attempts on successful connection
-                entry.reconnectAttempts = 0;
-                
+                entry.reconnectAttempts = 0
                 if (firstElement) {
-                    triggerEvent(firstElement, 'htmx:after:ws:connect', { url, socket: entry.socket });
+                    triggerEvent(firstElement, 'htmx:after:ws:connect', {url, socket: entry.socket})
                 }
-            };
-            
+            }
+
             entry.listeners.message = (event) => {
-                handleMessage(entry, event);
-            };
-            
+                handleMessage(entry, event)
+            }
+
             entry.listeners.close = (event) => {
-                // Check if this socket is still the active one
-                if (event.target !== entry.socket) return;
-                
+                if (event.target !== entry.socket) return
                 if (firstElement) {
-                    triggerEvent(firstElement, 'htmx:ws:close', { 
-                        url, 
-                        code: event.code,
-                        reason: event.reason 
-                    });
+                    triggerEvent(firstElement, 'htmx:ws:close', {url, code: event.code, reason: event.reason})
                 }
-                
-                // Check if entry is still valid (not cleared)
-                if (!connectionRegistry.has(url)) return;
-                
-                let config = getConfig();
+                if (!connectionRegistry.has(url)) return
+                const config = getConfig()
                 if (config.reconnect && entry.refCount > 0) {
-                    scheduleReconnect(url, entry);
+                    scheduleReconnect(url, entry)
                 } else {
-                    cleanupPendingRequests(entry);
-                    connectionRegistry.delete(url);
+                    entry.pendingRequests.clear()
+                    connectionRegistry.delete(url)
                 }
-            };
-            
+            }
+
             entry.listeners.error = (error) => {
                 if (firstElement) {
-                    triggerEvent(firstElement, 'htmx:ws:error', { url, error });
+                    triggerEvent(firstElement, 'htmx:ws:error', {url, error})
                 }
-            };
-            
-            // Add listeners
-            entry.socket.addEventListener('open', entry.listeners.open);
-            entry.socket.addEventListener('message', entry.listeners.message);
-            entry.socket.addEventListener('close', entry.listeners.close);
-            entry.socket.addEventListener('error', entry.listeners.error);
-            
+            }
+
+            entry.socket.addEventListener('open', entry.listeners.open)
+            entry.socket.addEventListener('message', entry.listeners.message)
+            entry.socket.addEventListener('close', entry.listeners.close)
+            entry.socket.addEventListener('error', entry.listeners.error)
         } catch (error) {
             if (firstElement) {
-                triggerEvent(firstElement, 'htmx:ws:error', { url, error });
+                triggerEvent(firstElement, 'htmx:ws:error', {url, error})
             }
         }
     }
-    
+
     function scheduleReconnect(url, entry) {
-        let config = getConfig();
-        
-        // Increment attempts FIRST, then calculate delay
-        entry.reconnectAttempts++;
-        let attempts = entry.reconnectAttempts;
-        
+        const config = getConfig()
+        entry.reconnectAttempts++
+        const attempts = entry.reconnectAttempts
+
         let delay = Math.min(
             (config.reconnectDelay || 1000) * Math.pow(2, attempts - 1),
             config.reconnectMaxDelay || 30000
-        );
-        
+        )
         if (config.reconnectJitter) {
-            delay = delay * (0.75 + Math.random() * 0.5);
+            delay = delay * (0.75 + Math.random() * 0.5)
         }
-        
+
         entry.reconnectTimer = setTimeout(() => {
             if (entry.refCount > 0) {
-                let firstElement = entry.elements.values().next().value;
+                const firstElement = entry.elements.values().next().value
                 if (firstElement) {
-                    // attempts now means "this is attempt number N"
-                    triggerEvent(firstElement, 'htmx:ws:reconnect', { url, attempts });
+                    triggerEvent(firstElement, 'htmx:ws:reconnect', {url, attempts})
                 }
-                createWebSocket(url, entry);
+                createWebSocket(url, entry)
             }
-        }, delay);
+        }, delay)
     }
-    
+
     function decrementRef(url, element) {
-        // Try both original and normalized URL
-        let normalizedUrl = normalizeWebSocketUrl(url);
-        
-        if (!connectionRegistry.has(normalizedUrl)) return;
-        
-        let entry = connectionRegistry.get(normalizedUrl);
-        entry.elements.delete(element);
-        entry.refCount--;
-        
+        const normalizedUrl = normalizeWebSocketUrl(url)
+        if (!connectionRegistry.has(normalizedUrl)) return
+
+        const entry = connectionRegistry.get(normalizedUrl)
+        if (!entry.elements.has(element)) return
+        entry.elements.delete(element)
+        entry.refCount--
+
         if (entry.refCount <= 0) {
-            if (entry.reconnectTimer) {
-                clearTimeout(entry.reconnectTimer);
-            }
-            cleanupPendingRequests(entry);
+            if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer)
+            entry.pendingRequests.clear()
             if (entry.socket && entry.socket.readyState === WebSocket.OPEN) {
-                entry.socket.close();
+                entry.socket.close()
             }
-            connectionRegistry.delete(normalizedUrl);
+            connectionRegistry.delete(normalizedUrl)
         }
     }
-    
-    // ========================================
-    // PENDING REQUEST MANAGEMENT
-    // ========================================
-    
-    function cleanupPendingRequests(entry) {
-        entry.pendingRequests.clear();
-    }
-    
-    function cleanupExpiredRequests(entry) {
-        let config = getConfig();
-        let now = Date.now();
-        let ttl = config.pendingRequestTTL || 30000;
-        
-        for (let [requestId, pending] of entry.pendingRequests) {
-            if (now - pending.timestamp > ttl) {
-                entry.pendingRequests.delete(requestId);
-            }
-        }
-    }
-    
+
     // ========================================
     // MESSAGE SENDING
     // ========================================
-    
-    // Check if a value looks like a URL (vs a boolean marker like "" or "true")
+
     function looksLikeUrl(value) {
-        if (!value) return false;
-        // Check for URL-like patterns: paths, protocols, protocol-relative
-        return value.startsWith('/') || 
-               value.startsWith('.') ||
-               value.startsWith('ws:') || 
-               value.startsWith('wss:') || 
-               value.startsWith('http:') || 
-               value.startsWith('https:') ||
-               value.startsWith('//');
+        if (!value) return false
+        return value.startsWith('/') || value.startsWith('.') ||
+            value.startsWith('ws:') || value.startsWith('wss:') ||
+            value.startsWith('http:') || value.startsWith('https:') ||
+            value.startsWith('//')
     }
-    
+
     async function sendMessage(element, event) {
-        // Find connection URL
-        let url = getWsAttribute(element, 'send');
+        let url = getWsAttribute(element, 'send')
         if (!looksLikeUrl(url)) {
-            // Value is empty, "true", or other non-URL marker - look for ancestor connection
-            let selector = buildWsSelector('connect');
-            let ancestor = element.closest(selector);
+            const selector = buildWsSelector('connect')
+            const ancestor = element.closest(selector)
             if (ancestor) {
-                url = getWsAttribute(ancestor, 'connect');
+                url = getWsAttribute(ancestor, 'connect')
             } else {
-                url = null;
+                url = null
             }
         }
-        
+
         if (!url) {
-            // Emit error event instead of console.error
-            triggerEvent(element, 'htmx:wsSendError', { 
-                element, 
-                error: 'No WebSocket connection found for element' 
-            });
-            return;
+            triggerEvent(element, 'htmx:wsSendError', {element, error: 'No WebSocket connection found for element'})
+            return
         }
-        
-        let normalizedUrl = normalizeWebSocketUrl(url);
-        let entry = connectionRegistry.get(normalizedUrl);
+
+        const normalizedUrl = normalizeWebSocketUrl(url)
+        const entry = connectionRegistry.get(normalizedUrl)
         if (!entry || !entry.socket || entry.socket.readyState !== WebSocket.OPEN) {
-            triggerEvent(element, 'htmx:wsSendError', { url: normalizedUrl, error: 'Connection not open' });
-            return;
+            triggerEvent(element, 'htmx:wsSendError', {url: normalizedUrl, error: 'Connection not open'})
+            return
         }
-        
-        // Cleanup expired pending requests periodically
-        cleanupExpiredRequests(entry);
-        
-        // Build message
-        let form = element.form || element.closest('form');
-        let body = api.collectFormData(element, form, event.submitter);
-        let valsResult = api.handleHxVals(element, body);
-        if (valsResult) await valsResult;
-        
-        // Preserve multi-value form fields (checkboxes, multi-selects)
-        let values = {};
-        for (let [key, value] of body) {
-            if (key in values) {
-                // Convert to array if needed
-                if (!Array.isArray(values[key])) {
-                    values[key] = [values[key]];
-                }
-                values[key].push(value);
+
+        // Collect form data
+        const form = element.form || element.closest('form')
+        const body = form ? new FormData(form) : new FormData()
+
+        // Handle hx-vals
+        const valsAttr = api.attr(element, 'hx-vals')
+        if (valsAttr) {
+            let vals = null
+            if (valsAttr.startsWith('js:') || valsAttr.startsWith('javascript:')) {
+                const expr = valsAttr.startsWith('js:') ? valsAttr.slice(3) : valsAttr.slice(11)
+                try {
+                    vals = await new Function('return (async () => (' + expr + '))()')()
+                } catch (e) { /* ignore eval errors */ }
             } else {
-                values[key] = value;
+                try { vals = JSON.parse(valsAttr) } catch (e) { /* ignore parse errors */ }
+            }
+            if (vals && typeof vals === 'object') {
+                for (const [k, v] of Object.entries(vals)) {
+                    body.set(k, v)
+                }
             }
         }
-        
-        // Build headers object
-        let headers = {
+
+        // Build values object preserving multi-value fields
+        const values = {}
+        for (const [key, value] of body) {
+            if (key in values) {
+                if (!Array.isArray(values[key])) values[key] = [values[key]]
+                values[key].push(value)
+            } else {
+                values[key] = value
+            }
+        }
+
+        // Build headers
+        const headers = {
             'HX-Request': 'true',
             'HX-Current-URL': window.location.href
-        };
-        if (element.id) {
-            headers['HX-Trigger'] = element.id;
         }
-        let targetAttr = api.attributeValue(element, 'hx-target');
-        if (targetAttr) {
-            headers['HX-Target'] = targetAttr;
-        }
-        
-        let requestId = generateUUID();
-        let message = {
+        if (element.id) headers['HX-Trigger'] = element.id
+        const targetAttr = api.attr(element, 'hx-target')
+        if (targetAttr) headers['HX-Target'] = targetAttr
+
+        const requestId = generateUUID()
+        const message = {
             type: 'request',
             request_id: requestId,
             event: event.type,
-            headers: headers,
-            values: values,
+            headers,
+            values,
             path: normalizedUrl
-        };
-        
-        if (element.id) {
-            message.id = element.id;
         }
-        
-        // Allow modification via event - use 'data' as documented
-        let detail = { data: message, element, url: normalizedUrl };
-        if (!triggerEvent(element, 'htmx:before:ws:send', detail)) {
-            return;
-        }
-        
+        if (element.id) message.id = element.id
+
+        const detail = {data: message, element, url: normalizedUrl}
+        if (!triggerEvent(element, 'htmx:before:ws:send', detail)) return
+
         try {
-            entry.socket.send(JSON.stringify(detail.data));
-            
-            // Store pending request for response matching
-            entry.pendingRequests.set(requestId, { element, timestamp: Date.now() });
-            
-            triggerEvent(element, 'htmx:after:ws:send', { data: detail.data, url: normalizedUrl });
+            entry.socket.send(JSON.stringify(detail.data))
+            entry.pendingRequests.set(requestId, {element, timestamp: Date.now()})
+            triggerEvent(element, 'htmx:after:ws:send', {data: detail.data, url: normalizedUrl})
         } catch (error) {
-            triggerEvent(element, 'htmx:wsSendError', { url: normalizedUrl, error });
+            triggerEvent(element, 'htmx:wsSendError', {url: normalizedUrl, error})
         }
     }
-    
+
     function generateUUID() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            let r = Math.random() * 16 | 0;
-            let v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            const r = Math.random() * 16 | 0
+            const v = c === 'x' ? r : (r & 0x3 | 0x8)
+            return v.toString(16)
+        })
     }
-    
+
     // ========================================
     // MESSAGE RECEIVING & ROUTING
     // ========================================
-    
+
     function handleMessage(entry, event) {
-        let envelope;
+        let envelope
         try {
-            envelope = JSON.parse(event.data);
+            envelope = JSON.parse(event.data)
         } catch (e) {
-            // Not JSON - treat as raw HTML
-            let firstElement = entry.elements.values().next().value;
+            const firstElement = entry.elements.values().next().value
             if (firstElement) {
-                handleRawMessage(firstElement, event.data);
+                triggerEvent(firstElement, 'htmx:wsUnknownMessage', {data: event.data, parseError: e})
             }
-            return;
+            return
         }
-        
-        // Apply defaults for channel and format
-        envelope.channel = envelope.channel || 'ui';
-        envelope.format = envelope.format || 'html';
-        
-        // Find target element for this message
-        let targetElement = null;
+
+        envelope.channel = envelope.channel || 'ui'
+        envelope.format = envelope.format || 'html'
+
+        let targetElement = null
         if (envelope.request_id && entry.pendingRequests.has(envelope.request_id)) {
-            targetElement = entry.pendingRequests.get(envelope.request_id).element;
-            entry.pendingRequests.delete(envelope.request_id);
+            targetElement = entry.pendingRequests.get(envelope.request_id).element
+            entry.pendingRequests.delete(envelope.request_id)
         } else {
-            // Use first element in the connection
-            targetElement = entry.elements.values().next().value;
+            targetElement = entry.elements.values().next().value
         }
-        
-        // Emit before:message event (cancelable)
-        if (!triggerEvent(targetElement, 'htmx:before:ws:message', { envelope, element: targetElement })) {
-            return;
-        }
-        
-        // Route based on channel
+
+        if (!triggerEvent(targetElement, 'htmx:before:ws:message', {envelope, element: targetElement})) return
+
         if (envelope.channel === 'ui' && envelope.format === 'html') {
-            handleHtmlMessage(targetElement, envelope);
+            handleHtmlMessage(targetElement, envelope)
         } else {
-            // Any non-ui/html message emits htmx:wsMessage for application handling
-            // This is extensible - apps can handle json, audio, binary, custom channels, etc.
-            triggerEvent(targetElement, 'htmx:wsMessage', { ...envelope, element: targetElement });
-        }
-        
-        triggerEvent(targetElement, 'htmx:after:ws:message', { envelope, element: targetElement });
-    }
-    
-    // ========================================
-    // RAW (NON-JSON) MESSAGE HANDLING
-    // ========================================
-
-    function handleRawMessage(element, data) {
-        // Fire cancelable event - allows custom handling of non-JSON messages
-        if (!triggerEvent(element, 'htmx:ws:rawMessage', { data: data })) {
-            return;  // Event cancelled - developer handles it
+            triggerEvent(targetElement, 'htmx:wsMessage', {...envelope, element: targetElement})
         }
 
-        // Default behavior: swap as raw HTML
-        let target = resolveTarget(element, null);
-        let targetSelector = api.attributeValue(element, 'hx-target');
-
-        // If no explicit hx-target, use swap:none so we don't wipe the
-        // connection element — but partials in the payload can still
-        // target their own destinations
-        let swapStyle = targetSelector
-            ? (api.attributeValue(element, 'hx-swap') || htmx.config.defaultSwap)
-            : 'none';
-
-        htmx.swap({
-            sourceElement: element,
-            target: target,
-            swap: swapStyle,
-            text: data,
-            transition: false
-        });
+        triggerEvent(targetElement, 'htmx:after:ws:message', {envelope, element: targetElement})
     }
 
     // ========================================
-    // HTML PARTIAL HANDLING - Using htmx.swap(ctx)
+    // HTML PARTIAL HANDLING
     // ========================================
-    
+
     function handleHtmlMessage(element, envelope) {
-        let target = resolveTarget(element, envelope.target);
-        let swapStyle = envelope.swap || api.attributeValue(element, 'hx-swap') || htmx.config.defaultSwap;
-        
-        // Always call swap even if target is null - partials in payload may have their own targets
-        htmx.swap({
-            sourceElement: element,
-            target: target,
-            swap: swapStyle,
-            text: envelope.payload || '',
-            transition: false
-        });
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(envelope.payload || '', 'text/html')
+        const partials = doc.querySelectorAll('hx-partial')
+
+        if (partials.length === 0) {
+            const target = resolveTarget(element, envelope.target)
+            if (target) {
+                swapContent(target, envelope.payload, element, envelope.swap)
+            }
+            return
+        }
+
+        for (const partial of partials) {
+            const targetId = partial.getAttribute('id')
+            if (!targetId) continue
+            const target = document.getElementById(targetId)
+            if (!target) continue
+            swapContent(target, partial.innerHTML, element, envelope.swap)
+        }
     }
-    
+
     function resolveTarget(element, envelopeTarget) {
         if (envelopeTarget) {
-            if (envelopeTarget === 'this') {
-                return element;
-            }
-            return document.querySelector(envelopeTarget);
+            if (envelopeTarget === 'this') return element
+            return document.querySelector(envelopeTarget)
         }
-        let targetSelector = api.attributeValue(element, 'hx-target');
+        const targetSelector = api.attr(element, 'hx-target')
         if (targetSelector) {
-            if (targetSelector === 'this') {
-                return element;
-            }
-            return document.querySelector(targetSelector);
+            if (targetSelector === 'this') return element
+            return document.querySelector(targetSelector)
         }
-        return element;
+        return element
     }
-    
+
+    function swapContent(target, content, sourceElement, envelopeSwap) {
+        const swapStyle = envelopeSwap || api.attr(sourceElement, 'hx-swap') || htmx.config.defaultSwap || 'innerHTML'
+        // Don't pass element — target and swap are already resolved by the WS extension.
+        // This prevents hxTarget/hxSwap from overriding our resolved values.
+        htmx.swap({
+            target,
+            content: content || '',
+            style: swapStyle,
+        })
+    }
+
     // ========================================
     // EVENT HELPERS
     // ========================================
-    
+
     function triggerEvent(element, eventName, detail = {}) {
-        if (!element) return true;
-        return htmx.trigger(element, eventName, detail);
+        if (!element) return true
+        return htmx.trigger(element, eventName, detail)
     }
-    
+
     // ========================================
     // ELEMENT LIFECYCLE
     // ========================================
-    
+
     function initializeElement(element) {
-        if (element._htmx?.wsInitialized) return;
+        if (element._htmx?.wsInitialized) return
 
-        let connectUrl = getWsAttribute(element, 'connect');
-        if (!connectUrl) return;
+        const connectUrl = getWsAttribute(element, 'connect')
+        if (!connectUrl) return
 
-        element._htmx = element._htmx || {};
-        element._htmx.wsInitialized = true;
-        
-        let triggerSpec = api.attributeValue(element, 'hx-trigger');
-        
+        element._htmx = element._htmx || {}
+        element._htmx.wsInitialized = true
+
+        const triggerSpec = api.attr(element, 'hx-trigger')
+
         if (!triggerSpec) {
-            // No trigger specified - connect immediately (default behavior)
-            // This is the most common use case: connect when element appears
-            let entry = getOrCreateConnection(connectUrl, element);
-            if (entry) {
-                element._htmx.wsUrl = entry.url;
-            }
+            const entry = getOrCreateConnection(connectUrl, element)
+            if (entry) element._htmx.wsUrl = entry.url
         } else {
-            // Connect based on explicit trigger
-            // Note: We only support bare event names for connection triggers.
-            // Modifiers like once, delay, throttle, from, target are NOT supported
-            // for connection establishment. Use htmx:before:ws:connect event for
-            // custom connection control logic.
-            let specs = api.parseTriggerSpecs(triggerSpec);
+            const specs = htmx.parseTriggerSpecs(triggerSpec)
             if (specs.length > 0) {
-                let spec = specs[0];
+                const spec = specs[0]
                 if (spec.name === 'load') {
-                    // Explicit load trigger - connect immediately
-                    let entry = getOrCreateConnection(connectUrl, element);
-                    if (entry) {
-                        element._htmx.wsUrl = entry.url;
-                    }
+                    const entry = getOrCreateConnection(connectUrl, element)
+                    if (entry) element._htmx.wsUrl = entry.url
                 } else {
-                    // Set up event listener for other triggers (bare event name only)
                     element.addEventListener(spec.name, () => {
                         if (!element._htmx?.wsUrl) {
-                            let entry = getOrCreateConnection(connectUrl, element);
-                            if (entry) {
-                                element._htmx.wsUrl = entry.url;
-                            }
+                            const entry = getOrCreateConnection(connectUrl, element)
+                            if (entry) element._htmx.wsUrl = entry.url
                         }
-                    }, { once: true });
+                    }, {once: true})
                 }
             }
         }
     }
-    
-    function initializeSendElement(element) {
-        if (element._htmx?.wsSendInitialized) return;
 
-        let sendAttr = getWsAttribute(element, 'send');
-        // Only treat as URL if it looks like one (not "", "true", etc.)
-        let sendUrl = looksLikeUrl(sendAttr) ? sendAttr : null;
-        let triggerSpec = api.attributeValue(element, 'hx-trigger');
-        
+    function initializeSendElement(element) {
+        if (element._htmx?.wsSendInitialized) return
+
+        const sendAttr = getWsAttribute(element, 'send')
+        const sendUrl = looksLikeUrl(sendAttr) ? sendAttr : null
+        let triggerSpec = api.attr(element, 'hx-trigger')
+
         if (!triggerSpec) {
-            // Default trigger based on element type
             triggerSpec = element.matches('form') ? 'submit' :
-                         element.matches('input:not([type=button]),select,textarea') ? 'change' :
-                         'click';
+                element.matches('input:not([type=button]),select,textarea') ? 'change' : 'click'
         }
-        
-        // Note: We only support bare event names for send triggers.
-        // Modifiers like once, delay, throttle, from, target are NOT supported.
-        // For complex trigger logic, use htmx:before:ws:send to implement custom behavior.
-        let specs = api.parseTriggerSpecs(triggerSpec);
+
+        const specs = htmx.parseTriggerSpecs(triggerSpec)
         if (specs.length > 0) {
-            let spec = specs[0];
-            
-            let handler = async (evt) => {
-                // Prevent default for forms
+            const spec = specs[0]
+
+            const handler = async (evt) => {
                 if (element.matches('form') && evt.type === 'submit') {
-                    evt.preventDefault();
+                    evt.preventDefault()
                 }
-                
-                // If this element has its own URL, ensure connection exists
-                if (sendUrl) {
-                    if (!element._htmx?.wsUrl) {
-                        let entry = getOrCreateConnection(sendUrl, element);
-                        if (entry) {
-                            element._htmx.wsUrl = entry.url;
-                        }
-                    }
+                if (sendUrl && !element._htmx?.wsUrl) {
+                    const entry = getOrCreateConnection(sendUrl, element)
+                    if (entry) element._htmx.wsUrl = entry.url
                 }
-                
-                await sendMessage(element, evt);
-            };
-            
-            element.addEventListener(spec.name, handler);
-            element._htmx = element._htmx || {};
-            element._htmx.wsSendInitialized = true;
-            element._htmx.wsSendHandler = handler;
-            element._htmx.wsSendEvent = spec.name;
+                await sendMessage(element, evt)
+            }
+
+            element.addEventListener(spec.name, handler)
+            element._htmx = element._htmx || {}
+            element._htmx.wsSendInitialized = true
+            element._htmx.wsSendHandler = handler
+            element._htmx.wsSendEvent = spec.name
         }
     }
-    
+
     function cleanupElement(element) {
         if (element._htmx?.wsUrl) {
-            decrementRef(element._htmx.wsUrl, element);
+            decrementRef(element._htmx.wsUrl, element)
         }
-        
         if (element._htmx?.wsSendHandler) {
-            element.removeEventListener(element._htmx.wsSendEvent, element._htmx.wsSendHandler);
+            element.removeEventListener(element._htmx.wsSendEvent, element._htmx.wsSendHandler)
         }
     }
-    
+
     // ========================================
     // BACKWARD COMPATIBILITY
     // ========================================
-    
+
     function checkLegacyAttributes(element) {
-        // Check for old ws-connect / ws-send attributes
         if (element.hasAttribute('ws-connect') || element.hasAttribute('ws-send')) {
-            console.warn('HTMX WebSocket: Legacy attributes ws-connect and ws-send are deprecated. Please use hx-ws:connect/hx-ws-connect and hx-ws:send/hx-ws-send instead.');
-            
-            // Map legacy attributes to new ones (prefer hyphen variant for broader compatibility)
+            console.warn('HTMX WebSocket: Legacy attributes ws-connect and ws-send are deprecated. Use hx-ws:connect and hx-ws:send instead.')
+
             if (element.hasAttribute('ws-connect')) {
-                let url = element.getAttribute('ws-connect');
-                let hyphenAttr = buildAttrName('-connect');
-                if (!element.hasAttribute(hyphenAttr)) {
-                    element.setAttribute(hyphenAttr, url);
-                }
+                const url = element.getAttribute('ws-connect')
+                const attr = (htmx.config.prefix || 'hx-') + 'ws-connect'
+                if (!element.hasAttribute(attr)) element.setAttribute(attr, url)
             }
-            
             if (element.hasAttribute('ws-send')) {
-                let hyphenAttr = buildAttrName('-send');
-                if (!element.hasAttribute(hyphenAttr)) {
-                    element.setAttribute(hyphenAttr, '');
-                }
+                const attr = (htmx.config.prefix || 'hx-') + 'ws-send'
+                if (!element.hasAttribute(attr)) element.setAttribute(attr, '')
             }
         }
     }
-    
+
+    function processNode(node) {
+        checkLegacyAttributes(node)
+        if (hasWsAttribute(node, 'connect')) initializeElement(node)
+        if (hasWsAttribute(node, 'send')) initializeSendElement(node)
+    }
+
     // ========================================
     // EXTENSION REGISTRATION
     // ========================================
-    
-    htmx.registerExtension('ws', {
-        init: (internalAPI) => {
-            api = internalAPI;
-            
-            // Initialize default config if not set
-            if (!htmx.config.websockets) {
-                htmx.config.websockets = {};
-            }
-        },
-        
-        htmx_after_process: (element) => {
-            const processNode = (node) => {
-                // Check for legacy attributes
-                checkLegacyAttributes(node);
-                
-                // Initialize WebSocket connection elements (check both variants)
-                if (hasWsAttribute(node, 'connect')) {
-                    initializeElement(node);
-                }
-                
-                // Initialize send elements (check both variants)
-                if (hasWsAttribute(node, 'send')) {
-                    initializeSendElement(node);
-                }
-            };
 
-            // Process the element itself
-            processNode(element);
-            
-            // Process descendants - build proper selector respecting prefix
-            let connectSelector = buildWsSelector('connect');
-            let sendSelector = buildWsSelector('send');
-            let plainAttr = buildAttrName('');
-            let fullSelector = `${connectSelector},${sendSelector},[${plainAttr}],[ws-connect],[ws-send]`;
-            
-            element.querySelectorAll(fullSelector).forEach(processNode);
+    htmx.install('hx-ws', {
+        on: {
+            'htmx:after:init': (detail, _api) => {
+                api = _api
+                const element = detail.element
+                processNode(element)
+
+                const connectSelector = buildWsSelector('connect')
+                const sendSelector = buildWsSelector('send')
+                const plainAttr = (htmx.config.prefix || 'hx-') + 'ws'
+                const fullSelector = `${connectSelector},${sendSelector},[${plainAttr}],[ws-connect],[ws-send]`
+                element.querySelectorAll(fullSelector).forEach(processNode)
+            },
+
+            'htmx:before:cleanup': (detail) => {
+                cleanupElement(detail.element)
+            },
         },
-        
-        htmx_before_cleanup: (element) => {
-            cleanupElement(element);
-        }
-    });
-    
+    })
+
     // Expose registry for testing
     if (typeof window !== 'undefined' && window.htmx) {
-        window.htmx.ext = window.htmx.ext || {};
+        window.htmx.ext = window.htmx.ext || {}
         window.htmx.ext.ws = {
             getRegistry: () => ({
                 clear: () => {
-                    let entries = Array.from(connectionRegistry.values());
-                    connectionRegistry.clear(); // Clear first to prevent reconnects
-                    
+                    const entries = Array.from(connectionRegistry.values())
+                    connectionRegistry.clear()
                     entries.forEach(entry => {
-                        entry.refCount = 0; // Prevent pending timeouts from reconnecting
-                        if (entry.reconnectTimer) {
-                            clearTimeout(entry.reconnectTimer);
-                        }
-                        if (entry.socket) {
-                            // Remove listeners if possible or just close
-                            entry.socket.close();
-                        }
-                        entry.elements.clear();
-                        entry.pendingRequests.clear();
-                    });
+                        entry.refCount = 0
+                        if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer)
+                        if (entry.socket) entry.socket.close()
+                        entry.elements.clear()
+                        entry.pendingRequests.clear()
+                    })
                 },
                 get: (key) => connectionRegistry.get(normalizeWebSocketUrl(key)),
                 has: (key) => connectionRegistry.has(normalizeWebSocketUrl(key)),
                 size: connectionRegistry.size
             })
-        };
+        }
     }
-})();
+})()

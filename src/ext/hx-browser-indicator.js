@@ -2,15 +2,14 @@
 
     if (typeof navigation === 'undefined') return;
 
-    let api;
     let activeCount = 0;
     let activeAborts = new Set();
     let historyUpdating = false;
     let cleanupNavigation = null;
 
-    function shouldShowIndicator(elt) {
-        if (api.attributeValue(elt, 'hx-browser-indicator') === 'true') return true;
-        if (htmx.config.boostBrowserIndicator && elt._htmx?.boosted) return true;
+    function shouldShowIndicator(elt, api) {
+        if (api.attr(elt, 'hx-browser-indicator') === 'true') return true;
+        if (htmx.config.boostBrowserIndicator && api.attr(elt, 'hx-boost') === 'true') return true;
         return false;
     }
 
@@ -54,33 +53,35 @@
         }
     }
 
-    htmx.registerExtension('browser-indicator', {
-        init: (internalAPI) => {
-            api = internalAPI;
+    htmx.install('browser-indicator', {
+        config: {
+            attributeFilter: ['hx-browser-indicator']
         },
 
-        htmx_before_history_update: () => {
-            historyUpdating = true;
-        },
+        on: {
+            'htmx:before:history:update': () => {
+                historyUpdating = true;
+            },
 
-        htmx_after_history_update: () => {
-            historyUpdating = false;
-        },
+            'htmx:after:history:update': () => {
+                historyUpdating = false;
+            },
 
-        htmx_before_request: (elt, detail) => {
-            if (!shouldShowIndicator(elt)) return;
-            detail.ctx._browserIndicator = true;
-            if (detail.ctx.request?.abort) activeAborts.add(detail.ctx.request.abort);
-            activeCount++;
-            if (activeCount === 1) startIndicator();
-        },
+            'htmx:before:request': (detail, api) => {
+                if (!shouldShowIndicator(detail.element, api)) return;
+                detail._browserIndicator = true;
+                if (detail.request?.abort) activeAborts.add(detail.request.abort);
+                activeCount++;
+                if (activeCount === 1) startIndicator();
+            },
 
-        htmx_finally_request: (elt, detail) => {
-            if (!detail.ctx._browserIndicator) return;
-            if (detail.ctx.request?.abort) activeAborts.delete(detail.ctx.request.abort);
-            if (activeCount === 0) return;
-            activeCount--;
-            if (activeCount === 0) stopIndicator();
+            'htmx:finally': (detail, api) => {
+                if (!detail._browserIndicator) return;
+                if (detail.request?.abort) activeAborts.delete(detail.request.abort);
+                if (activeCount === 0) return;
+                activeCount--;
+                if (activeCount === 0) stopIndicator();
+            }
         }
     });
 })();
