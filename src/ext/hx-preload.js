@@ -76,12 +76,11 @@
         },
 
         htmx_before_request: (elt, detail) => {
-            let {ctx} = detail;
             if (elt._htmx?.preload &&
-                elt._htmx.preload.action === ctx.request.action &&
+                elt._htmx.preload.action === detail.request.action &&
                 Date.now() < elt._htmx.preload.expiresAt) {
                 let prefetch = elt._htmx.preload.prefetch;
-                ctx.fetch = () => prefetch;
+                detail.request.execute = () => prefetch;
                 delete elt._htmx.preload;
             } else {
                 if (elt._htmx) delete elt._htmx.preload;

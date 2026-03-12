@@ -9,18 +9,18 @@
                     style === 'append' ? 'beforeend' : style;
     }
 
-    function insertOptimisticContent(ctx) {
+    function insertOptimisticContent(detail) {
         // TODO - handle htmx.config.prefix
-        ctx.optimistic = ctx.sourceElement.getAttribute("hx-optimistic");
-        if (!ctx.optimistic) {
+        detail._optimistic = detail.element.getAttribute("hx-optimistic");
+        if (!detail._optimistic) {
             return
         }
 
         // TODO - handle inheritance?
-        let sourceElt = document.querySelector(ctx.optimistic);
+        let sourceElt = document.querySelector(detail._optimistic);
         if (!sourceElt) return;
 
-        let target = ctx.target;
+        let target = detail.swap?.target;
         if (!target) return;
 
         if (typeof target === 'string') {
@@ -32,50 +32,50 @@
         optimisticDiv.style.cssText = 'all: initial';
         optimisticDiv.innerHTML = sourceElt.innerHTML;
 
-        let swapStyle = normalizeSwapStyle(ctx.swap);
-        ctx.optHidden = [];
+        let swapStyle = normalizeSwapStyle(detail.swap?.style);
+        detail._optHidden = [];
 
         if (swapStyle === 'innerHTML') {
             // Hide children of target
             for (let child of target.children) {
                 child.style.display = 'none';
-                ctx.optHidden.push(child)
+                detail._optHidden.push(child)
             }
             target.appendChild(optimisticDiv);
-            ctx.optimisticDiv = optimisticDiv;
+            detail._optimisticDiv = optimisticDiv;
         } else if (['beforebegin', 'afterbegin', 'beforeend', 'afterend'].includes(swapStyle)) {
             target.insertAdjacentElement(swapStyle, optimisticDiv);
-            ctx.optimisticDiv = optimisticDiv;
+            detail._optimisticDiv = optimisticDiv;
         } else {
             // Assume outerHTML-like behavior, Hide target and insert div after it
             target.style.display = 'none';
-            ctx.optHidden.push(target)
+            detail._optHidden.push(target)
             target.after(optimisticDiv)
-            ctx.optimisticDiv = optimisticDiv;
+            detail._optimisticDiv = optimisticDiv;
         }
     }
 
-    function removeOptimisticContent(ctx) {
-        if (!ctx.optimisticDiv) return;
+    function removeOptimisticContent(detail) {
+        if (!detail._optimisticDiv) return;
 
         // Remove optimistic div
-        ctx.optimisticDiv.remove();
+        detail._optimisticDiv.remove();
 
         // Unhide any hidden elements
-        for (let elt of ctx.optHidden) {
+        for (let elt of detail._optHidden) {
             elt.style.display = '';
         }
     }
 
     htmx.registerExtension('hx-optimistic', {
         htmx_before_request : (elt, detail) => {
-            insertOptimisticContent(detail.ctx);
+            insertOptimisticContent(detail);
         },
         htmx_error : (elt, detail) => {
-            removeOptimisticContent(detail.ctx)
+            removeOptimisticContent(detail)
         },
         htmx_before_swap : (elt, detail) => {
-            removeOptimisticContent(detail.ctx)
+            removeOptimisticContent(detail)
         }
     });
 })();

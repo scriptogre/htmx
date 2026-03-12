@@ -18,8 +18,8 @@
             api = internalAPI;
         },
         htmx_before_swap: (elt, detail) => {
-            let {ctx, tasks} = detail;
-            let selector = api.attributeValue(ctx.sourceElement, 'hx-targets');
+            let {element, tasks} = detail;
+            let selector = api.attributeValue(element, 'hx-targets');
             if (!selector) return;
 
             let targets = htmx.findAll(ctx.sourceElement, selector);

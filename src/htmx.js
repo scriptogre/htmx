@@ -513,12 +513,29 @@ var htmx = (() => {
 
             let indicators = [];
             let disableElements = [];
+
+            // Single shared detail object for all request lifecycle events.
+            // Extensions may store per-request state directly on `detail`.
+            let detail = {
+                element: elt,
+                request: ctx.request,   // shared reference — mutations flow back to ctx internals
+                response: null,
+                swap: {
+                    style: ctx.swap,
+                    target: ctx.target,
+                    select: ctx.select,
+                    selectOOB: ctx.selectOOB,
+                },
+                error: null,
+                tasks: null,
+            }
+
             try {
                 // Handle confirmation
                 if (ctx.confirm) {
                     let confirmed = await new Promise(resolve => {
-                        let detail = {ctx, issueRequest: () => resolve(true), dropRequest: () => resolve(false)};
-                        if (this.__trigger(elt, "htmx:confirm", detail)) {
+                        let confirmDetail = {ctx, issueRequest: () => resolve(true), dropRequest: () => resolve(false)};
+                        if (this.__trigger(elt, "htmx:confirm", confirmDetail)) {
                             let js = this.__extractJavascriptContent(ctx.confirm);
                             resolve(js ? this.__executeJavaScriptAsync(elt, {}, js, true) : window.confirm(ctx.confirm));
                         }
@@ -531,20 +548,37 @@ var htmx = (() => {
                 indicators = this.__showIndicators(elt);
                 disableElements = this.__disableElements(elt);
 
-                ctx.fetch ||= window.fetch.bind(window)
-                if (!this.__trigger(elt, "htmx:before:request", {ctx})) return;
+                // Set up the replaceable request execute() slot.
+                // Extensions may replace detail.request.execute in htmx:before:request.
+                detail.request.execute = async () => {
+                    return await (ctx.fetch || window.fetch)(ctx.request.action, ctx.request)
+                }
 
-                let response = await ctx.fetch(ctx.request.action, ctx.request);
+                if (!this.__trigger(elt, "htmx:before:request", detail)) return;
 
-                ctx.response = {
+                let response = await detail.request.execute();
+
+                detail.response = {
                     raw: response,
                     status: response.status,
+                    ok: response.ok,
+                    url: response.url,
                     headers: response.headers,
+                    execute: null,
                 }
+                ctx.response = detail.response;  // keep ctx.response for internal code
                 this.__extractHxHeaders(ctx);
-                if (!this.__trigger(elt, "htmx:before:response", {ctx})) return;
-                ctx.text = await response.text();
-                if (!this.__trigger(elt, "htmx:after:request", {ctx})) return;
+
+                // Set up the replaceable response execute() slot.
+                // Extensions may replace detail.response.execute in htmx:before:response.
+                detail.response.execute = async () => {
+                    detail.response.text = await response.text()
+                }
+
+                if (!this.__trigger(elt, "htmx:before:response", detail)) return;
+                await detail.response.execute();
+                ctx.text = detail.response.text;
+                if (!this.__trigger(elt, "htmx:after:request", detail)) return;
 
                 if(this.__handleHeadersAndMaybeReturnEarly(ctx)){
                     ctx.keepIndicators = true;
@@ -557,16 +591,17 @@ var htmx = (() => {
                     if (ctx.hx.reselect) ctx.select = ctx.hx.reselect;
                     ctx.status = "response received";
                     this.__handleStatusCodes(ctx);
-                    await this.swap(ctx);
+                    await this.swap(ctx, detail);
                     ctx.status = "swapped";
                 }
 
             } catch (error) {
                 ctx.status = "error: " + error;
-                this.__trigger(elt, "htmx:error", {ctx, error})
+                detail.error = error;
+                this.__trigger(elt, "htmx:error", detail)
             } finally {
                 clearTimeout(ctx.requestTimeout);
-                this.__trigger(elt, "htmx:finally", {ctx})
+                this.__trigger(elt, "htmx:finally", detail)
                 if (!ctx.keepIndicators) {
                     this.__hideIndicators(indicators);
                     this.__enableElements(disableElements);
@@ -1204,7 +1239,7 @@ var htmx = (() => {
         // Public JS API
         //============================================================================================
 
-        async swap(ctx) {
+        async swap(ctx, detail = null) {
             this.__handleHistoryUpdate(ctx);
             let {fragment, title} = this.__makeFragment(ctx.text);
             ctx.title = title;
@@ -1221,7 +1256,8 @@ var htmx = (() => {
                 tasks.unshift(mainSwap);
             }
 
-            if(!this.__trigger(ctx.sourceElement, "htmx:before:swap", {ctx, tasks})){
+            let swapDetail = detail ? Object.assign(detail, {tasks}) : {ctx, tasks};
+            if(!this.__trigger(ctx.sourceElement, "htmx:before:swap", swapDetail)){
                 return
             }
 
@@ -1247,7 +1283,7 @@ var htmx = (() => {
 
             await Promise.all(swapPromises);
 
-            this.__trigger(ctx.sourceElement, "htmx:after:swap", {ctx});
+            this.__trigger(ctx.sourceElement, "htmx:after:swap", swapDetail);
             if (ctx.title && !mainSwap?.swapSpec?.ignoreTitle) document.title = ctx.title;
             this.__handleAnchorScroll(ctx);
         }

@@ -87,17 +87,17 @@ describe('htmx events', function() {
         assert.isTrue(bubbledToDocument)
     })
 
-    it('htmx:before:response fires with ctx after fetch', async function () {
+    it('htmx:before:response fires with response detail after fetch', async function () {
         mockResponse('GET', '/test', 'Response')
         let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let firedCtx = null
+        let firedDetail = null
         div.addEventListener('htmx:before:response', (e) => {
-            firedCtx = e.detail.ctx
+            firedDetail = e.detail
         })
         div.click()
         await forRequest()
-        assert.isNotNull(firedCtx, 'should fire with ctx')
-        assert.equal(firedCtx.response.status, 200)
+        assert.isNotNull(firedDetail, 'should fire with detail')
+        assert.equal(firedDetail.response.status, 200)
     })
 
     it('htmx:before:response cancellation prevents swap', async function () {

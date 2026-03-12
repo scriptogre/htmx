@@ -162,21 +162,19 @@
             api = internalAPI;
         },
         htmx_before_response: (elt, detail) => {
-            let ctx = detail.ctx
-            let target = ctx.target
+            let target = detail.swap?.target
             // TODO - is there a better way to handle this?  it used to be based on if the element was boosted
             let defaultMergeStrategy = target === document.body ? "merge" : "append";
             if (htmx.trigger(document.body, "htmx:before:head:merge", detail)) {
-                let realText = ctx.response.raw.text.bind(ctx.response.raw)
-                ctx.response.raw.text = async () => {
-                    let text = await realText()
-                    ctx._deferredHeadScripts = await mergeHead(text, defaultMergeStrategy)
-                    return text
+                let originalExecute = detail.response.execute;
+                detail.response.execute = async () => {
+                    await originalExecute();
+                    detail._deferredHeadScripts = await mergeHead(detail.response.text, defaultMergeStrategy)
                 }
             }
         },
         htmx_after_swap: (elt, detail) => {
-            for (const node of detail.ctx._deferredHeadScripts || []) appendNode(node)
+            for (const node of detail._deferredHeadScripts || []) appendNode(node)
         }
     })
 

@@ -16,13 +16,13 @@
 //==========================================================
 (() => {
     htmx.registerExtension('download', {
-        htmx_before_request: (elt, {ctx}) => {
-            if (ctx.swap !== 'download') return;
-            let originalFetch = ctx.fetch;
-            ctx.fetch = async (url, options) => {
-                let response = await originalFetch(url, options);
+        htmx_before_request: (elt, detail) => {
+            if (detail.swap?.style !== 'download') return;
+            let originalExecute = detail.request.execute;
+            detail.request.execute = async () => {
+                let response = await originalExecute();
                 let total = +response.headers.get('Content-Length') || null;
-                htmx.trigger(ctx.sourceElement, 'htmx:download:start', {total});
+                htmx.emit(detail.element, 'htmx:download:start', {total});
 
                 let reader = response.body.getReader();
                 let chunks = [], loaded = 0;
@@ -31,32 +31,32 @@
                     if (done) break;
                     chunks.push(value);
                     loaded += value.length;
-                    htmx.trigger(ctx.sourceElement, 'htmx:download:progress', {
+                    htmx.emit(detail.element, 'htmx:download:progress', {
                         loaded, total,
                         percent: total ? Math.round(loaded / total * 100) : null
                     });
                 }
 
-                ctx.download = {
+                detail._download = {
                     blob: new Blob(chunks, {
                         type: response.headers.get('Content-Type') || 'application/octet-stream'
                     }),
-                    filename: parseFilename(response.headers, url)
+                    filename: parseFilename(response.headers, detail.request.action)
                 };
                 return new Response('', {status: response.status, headers: response.headers});
             };
         },
 
-        htmx_before_swap: (elt, {ctx}) => {
-            if (!ctx.download) return;
-            let {blob, filename} = ctx.download;
+        htmx_before_swap: (elt, detail) => {
+            if (!detail._download) return;
+            let {blob, filename} = detail._download;
             let url = URL.createObjectURL(blob);
             let a = document.createElement('a');
             a.href = url;
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-            htmx.trigger(ctx.sourceElement, 'htmx:download:complete', {filename, size: blob.size});
+            htmx.emit(detail.element, 'htmx:download:complete', {filename, size: blob.size});
             return false;
         }
     });

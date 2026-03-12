@@ -5,8 +5,8 @@
     // HELPERS
     // ========================================
 
-    function getConfig(ctx) {
-        let isConnect = api.attributeValue(ctx.sourceElement, 'hx-sse:connect') != null;
+    function getConfig(element, request) {
+        let isConnect = api.attributeValue(element, 'hx-sse:connect') != null;
         let defaults = {
             reconnect: isConnect,
             reconnectDelay: 500,
@@ -17,8 +17,8 @@
         };
         let global = htmx.config.sse || {};
         // hx-config="sse.reconnect:true sse.reconnectDelay:50ms" is parsed by
-        // core's __mergeConfig into ctx.request.sse during createRequestContext
-        let perElement = ctx.request.sse || {};
+        // core's __mergeConfig into request.sse during createRequestContext
+        let perElement = request?.sse || {};
         return {...defaults, ...global, ...perElement};
     }
 
@@ -98,9 +98,8 @@
 
     // Starts streaming from a response. Handles reconnection by re-fetching
     // with the saved request context (no full pipeline re-run).
-    async function handleSSEResponse(ctx) {
-        let element = ctx.sourceElement;
-        let config = getConfig(ctx);
+    async function handleSSEResponse(element, detail) {
+        let config = getConfig(element, detail.request);
         let lastEventId = null;
         let attempt = 0;
         let reader = null;
@@ -140,17 +139,17 @@
             state.visibilityHandler = visibilityHandler;
         }
 
-        let connectDetail = {attempt: 0, delay: 0, url: ctx.request.action, lastEventId: null, cancelled: false};
+        let connectDetail = {attempt: 0, delay: 0, url: detail.request.action, lastEventId: null, cancelled: false};
         if (!api.triggerHtmxEvent(element, 'htmx:before:sse:connection', {connection: connectDetail}) || connectDetail.cancelled) {
             cleanup(element, 'cancelled');
             return;
         }
 
         api.triggerHtmxEvent(element, 'htmx:after:sse:connection', {
-            connection: {attempt: 0, url: ctx.request.action, status: ctx.response.status, lastEventId: null}
+            connection: {attempt: 0, url: detail.request.action, status: detail.response.status, lastEventId: null}
         });
 
-        let currentResponse = ctx.response.raw;
+        let currentResponse = detail.response.raw;
 
         try {
             while (element.isConnected) {
@@ -180,8 +179,8 @@
                         delay = Math.max(0, delay + (Math.random() * 2 - 1) * jitterRange);
                     }
 
-                    let detail = {attempt, delay, url: ctx.request.action, lastEventId, cancelled: false};
-                    if (!api.triggerHtmxEvent(element, 'htmx:before:sse:connection', {connection: detail}) || detail.cancelled) break;
+                    let connDetail = {attempt, delay, url: detail.request.action, lastEventId, cancelled: false};
+                    if (!api.triggerHtmxEvent(element, 'htmx:before:sse:connection', {connection: connDetail}) || connDetail.cancelled) break;
 
                     await new Promise(r => {
                         delayCanceller = r;
@@ -196,9 +195,10 @@
                     let ac = new AbortController();
                     state.abortController = ac;
                     try {
-                        if (lastEventId) ctx.request.headers['Last-Event-ID'] = lastEventId;
-                        currentResponse = await fetch(ctx.request.action, {
-                            ...ctx.request,
+                        if (lastEventId) detail.request.headers['Last-Event-ID'] = lastEventId;
+                        let {execute: _ex, abort: _ab, ...fetchOpts} = detail.request;
+                        currentResponse = await fetch(detail.request.action, {
+                            ...fetchOpts,
                             signal: ac.signal
                         });
                     } catch (e) {
@@ -220,7 +220,7 @@
                     }
 
                     api.triggerHtmxEvent(element, 'htmx:after:sse:connection', {
-                        connection: {attempt, url: ctx.request.action, status: currentResponse.status, lastEventId}
+                        connection: {attempt, url: detail.request.action, status: currentResponse.status, lastEventId}
                     });
                     attempt = 0;
                 }
@@ -235,8 +235,8 @@
                     for await (let msg of parseSSE(reader)) {
                         if (!element.isConnected || reconnectRequested) break;
 
-                        let detail = {data: msg.data, event: msg.event, id: msg.id, cancelled: false};
-                        if (!api.triggerHtmxEvent(element, 'htmx:before:sse:message', {message: detail}) || detail.cancelled) continue;
+                        let msgDetail = {data: msg.data, event: msg.event, id: msg.id, cancelled: false};
+                        if (!api.triggerHtmxEvent(element, 'htmx:before:sse:message', {message: msgDetail}) || msgDetail.cancelled) continue;
 
                         if (msg.id) {
                             lastEventId = msg.id;
@@ -244,23 +244,32 @@
                         }
                         if (msg.retry != null) config.reconnectDelay = msg.retry;
 
-                        if (detail.event) {
-                            htmx.trigger(element, detail.event, {data: detail.data, id: detail.id});
-                            api.triggerHtmxEvent(element, 'htmx:after:sse:message', {message: detail});
+                        if (msgDetail.event) {
+                            htmx.trigger(element, msgDetail.event, {data: msgDetail.data, id: msgDetail.id});
+                            api.triggerHtmxEvent(element, 'htmx:after:sse:message', {message: msgDetail});
 
                             // hx-sse:close="eventname" — close connection on matching event
                             let closeEvent = api.attributeValue(element, 'hx-sse:close');
-                            if (closeEvent && detail.event === closeEvent) {
+                            if (closeEvent && msgDetail.event === closeEvent) {
                                 cleanup(element, 'message');
                                 return;
                             }
                             continue;
                         }
 
-                        // Swap content using the ctx from core (target/swap already resolved)
-                        ctx.text = detail.data;
-                        await htmx.swap(ctx);
-                        api.triggerHtmxEvent(element, 'htmx:after:sse:message', {message: detail});
+                        // Swap content using target/swap from the original request detail.
+                        // Don't pass detail here — it was cancelled during the response
+                        // interception, and each SSE message is an independent swap.
+                        let swapCtx = {
+                            sourceElement: element,
+                            target: detail.swap?.target,
+                            swap: detail.swap?.style,
+                            select: detail.swap?.select,
+                            selectOOB: detail.swap?.selectOOB,
+                            text: msgDetail.data,
+                        }
+                        await htmx.swap(swapCtx);
+                        api.triggerHtmxEvent(element, 'htmx:after:sse:message', {message: msgDetail});
                     }
                 } catch (e) {
                     if (!state.abortController?.signal?.aborted) {
@@ -324,12 +333,11 @@
 
         // Intercept SSE responses before core consumes the body
         htmx_before_response: (element, detail) => {
-            let ctx = detail.ctx;
-            let contentType = ctx.response.raw.headers.get('Content-Type');
+            let contentType = detail.response.raw.headers.get('Content-Type');
             if (!contentType?.includes('text/event-stream')) return;
 
-            // Take over — core will return without calling response.text()
-            handleSSEResponse(ctx).catch(e => {
+            // Take over — core will return without calling response.execute()
+            handleSSEResponse(element, detail).catch(e => {
                 api.triggerHtmxEvent(element, 'htmx:sse:error', {error: e});
                 cleanup(element);
             });

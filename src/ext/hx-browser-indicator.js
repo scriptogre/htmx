@@ -69,15 +69,15 @@
 
         htmx_before_request: (elt, detail) => {
             if (!shouldShowIndicator(elt)) return;
-            detail.ctx._browserIndicator = true;
-            if (detail.ctx.request?.abort) activeAborts.add(detail.ctx.request.abort);
+            detail._browserIndicator = true;
+            if (detail.request?.abort) activeAborts.add(detail.request.abort);
             activeCount++;
             if (activeCount === 1) startIndicator();
         },
 
         htmx_finally: (elt, detail) => {
-            if (!detail.ctx._browserIndicator) return;
-            if (detail.ctx.request?.abort) activeAborts.delete(detail.ctx.request.abort);
+            if (!detail._browserIndicator) return;
+            if (detail.request?.abort) activeAborts.delete(detail.request.abort);
             if (activeCount === 0) return;
             activeCount--;
             if (activeCount === 0) stopIndicator();
