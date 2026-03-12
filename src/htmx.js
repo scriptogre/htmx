@@ -470,7 +470,7 @@ var htmx = (() => {
                 body
             })
 
-            if (!this.__trigger(elt, "htmx:config:request", {ctx: ctx})) return
+            if (!this.__trigger(elt, "htmx:config:request", {element: elt, ctx})) return
             if (!this.#verbs.includes(ctx.request.method.toLowerCase())) return
 
             let javascriptContent = this.__extractJavascriptContent(ctx.request.action);
@@ -534,7 +534,7 @@ var htmx = (() => {
                 // Handle confirmation
                 if (ctx.confirm) {
                     let confirmed = await new Promise(resolve => {
-                        let confirmDetail = {ctx, issueRequest: () => resolve(true), dropRequest: () => resolve(false)};
+                        let confirmDetail = {element: elt, ctx, issueRequest: () => resolve(true), dropRequest: () => resolve(false)};
                         if (this.__trigger(elt, "htmx:confirm", confirmDetail)) {
                             let js = this.__extractJavascriptContent(ctx.confirm);
                             resolve(js ? this.__executeJavaScriptAsync(elt, {}, js, true) : window.confirm(ctx.confirm));
