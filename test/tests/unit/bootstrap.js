@@ -194,10 +194,11 @@ describe('bootstrap unit tests', function() {
             'find',
             'findAll',
             'forEvent',
+            'init',
             'on',
             'onLoad',
             'parseInterval',
-            'process',
+            'process',        // @deprecated — use init()
             'swap',
             'takeClass',
             'timeout',

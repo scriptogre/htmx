@@ -91,7 +91,7 @@ var htmx = (() => {
             };
             let init = () => {
                 this.__initHistoryHandling()
-                this.process(document.body)
+                this.init(document.body)
             };
             if (document.readyState === 'loading') {
                 document.addEventListener("DOMContentLoaded", init)
@@ -897,7 +897,7 @@ var htmx = (() => {
             return func.call(thisArg, ...values);
         }
 
-        process(elt) {
+        init(elt) {
             if (!elt || this.__ignore(elt)) return;
             if (!this.__trigger(elt, "htmx:before:process")) return
             let hxOnNodes = [elt];
@@ -916,6 +916,11 @@ var htmx = (() => {
                 this.__maybeBoost(child);
             }
             this.__trigger(elt, "htmx:after:process");
+        }
+
+        /** @deprecated Use htmx.init() instead */
+        process(elt) {
+            return this.init(elt)
         }
 
         __maybeBoost(elt) {
@@ -1398,7 +1403,7 @@ var htmx = (() => {
 
             for (const elt of newContent) {
                 elt.classList?.remove?.("htmx-added")
-                this.process(elt);
+                this.init(elt);
                 this.__handleAutoFocus(elt);
             }
             
