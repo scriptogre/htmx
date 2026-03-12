@@ -1487,6 +1487,11 @@ var htmx = (() => {
             return callback;
         }
 
+        attr(element, name) {
+            element = this.__normalizeElement(element);
+            return element?.getAttribute(name) ?? null;
+        }
+
         find(selectorOrElt, selector) {
             return this.__findExt(selectorOrElt, selector)
         }

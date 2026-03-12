@@ -191,6 +191,7 @@ describe('bootstrap unit tests', function() {
         const expectedPublicMethods = [
             // Current API
             'ajax',
+            'attr',
             'emit',
             'find',
             'init',
