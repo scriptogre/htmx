@@ -195,18 +195,19 @@ describe('bootstrap unit tests', function() {
             'emit',
             'find',
             'init',
+            'install',
             'on',
             'swap',
-            'registerExtension',
-            // Deprecated — kept for backward compat, emit console.warn
-            'findAll',        // @deprecated — use find(selector, {multiple: true})
-            'forEvent',       // @deprecated
-            'onLoad',         // @deprecated — use on('htmx:after:init', cb)
-            'parseInterval',  // @deprecated — internal use only
-            'process',        // @deprecated — use init()
-            'takeClass',      // @deprecated
-            'timeout',        // @deprecated
-            'trigger',        // @deprecated — use emit()
+            // Deprecated — kept for backward compat
+            'findAll',           // @deprecated — use find(selector, {multiple: true})
+            'forEvent',          // @deprecated
+            'onLoad',            // @deprecated — use on('htmx:after:init', cb)
+            'parseInterval',     // @deprecated — internal use only
+            'process',           // @deprecated — use init()
+            'registerExtension', // @deprecated — use install()
+            'takeClass',         // @deprecated
+            'timeout',           // @deprecated
+            'trigger',           // @deprecated — use emit()
         ].sort();
 
         const expectedPublicProperties = [

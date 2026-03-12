@@ -145,13 +145,36 @@ var htmx = (() => {
             }
         }
 
+        install(name, def) {
+            // If the new declarative format is used (def.on = {'htmx:event': (detail, api) => ...}),
+            // adapt it to the internal hook format before registering.
+            if (def.on) {
+                let api = this.#internalAPI;
+                let adapted = {...def};
+                delete adapted.on;
+                for (let [eventName, handler] of Object.entries(def.on)) {
+                    let hookName = eventName.replace(/:/g, '_');
+                    adapted[hookName] = (elt, detail) => handler(detail, api);
+                }
+                return this.__installExtension(name, adapted);
+            }
+            return this.__installExtension(name, def);
+        }
+
+        /** @deprecated Use htmx.install() instead */
         registerExtension(name, extension) {
+            return this.__installExtension(name, extension);
+        }
+
+        __installExtension(name, extension) {
             if (this.__approvedExt && !this.__approvedExt.split(/,\s*/).includes(name)) return false;
             if (this.__registeredExt.has(name)) return false;
             this.__registeredExt.add(name);
             if (extension.init) extension.init(this.#internalAPI);
             Object.entries(extension).forEach(([key, value]) => {
-                if(!this.__extMethods.get(key)?.push(value)) this.__extMethods.set(key, [value]);
+                if (typeof value === 'function' && !this.__extMethods.get(key)?.push(value)) {
+                    this.__extMethods.set(key, [value]);
+                }
             });
         }
 
