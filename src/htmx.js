@@ -717,7 +717,7 @@ var htmx = (() => {
                         for (let i = 0; i < entries.length; i++) {
                             let entry = entries[i]
                             if (entry.isIntersecting) {
-                                this.trigger(elt, 'intersect', {}, false)
+                                this.emit(elt, 'intersect', {}, false)
                                 if (isRevealed) {
                                     spec.observer.disconnect()
                                 }
@@ -844,14 +844,11 @@ var htmx = (() => {
                 let triggers = this.__parseConfig(value);
                 for (let name in triggers) {
                     let detail = triggers[name];
-                    let target = elt;
-                    if (detail?.target) {
-                        target = this.find(detail.target);
-                    }
-                    this.trigger(target, name, typeof detail === 'object' ? detail : {value: detail});
+                    if (detail?.target) elt = this.find(detail.target) || elt;
+                    this.emit(elt, name, typeof detail === 'object' ? detail : {value: detail});
                 }
             } else {
-                value.split(',').forEach(name => this.trigger(elt, name.trim(), {}));
+                value.split(',').forEach(name => this.emit(elt, name.trim(), {}));
             }
         }
 
@@ -1414,7 +1411,7 @@ var htmx = (() => {
             }
             on = this.__normalizeElement(on)
             this.__triggerExtensions(on, eventName, detail);
-            return this.trigger(on, this.__maybeAdjustMetaCharacter(eventName), detail, bubbles)
+            return this.emit(on, this.__maybeAdjustMetaCharacter(eventName), detail, bubbles)
         }
 
         __triggerExtensions(elt, eventName, detail = {}) {
@@ -1497,7 +1494,7 @@ var htmx = (() => {
             return isNaN(v) ? undefined : v;
         }
 
-        trigger(on, eventName, detail = {}, bubbles = true) {
+        emit(on, eventName, detail = {}, bubbles = true) {
             on = this.__normalizeElement(on)
             let evt = new CustomEvent(eventName, {
                 detail,
@@ -1508,6 +1505,11 @@ var htmx = (() => {
             let target = on?.isConnected ? on : document;
             let result = !detail.cancelled && target.dispatchEvent(evt);
             return result
+        }
+
+        /** @deprecated Use htmx.emit() instead */
+        trigger(on, eventName, detail = {}, bubbles = true) {
+            return this.emit(on, eventName, detail, bubbles)
         }
         // TODO - make async
         ajax(verb, path, context) {

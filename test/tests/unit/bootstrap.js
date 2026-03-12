@@ -190,6 +190,7 @@ describe('bootstrap unit tests', function() {
         // This test ensures the public API doesn't accidentally change
         const expectedPublicMethods = [
             'ajax',
+            'emit',
             'find',
             'findAll',
             'forEvent',
@@ -201,7 +202,7 @@ describe('bootstrap unit tests', function() {
             'takeClass',
             'timeout',
             'registerExtension',
-            'trigger',
+            'trigger',        // @deprecated — use emit()
         ].sort();
 
         const expectedPublicProperties = [
