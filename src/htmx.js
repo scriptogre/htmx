@@ -844,8 +844,12 @@ var htmx = (() => {
                 let triggers = this.__parseConfig(value);
                 for (let name in triggers) {
                     let detail = triggers[name];
-                    if (detail?.target) elt = this.find(detail.target) || elt;
-                    this.emit(elt, name, typeof detail === 'object' ? detail : {value: detail});
+                    let target = elt;
+                    if (detail?.target) {
+                        target = this.find(detail.target);
+                        if (!target) continue;
+                    }
+                    this.emit(target, name, typeof detail === 'object' ? detail : {value: detail});
                 }
             } else {
                 value.split(',').forEach(name => this.emit(elt, name.trim(), {}));
