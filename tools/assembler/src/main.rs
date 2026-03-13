@@ -21,7 +21,7 @@ fn main() {
         eprintln!("  build  -i <file.js>... [-o output.js] [--watch] [--inline] [--ui]");
         eprintln!();
         eprintln!("Build assembles kernel + extensions into a single file.");
-        eprintln!("Default: simple concat with install() calls.");
+        eprintln!("Default: simple concat with register() calls.");
         eprintln!("--inline: inline wraps and event handlers at call sites.");
         process::exit(if args.len() < 2 { 1 } else { 0 });
     }
@@ -136,7 +136,7 @@ fn run_build(source_path: &str, ext_paths: &[String], output_path: &Option<Strin
             Err(e) => { eprintln!("Error reading {path}: {e}"); return false; }
         };
         let parsed = assembly::parse_extensions(&ext_source, path);
-        if parsed.is_empty() { eprintln!("Warning: no htmx.install() found in {path}"); }
+        if parsed.is_empty() { eprintln!("Warning: no htmx.register() found in {path}"); }
         for ext in &parsed {
             let handler_names: Vec<&str> = ext.handlers.iter().map(|h| h.event.as_str()).collect();
             let define_names: Vec<&str> = ext.defines.iter().map(|d| d.fn_name.as_str()).collect();

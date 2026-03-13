@@ -9,7 +9,7 @@
         el.dispatchEvent(new CustomEvent(evtName, { detail, bubbles: true, cancelable: true, composed: true }))
     }
 
-    htmx.install('compat', {
+    htmx.register('compat', {
         on: {
             'htmx:boot': function (detail, api) {
                 // revert inheritance

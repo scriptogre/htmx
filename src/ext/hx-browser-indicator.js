@@ -53,7 +53,7 @@
         }
     }
 
-    htmx.install('browser-indicator', {
+    htmx.register('browser-indicator', {
         config: {
             attributeFilter: ['hx-browser-indicator']
         },

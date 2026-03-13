@@ -1,11 +1,11 @@
 // htmx assembler — core logic
 //
-// Parses htmx.install() calls from extension files.
+// Parses htmx.register() calls from extension files.
 // Boot handlers are inlined between Extensions: Start/End markers.
 // Non-boot handlers are inlined at matching api.emit() call sites.
 // api.wrap() calls are parsed from boot handlers and inlined directly
 // into kernel function definitions — no closures in the output.
-// No install() calls appear in the assembled output.
+// No register() calls appear in the assembled output.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use tree_sitter::{Node, Parser};
@@ -61,7 +61,7 @@ struct Wrap {
 }
 
 /// A wrap that couldn't be parsed for inlining (e.g., IIFE pattern).
-/// Kept as-is for runtime install() emission.
+/// Kept as-is for runtime register() emission.
 struct RuntimeWrap {
     extension_name: String,
     wrap_source: String,  // "wrap: { ajax: (() => { ... })() }"
@@ -162,14 +162,14 @@ fn return_expr(node: Node) -> Option<Node> {
 
 // ── Tree-sitter parsing helpers ──────────────────────────────────────────
 
-/// Find all `htmx.install(...)` call expressions in a tree.
-fn find_install_calls<'a>(node: Node<'a>, src: &[u8]) -> Vec<Node<'a>> {
+/// Find all `htmx.register(...)` call expressions in a tree.
+fn find_register_calls<'a>(node: Node<'a>, src: &[u8]) -> Vec<Node<'a>> {
     let mut calls = Vec::new();
-    find_install_calls_recursive(node, src, &mut calls);
+    find_register_calls_recursive(node, src, &mut calls);
     calls
 }
 
-fn find_install_calls_recursive<'a>(node: Node<'a>, src: &[u8], out: &mut Vec<Node<'a>>) {
+fn find_register_calls_recursive<'a>(node: Node<'a>, src: &[u8], out: &mut Vec<Node<'a>>) {
     if node.kind() == "call_expression" {
         if let Some(func) = node.child_by_field_name("function") {
             if func.kind() == "member_expression" {
@@ -178,7 +178,7 @@ fn find_install_calls_recursive<'a>(node: Node<'a>, src: &[u8], out: &mut Vec<No
                     func.child_by_field_name("property"),
                 ) {
                     if obj.utf8_text(src).unwrap() == "htmx"
-                        && prop.utf8_text(src).unwrap() == "install"
+                        && prop.utf8_text(src).unwrap() == "register"
                     {
                         out.push(node);
                         return;
@@ -189,7 +189,7 @@ fn find_install_calls_recursive<'a>(node: Node<'a>, src: &[u8], out: &mut Vec<No
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        find_install_calls_recursive(child, src, out);
+        find_register_calls_recursive(child, src, out);
     }
 }
 
@@ -301,9 +301,9 @@ pub fn parse_extensions(source: &str, path: &str) -> Vec<Extension> {
     let src = source.as_bytes();
     let mut extensions = Vec::new();
 
-    let install_calls = find_install_calls(root, src);
+    let register_calls = find_register_calls(root, src);
 
-    for call_node in install_calls {
+    for call_node in register_calls {
         let Some(args_node) = call_node.child_by_field_name("arguments") else { continue };
         let args = iter_args(args_node);
         if args.len() < 2 { continue; }
@@ -333,7 +333,7 @@ pub fn parse_extensions(source: &str, path: &str) -> Vec<Extension> {
         let handlers = parse_handlers(obj_node, src);
         let (defines, define_errors) = parse_defines(obj_node, src, &name, path);
         let configs = parse_configs(obj_node, src);
-        let source_text = format!("htmx.install('{}', {})", name, ext_source.trim());
+        let source_text = format!("htmx.register('{}', {})", name, ext_source.trim());
 
         extensions.push(Extension { name, requires, handlers, defines, configs, define_errors, source_path: path.to_string(), source_text, description });
     }
@@ -1173,17 +1173,17 @@ fn inject_wrap_docs(output: &str, fn_wrap_docs: &HashMap<String, Vec<(String, St
 
 // ── Wrap parsing ─────────────────────────────────────────────────────────
 
-/// Parse declarative wrap: { fn: (original, ...args) => { ... } } from an install() call.
+/// Parse declarative wrap: { fn: (original, ...args) => { ... } } from a register() call.
 /// Returns (inlinable_wraps, runtime_wraps) where runtime_wraps are wraps that couldn't
-/// be parsed for inlining (e.g., IIFE patterns) and need runtime install() emission.
+/// be parsed for inlining (e.g., IIFE patterns) and need runtime register() emission.
 fn parse_declarative_wraps(source: &str, extension_name: &str) -> (Vec<Wrap>, Vec<RuntimeWrap>) {
     let tree = parse_js(source);
     let root = tree.root_node();
     let src = source.as_bytes();
 
-    // source is "htmx.install('name', { ... })" — find the object arg
+    // source is "htmx.register('name', { ... })" — find the object arg
     let obj_node = {
-        let calls = find_install_calls(root, src);
+        let calls = find_register_calls(root, src);
         calls.first().and_then(|call| {
             let args_node = call.child_by_field_name("arguments")?;
             let args = iter_args(args_node);
@@ -1592,8 +1592,8 @@ pub fn assemble_simple(source: &str, extensions: &[Extension], order: &[usize]) 
         out.push_str(&format!("    // ── {} {}\n", tag, dash(&tag)));
         out.push_str(&format!("    {}: {{\n", label));
 
-        let install_text = ext.source_text.replacen("htmx.install(", "install(", 1);
-        for line in install_text.lines() {
+        let register_text = ext.source_text.replacen("htmx.register(", "register(", 1);
+        for line in register_text.lines() {
             if line.trim().is_empty() {
                 out.push('\n');
             } else {
@@ -1842,7 +1842,7 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
         }
     }
 
-    // ── Extract declarative wraps from install() wrap: key ─────────────
+    // ── Extract declarative wraps from register() wrap: key ─────────────
     let mut all_wraps: Vec<Wrap> = Vec::new();
     let mut all_runtime_wraps: Vec<RuntimeWrap> = Vec::new();
 
@@ -1981,7 +1981,7 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
                     = help: '{}' is not emitted by the kernel or any define function.\n\
                     In --inline mode, these handlers have nowhere to be injected.\n\
                     Either add an api.emit() call for this event in the kernel/define,\n\
-                    or keep these extensions as runtime install() calls.",
+                    or keep these extensions as runtime register() calls.",
                 event, ext_names.join(", "), event,
             ));
         }
@@ -2130,14 +2130,14 @@ pub fn assemble(source: &str, extensions: &[Extension], order: &[usize]) -> Resu
                     out.push_str(&format!("    // ── {} {}\n\n", close_tag, dash(&close_tag)));
                 }
 
-                // Emit runtime install() calls for non-inlinable wraps (e.g., IIFE patterns).
+                // Emit runtime register() calls for non-inlinable wraps (e.g., IIFE patterns).
                 // Note: requires is omitted because dependencies are already inlined.
                 for rt_wrap in &all_runtime_wraps {
                     let tag = format!("[{}]", rt_wrap.extension_name);
                     let close_tag = format!("[/{}]", rt_wrap.extension_name);
 
                     out.push_str(&format!("    // ── {} {} (runtime)\n", tag, dash(&tag)));
-                    out.push_str(&format!("    htmx.install('{}', {{{}}});\n", rt_wrap.extension_name, rt_wrap.wrap_source));
+                    out.push_str(&format!("    htmx.register('{}', {{{}}});\n", rt_wrap.extension_name, rt_wrap.wrap_source));
                     out.push_str(&format!("    // ── {} {}\n\n", close_tag, dash(&close_tag)));
                 }
 
@@ -2451,7 +2451,7 @@ mod tests {
     }
 })()"#;
 
-        let ext_source = r#"htmx.install('prefix', {
+        let ext_source = r#"htmx.register('prefix', {
     wrap: {
         attr: (original, element, name) => {
             let prefixed = 'data-' + name
@@ -2491,7 +2491,7 @@ mod tests {
     }
 })()"#;
 
-        let ext_source = r#"htmx.install('hx-confirm', {
+        let ext_source = r#"htmx.register('hx-confirm', {
     on: {
         'htmx:before:trigger': (detail, api) => {
             if (!detail.confirm) return false
@@ -2521,7 +2521,7 @@ mod tests {
     }
 })()"#;
 
-        let ext_source = r#"htmx.install('request-queue', {
+        let ext_source = r#"htmx.register('request-queue', {
     wrap: {
         ajax: (() => {
             class Queue {}
@@ -2533,7 +2533,7 @@ mod tests {
         let order = vec![0];
         let result = assemble(kernel, &extensions, &order).unwrap();
 
-        // Runtime wrap should be emitted as install() call
-        assert!(result.contains("htmx.install('request-queue'"));
+        // Runtime wrap should be emitted as register() call
+        assert!(result.contains("htmx.register('request-queue'"));
     }
 }

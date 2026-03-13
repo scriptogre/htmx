@@ -1,19 +1,19 @@
 // htmx 4.0 — Core Extensions
 //
-// Extensions are installed in dependency order — dependencies before dependents.
+// Extensions are registered in dependency order — dependencies before dependents.
 //
 // api is the last argument for event handlers only:
 //   Event handlers: (detail, api) => { ... }
 //   Wraps: (original, ...originalArgs) => { ... }  — no api, use htmx.* or closures
 
 // ── Installation ────────────────────────────────────────────────────────
-// Order matters: dependencies must be installed before dependents.
+// Order matters: dependencies must be registered before dependents.
 
 
 /**
  * RelaxedJSON parser — string to object transformation.
  */
-htmx.install('parser', {
+htmx.register('parser', {
     define: {
         /**
          * Parse relaxed key/value text into an object.
@@ -104,7 +104,7 @@ htmx.install('parser', {
 /**
  * Default configuration values for htmx core.
  */
-htmx.install('default-config', {
+htmx.register('default-config', {
     config: {
         logAll: false,
         prefix: '',
@@ -123,7 +123,7 @@ htmx.install('default-config', {
 /**
  * Reads <meta name="htmx-config"> and merges its JSON content into config.
  */
-htmx.install('meta-config', {
+htmx.register('meta-config', {
     on: {
         'htmx:boot': (detail, api) => {
             const meta = document.querySelector('meta[name="htmx-config"]')
@@ -141,7 +141,7 @@ htmx.install('meta-config', {
 /**
  * Wraps attr() to support a configurable attribute name prefix (e.g. "data-hx-" instead of "hx-").
  */
-htmx.install('prefix', {
+htmx.register('prefix', {
     wrap: {
         attr: (original, element, name, options) => {
             if (htmx.config.prefix) {
@@ -156,7 +156,7 @@ htmx.install('prefix', {
 /**
  * Wraps attr() to replace ":" in attribute names with a configurable meta character.
  */
-htmx.install('meta-character', {
+htmx.register('meta-character', {
     wrap: {
         attr: (original, element, name, options) => {
             if (htmx.config.metaCharacter) {
@@ -173,7 +173,7 @@ htmx.install('meta-character', {
 /**
  * Parse HTML responses into fragments, extracting title and body content.
  */
-htmx.install('fragment-parsing', {
+htmx.register('fragment-parsing', {
     define: {
         makeFragment: (api) => function makeFragment(text) {
             const template = document.createElement('template')
@@ -237,7 +237,7 @@ htmx.install('fragment-parsing', {
 /**
  * DOM swaps — resolve target, parse content, dispatch on style.
  */
-htmx.install('swaps', {
+htmx.register('swaps', {
     define: {
         /**
          * Execute a DOM swap.
@@ -376,7 +376,7 @@ htmx.install('swaps', {
 /**
  * Extended selector syntax — closest, next, previous, this, find.
  */
-htmx.install('extended-selectors', {
+htmx.register('extended-selectors', {
     wrap: {
         find: (original, selector, options) => {
             const el = options?.from
@@ -442,7 +442,7 @@ htmx.install('extended-selectors', {
 /**
  * Attribute inheritance — walk up DOM via :inherited/:append.
  */
-htmx.install('inheritance', {
+htmx.register('inheritance', {
     config: {
         /** Control how `attr()` walks up the DOM to resolve inherited values. */
         inheritance: {
@@ -524,7 +524,7 @@ htmx.install('inheritance', {
 /**
  * Debounce via options.delay on api.on().
  */
-htmx.install('delay-events', {
+htmx.register('delay-events', {
     wrap: {
         on: (original, element, eventName, handler, options) => {
             if (options?.delay !== undefined) {
@@ -543,7 +543,7 @@ htmx.install('delay-events', {
 /**
  * Rate-limit via options.throttle on api.on().
  */
-htmx.install('throttle-events', {
+htmx.register('throttle-events', {
     wrap: {
         on: (original, element, eventName, handler, options) => {
             if (options?.throttle !== undefined) {
@@ -565,7 +565,7 @@ htmx.install('throttle-events', {
 /**
  * HTTP transport — fetch pipeline with request/response/swap phases.
  */
-htmx.install('ajax', {
+htmx.register('ajax', {
     requires: ['swaps'],
     define: {
         /**
@@ -700,7 +700,7 @@ htmx.install('ajax', {
 /**
  * Default trigger — wire click/change/submit based on element type.
  */
-htmx.install('default-trigger', {
+htmx.register('default-trigger', {
     on: {
         'htmx:before:init': (detail, api) => {
             // Don't override if another extension already set up trigger
@@ -752,7 +752,7 @@ htmx.install('default-trigger', {
 /**
  * Default swap style — apply config.defaultSwap when none is specified.
  */
-htmx.install('default-swap', {
+htmx.register('default-swap', {
     requires: ['swaps'],
     config: {
         /** @type {string} Apply this swap style when none is specified. */
@@ -767,7 +767,7 @@ htmx.install('default-swap', {
 /**
  * Default headers — merge config.defaultHeaders into every request.
  */
-htmx.install('default-headers', {
+htmx.register('default-headers', {
     requires: ['ajax'],
     config: {
         /** @type {Object<string, string>} Include these headers on every request. */
@@ -785,7 +785,7 @@ htmx.install('default-headers', {
  * HX-Source identifies the triggering element, HX-Target identifies the swap target,
  * and HX-Request-Type indicates whether the server should return a full page or fragment.
  */
-htmx.install('request-identifiers', {
+htmx.register('request-identifiers', {
     requires: ['ajax'],
     on: {
         'htmx:before:request': (detail, api) => {
@@ -810,7 +810,7 @@ htmx.install('request-identifiers', {
 /**
  * Form data collection — collect form values and inject into requests.
  */
-htmx.install('form-data', {
+htmx.register('form-data', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-include', 'hx-encoding']},
     on: {
@@ -911,7 +911,7 @@ htmx.install('form-data', {
  * hx-validate="false" disables validation.
  * formnovalidate on the triggering button skips validation.
  */
-htmx.install('hx-validate', {
+htmx.register('hx-validate', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-validate']},
     on: {
@@ -958,7 +958,7 @@ htmx.install('hx-validate', {
 /**
  * Merge JSON values from hx-vals into request body or URL query params.
  */
-htmx.install('hx-vals', {
+htmx.register('hx-vals', {
     requires: ['form-data', 'parser'],
     config: {attributeFilter: ['hx-vals']},
     on: {
@@ -1011,7 +1011,7 @@ htmx.install('hx-vals', {
 /**
  * Merge JSON headers from hx-headers into request headers.
  */
-htmx.install('hx-headers', {
+htmx.register('hx-headers', {
     config: {attributeFilter: ['hx-headers']},
     on: {
         'htmx:before:request': (detail, api) => {
@@ -1045,7 +1045,7 @@ htmx.install('hx-headers', {
 /**
  * Process HX-* response headers (redirect, refresh, retarget, reswap, etc).
  */
-htmx.install('response-headers', {
+htmx.register('response-headers', {
     requires: ['ajax'],
     on: {
         'htmx:after:request': (detail, api) => {
@@ -1127,7 +1127,7 @@ htmx.install('response-headers', {
 /**
  * Skip swap for 204, 304 responses.
  */
-htmx.install('no-swap', {
+htmx.register('no-swap', {
     requires: ['ajax'],
     config: { noSwap: [204, 304] },
     on: {
@@ -1142,7 +1142,7 @@ htmx.install('no-swap', {
 /**
  * Store ETag from response headers and send If-None-Match on subsequent requests.
  */
-htmx.install('etag-cache', {
+htmx.register('etag-cache', {
     requires: ['ajax'],
     on: {
         'htmx:before:request': (detail) => {
@@ -1163,7 +1163,7 @@ htmx.install('etag-cache', {
 /**
  * Prevent requests from disconnected elements (removed from the DOM).
  */
-htmx.install('disconnected-guard', {
+htmx.register('disconnected-guard', {
     on: {
         'htmx:before:trigger': (detail) => {
             if (!detail.element?.isConnected) return false
@@ -1177,7 +1177,7 @@ htmx.install('disconnected-guard', {
  * - Supports js: prefix for custom evaluation
  * - Supports async custom confirmation UI via issueRequest callback
  */
-htmx.install('hx-confirm', {
+htmx.register('hx-confirm', {
     config: {attributeFilter: ['hx-confirm']},
     on: {
         'htmx:before:trigger': (detail, api) => {
@@ -1244,7 +1244,7 @@ htmx.install('hx-confirm', {
 /**
  * Parse hx-trigger for multi-trigger, load, every, from.
  */
-htmx.install('hx-trigger', {
+htmx.register('hx-trigger', {
     requires: ['parser'],
     config: {attributeFilter: ['hx-trigger']},
     on: {
@@ -1384,7 +1384,7 @@ htmx.install('hx-trigger', {
 /**
  * Issue GET request to hx-get URL on trigger.
  */
-htmx.install('hx-get', {
+htmx.register('hx-get', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-get']},
     on: {
@@ -1397,7 +1397,7 @@ htmx.install('hx-get', {
 /**
  * Issue POST request to hx-post URL on trigger.
  */
-htmx.install('hx-post', {
+htmx.register('hx-post', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-post']},
     on: {
@@ -1410,7 +1410,7 @@ htmx.install('hx-post', {
 /**
  * Issue PUT request to hx-put URL on trigger.
  */
-htmx.install('hx-put', {
+htmx.register('hx-put', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-put']},
     on: {
@@ -1423,7 +1423,7 @@ htmx.install('hx-put', {
 /**
  * Issue PATCH request to hx-patch URL on trigger.
  */
-htmx.install('hx-patch', {
+htmx.register('hx-patch', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-patch']},
     on: {
@@ -1436,7 +1436,7 @@ htmx.install('hx-patch', {
 /**
  * Issue DELETE request to hx-delete URL on trigger.
  */
-htmx.install('hx-delete', {
+htmx.register('hx-delete', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-delete']},
     on: {
@@ -1449,7 +1449,7 @@ htmx.install('hx-delete', {
 /**
  * Set swap style and modifiers from hx-swap attribute.
  */
-htmx.install('hx-swap', {
+htmx.register('hx-swap', {
     requires: ['swaps', 'parser'],
     config: {attributeFilter: ['hx-swap']},
     on: {
@@ -1465,7 +1465,7 @@ htmx.install('hx-swap', {
 /**
  * Handles scroll and delay modifiers on swap specifications.
  */
-htmx.install('swap-modifiers', {
+htmx.register('swap-modifiers', {
     requires: ['hx-swap'],
     on: {
         'htmx:before:swap': (detail, api) => {
@@ -1504,7 +1504,7 @@ htmx.install('swap-modifiers', {
 /**
  * Resolve swap target from hx-target attribute.
  */
-htmx.install('hx-target', {
+htmx.register('hx-target', {
     requires: ['swaps'],
     config: {attributeFilter: ['hx-target']},
     on: {
@@ -1521,7 +1521,7 @@ htmx.install('hx-target', {
 /**
  * Friendly swap names — before, prepend, append, after, remove.
  */
-htmx.install('swap-aliases', {
+htmx.register('swap-aliases', {
     requires: ['swaps'],
     on: {
         'htmx:before:swap': (detail, api) => {
@@ -1539,7 +1539,7 @@ htmx.install('swap-aliases', {
 /**
  * Request timeout via AbortSignal (default 60s).
  */
-htmx.install('request-timeout', {
+htmx.register('request-timeout', {
     requires: ['ajax'],
     config: {
         /** @type {number} Abort requests after this many milliseconds (0 = no timeout). */
@@ -1557,7 +1557,7 @@ htmx.install('request-timeout', {
         },
     }
 })
-htmx.install('request-queue', {
+htmx.register('request-queue', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-sync']},
     wrap: {
@@ -1654,7 +1654,7 @@ htmx.install('request-queue', {
  * Out-of-band swaps via hx-swap-oob attribute on response elements.
  * Also handles hx-select-oob on the triggering element.
  */
-htmx.install('hx-swap-oob', {
+htmx.register('hx-swap-oob', {
     requires: ['swaps'],
     config: {attributeFilter: ['hx-select-oob']},
     on: {
@@ -1725,7 +1725,7 @@ htmx.install('hx-swap-oob', {
 /**
  * Out-of-band swaps via <hx-partial> tags in response content.
  */
-htmx.install('hx-partial', {
+htmx.register('hx-partial', {
     requires: ['swaps'],
     on: {
         'htmx:after:response': (detail, api) => {
@@ -1765,7 +1765,7 @@ htmx.install('hx-partial', {
 /**
  * Filter response content to only include elements matching the hx-select selector.
  */
-htmx.install('hx-select', {
+htmx.register('hx-select', {
     requires: ['swaps'],
     config: {attributeFilter: ['hx-select']},
     on: {
@@ -1794,7 +1794,7 @@ htmx.install('hx-select', {
 /**
  * Re-creates script tags in swapped content to trigger execution.
  */
-htmx.install('script-processing', {
+htmx.register('script-processing', {
     on: {
         'htmx:after:swap': (detail, api) => {
             // Collect all scripts to process
@@ -1839,7 +1839,7 @@ htmx.install('script-processing', {
 /**
  * Manages loading indicator CSS classes with reference counting.
  */
-htmx.install('hx-indicator', {
+htmx.register('hx-indicator', {
     config: {
         attributeFilter: ['hx-indicator'],
         indicatorClass: 'htmx-indicator',
@@ -1885,7 +1885,7 @@ htmx.install('hx-indicator', {
  * Disables elements during request with reference counting.
  * Disabling is synchronous (htmx:before:request); re-enabling is async (htmx:finally).
  */
-htmx.install('hx-disable', {
+htmx.register('hx-disable', {
     config: {attributeFilter: ['hx-disable']},
     on: {
         'htmx:before:request': (detail, api) => {
@@ -1923,7 +1923,7 @@ htmx.install('hx-disable', {
 /**
  * Wire up inline JavaScript event handlers from hx-on:eventName attributes.
  */
-htmx.install('hx-on', {
+htmx.register('hx-on', {
     on: {
         'htmx:before:init': (detail, api) => {
             const el = detail.element
@@ -1965,7 +1965,7 @@ htmx.install('hx-on', {
 /**
  * Preserves elements across swaps by saving and restoring them.
  */
-htmx.install('hx-preserve', {
+htmx.register('hx-preserve', {
     config: {attributeFilter: ['hx-preserve']},
     on: {
         'htmx:before:swap': (detail, api) => {
@@ -2002,7 +2002,7 @@ htmx.install('hx-preserve', {
 /**
  * Focus elements with the autofocus attribute after swap.
  */
-htmx.install('autofocus', {
+htmx.register('autofocus', {
     on: {
         'htmx:after:swap': (detail) => {
             const target = detail.swap?.target
@@ -2015,7 +2015,7 @@ htmx.install('autofocus', {
 /**
  * Mark initialized elements with data-htmx-powered attribute for cleanup tracking.
  */
-htmx.install('htmx-powered', {
+htmx.register('htmx-powered', {
     on: {
         'htmx:after:init': (detail) => {
             detail.element.setAttribute('data-htmx-powered', 'true')
@@ -2025,7 +2025,7 @@ htmx.install('htmx-powered', {
 /**
  * Prevents processing of elements within hx-ignore containers.
  */
-htmx.install('hx-ignore', {
+htmx.register('hx-ignore', {
     on: {
         'htmx:before:init': (detail, api) => {
             if (detail.element.closest('[hx-ignore]')) return false
@@ -2035,7 +2035,7 @@ htmx.install('hx-ignore', {
 /**
  * Boost <a> and <form> inside hx-boost containers.
  */
-htmx.install('hx-boost', {
+htmx.register('hx-boost', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-boost']},
     on: {
@@ -2128,7 +2128,7 @@ htmx.install('hx-boost', {
  * hx-action attribute — auto-detects HTTP method from element type.
  * GET for links/buttons, POST for forms, or from hx-config method override.
  */
-htmx.install('hx-action', {
+htmx.register('hx-action', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-action']},
     on: {
@@ -2159,7 +2159,7 @@ htmx.install('hx-action', {
  * hx-config attribute — per-element configuration overrides merged into request context.
  * Supports JSON values with optional + prefix for merging object properties.
  */
-htmx.install('hx-config', {
+htmx.register('hx-config', {
     requires: ['ajax'],
     config: {attributeFilter: ['hx-config']},
     on: {
@@ -2211,7 +2211,7 @@ htmx.install('hx-config', {
  * Supports exact matches (hx-status:404), 2-digit wildcards (hx-status:50x),
  * and 1-digit wildcards (hx-status:5xx).
  */
-htmx.install('hx-status', {
+htmx.register('hx-status', {
     requires: ['ajax'],
     on: {
         'htmx:before:response': (detail, api) => {
@@ -2282,7 +2282,7 @@ htmx.install('hx-status', {
  * strip:true swap modifier — extracts children from top-level wrapper elements.
  * For each top-level element child in the content fragment, replaces it with its children.
  */
-htmx.install('strip-modifier', {
+htmx.register('strip-modifier', {
     requires: ['swaps'],
     on: {
         'htmx:before:swap': (detail, api) => {
@@ -2319,7 +2319,7 @@ htmx.install('strip-modifier', {
 /**
  * History management — push/replace URL on successful requests, handle popstate.
  */
-htmx.install('history', {
+htmx.register('history', {
     requires: ['ajax'],
     config: {
         history: true,
@@ -2400,7 +2400,7 @@ htmx.install('history', {
  * DOM morphing algorithm — intelligently patches existing DOM nodes to match
  * new content while preserving element identity, focus state, and animations.
  */
-htmx.install('morph', {
+htmx.register('morph', {
     config: {
         morphScanLimit: 10,
         morphIgnore: ['data-htmx-powered'],
@@ -2678,7 +2678,7 @@ htmx.install('morph', {
 /**
  * Public API — ergonomic wrappers for programmatic htmx usage.
  */
-htmx.install('public-api', {
+htmx.register('public-api', {
     requires: ['swaps', 'ajax'],
     wrap: {
         on: (original, element, eventName, handler, options) => {

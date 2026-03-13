@@ -65,7 +65,7 @@
         state.delete(element);
     }
 
-    htmx.install('hx-optimistic', {
+    htmx.register('hx-optimistic', {
         config: {
             attributeFilter: ['hx-optimistic']
         },

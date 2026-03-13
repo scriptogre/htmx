@@ -539,7 +539,7 @@
     // EXTENSION REGISTRATION
     // ========================================
 
-    htmx.install('hx-ws', {
+    htmx.register('hx-ws', {
         on: {
             'htmx:after:init': (detail, _api) => {
                 api = _api

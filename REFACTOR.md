@@ -6,13 +6,13 @@
 
 ## Current Architecture (read the code)
 
-- **`src/htmx.kernel.js`** — Runtime micro-kernel: lifecycle, element state, `emit`, `on`, `find`, `attr`, init/cleanup, and extension installation.
-- **`src/htmx.core.js`** — Built-in extensions installed via `htmx.install(...)` (parser, swaps, ajax, defaults, hx-* behaviors, wraps).
-- **`tools/assembler/`** — Rust assembler + CLI/UI. Produces simple or `--inline` assembled output from kernel + installed extensions.
+- **`src/htmx.kernel.js`** — Runtime micro-kernel: lifecycle, element state, `emit`, `on`, `find`, `attr`, init/cleanup, and extension registration.
+- **`src/htmx.core.js`** — Built-in extensions registered via `htmx.register(...)` (parser, swaps, ajax, defaults, hx-* behaviors, wraps).
+- **`tools/assembler/`** — Rust assembler + CLI/UI. Produces simple or `--inline` assembled output from kernel + registered extensions.
 - **`dist/htmx.assembled.js`** — Assembled build output.
-- Extension registration primitive is **`htmx.install(name, extension)`**.
+- Extension registration primitive is **`htmx.register(name, extension)`**.
 - Extension object fields are:
-  - `requires: string[]` — install-time dependency ordering.
+  - `requires: string[]` — registration-time dependency ordering.
   - `config: object` — merged into kernel config (`??=`; first writer wins unless user pre-set).
   - `define: object` — declares API members.
   - `on: object` — lifecycle event handlers.
@@ -26,7 +26,7 @@ This section captures the latest decisions from the runtime-vs-assembler contrac
 
 ### Problem We Hit
 
-- We need assembled builds to behave exactly like runtime `install(...)` composition.
+- We need assembled builds to behave exactly like runtime `register(...)` composition.
 - Complex `define` functions need private helpers/classes.
 - We tried supporting IIFE-style `define` values (example: `parse: (() => { ...; return function parse(...) {} })()`).
 - That required assembler inference of intent ("find returned function inside call expression"), which is too magical.
@@ -41,7 +41,7 @@ This section captures the latest decisions from the runtime-vs-assembler contrac
 ### Direction Chosen
 
 - `define` uses a strict factory contract:
-  - `define.foo` is a factory invoked once at install.
+  - `define.foo` is a factory invoked once at registration.
   - Factory returns the function assigned to `api.foo`.
   - Canonical forms:
     - `foo: (api) => function foo(...) { ... }`
@@ -3322,10 +3322,10 @@ api.state.wraps  // → {find: ['extended-selectors'], attr: ['inheritance', 'pa
 **Rejected approaches:**
 - `??=` only — can't accumulate arrays/objects
 - Deep merge with magic type detection — unpredictable
-- Separate `attributes:` key on install — clutters the extension API with more top-level keys
+- Separate `attributes:` key on register — clutters the extension API with more top-level keys
 - Derive attributeFilter from loaded extensions automatically — inference is fragile
 
-**Decision:** Extensions declare config defaults via `config: {}` in their install object. The kernel's `install()` merges with type-aware rules:
+**Decision:** Extensions declare config defaults via `config: {}` in their registration object. The kernel's `register()` merges with type-aware rules:
 
 | Existing value | New value | Behavior |
 |---|---|---|
@@ -3335,7 +3335,7 @@ api.state.wraps  // → {find: ['extended-selectors'], attr: ['inheritance', 'pa
 | object | object | per-key ??= |
 
 ```js
-htmx.install('smart-defaults', {
+htmx.register('smart-defaults', {
     config: {
         defaultSwap: 'innerHTML',
         defaultHeaders: {'HX-Request': 'true'},
@@ -3354,7 +3354,7 @@ The assembler performs the same merge at build time and emits the final config o
 
 **Consequences:**
 - smart-defaults, request-timeout, inheritance boot handlers eliminated (config moved to `config:` key)
-- Assembled output has config pre-merged — no install() calls needed for config
+- Assembled output has config pre-merged — no register() calls needed for config
 - Runtime and assembled output produce identical config objects
 - Adding a new header to `defaultHeaders` from a later extension: `config: {defaultHeaders: {'X-New': 'val'}}` — per-key ??= merges it in
 - Adding a new attribute to watch: `config: {attributeFilter: ['hx-foo']}` — array concat appends it

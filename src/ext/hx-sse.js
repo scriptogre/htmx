@@ -267,7 +267,7 @@
     // EXTENSION
     // ========================================
 
-    htmx.install('hx-sse', {
+    htmx.register('hx-sse', {
         on: {
             'htmx:before:response': (detail, api) => {
                 const contentType = detail.response?.raw?.headers?.get('Content-Type')

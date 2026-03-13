@@ -5,7 +5,7 @@
  *
  * This file is NOT required for production beta builds.
  */
-htmx.install('alpha-api', {
+htmx.register('alpha-api', {
     on: {
         'htmx:boot': (detail, api) => {
             htmx.process = htmx.init
@@ -88,7 +88,7 @@ htmx.install('alpha-api', {
                 el.classList.add(className)
             }
 
-            htmx.defineExtension = (name, ext) => htmx.install(name, ext)
+            htmx.defineExtension = (name, ext) => htmx.register(name, ext)
 
             htmx.resolveTarget = (elt, selector) => {
                 if (selector instanceof Element) return selector

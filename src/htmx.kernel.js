@@ -28,7 +28,7 @@ var htmx = (function () {
      * @typedef {Object} KernelConfig
      * @property {string} attributePrefix Attribute prefix used during discovery.
      * @property {string[]} attributeFilter Attributes observed for re-init.
-     * Extension-defined config keys may be added during install/boot.
+     * Extension-defined config keys may be added during register/boot.
      */
 
     // ── Kernel Internals ────────────────────────────────────────────────────
@@ -72,18 +72,18 @@ var htmx = (function () {
     const extensions = []
 
     /**
-     * Install an extension. Extensions run in installation order.
+     * Register an extension. Extensions run in registration order.
      *
      * @param {string} name - Unique extension name.
      * @param {{requires?: string[], config?: Object<string, any>, on?: Object<string, function>, define?: Object<string, function>, wrap?: Object<string, function>}} extension
      */
-    function install(name, extension) {
-        if (extensions.some(installed => installed.name === name)) {
-            return // silently skip duplicate installation
+    function register(name, extension) {
+        if (extensions.some(registered => registered.name === name)) {
+            return // silently skip duplicate registration
         }
         for (const dependency of extension.requires || []) {
-            if (!extensions.some(installed => installed.name === dependency)) {
-                throw new HtmxError(`Extension "${name}" requires "${dependency}" to be installed first`, {type: 'EXTENSION_DEPENDENCY_MISSING'})
+            if (!extensions.some(registered => registered.name === dependency)) {
+                throw new HtmxError(`Extension "${name}" requires "${dependency}" to be registered first`, {type: 'EXTENSION_DEPENDENCY_MISSING'})
             }
         }
 
@@ -105,7 +105,7 @@ var htmx = (function () {
         }
 
         // Apply declarative api definitions first so later wraps can target them.
-        // Contract: define values are factories called once at install:
+        // Contract: define values are factories called once at registration:
         //   define.foo(api) -> function foo(...)
         if (extension.define) {
             for (const [fnName, factory] of Object.entries(extension.define)) {
@@ -135,7 +135,7 @@ var htmx = (function () {
                 wraps[fnName].push(name)
             }
         }
-        // Late-installed extensions still get a boot event
+        // Late-registered extensions still get a boot event
         if (booted && extension.on?.['htmx:boot']) {
             extension.on['htmx:boot']({}, api)
         }
@@ -354,7 +354,7 @@ var htmx = (function () {
 
     const api = {
         config,
-        install,
+        register,
         init,
         initElement,
         cleanup,
@@ -373,7 +373,7 @@ var htmx = (function () {
     htmx = {
         version: '4.0.0',
         config,
-        install,
+        register,
         state,
         get init() {
             return api.init

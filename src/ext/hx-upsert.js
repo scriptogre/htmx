@@ -13,7 +13,7 @@
 //   sort      - sort ascending (or sort="desc" for descending)
 //   prepend   - prepend elements without keys (default: append)
 //==========================================================
-htmx.install("hx-upsert", {
+htmx.register("hx-upsert", {
     requires: ['swaps'],
     on: {
         'htmx:after:response': (detail, api) => {

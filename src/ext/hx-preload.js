@@ -85,7 +85,7 @@
         }
     }
 
-    htmx.install('hx-preload', {
+    htmx.register('hx-preload', {
         config: {
             attributeFilter: ['hx-preload']
         },

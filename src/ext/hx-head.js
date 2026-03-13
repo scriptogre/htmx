@@ -102,7 +102,7 @@
     }
 }
 
-    htmx.install("hx-head", {
+    htmx.register("hx-head", {
         requires: ['swaps'],
         on: {
             'htmx:after:swap': (detail, api) => {

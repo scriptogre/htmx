@@ -8,7 +8,7 @@
 (() => {
     let deferCount = 0;
 
-    htmx.install('alpine-compat', {
+    htmx.register('alpine-compat', {
         on: {
             'htmx:before:swap': (detail, api) => {
                 if (!window.Alpine?.closestDataStack || !window.Alpine?.cloneNode || !window.Alpine?.deferMutations) {
