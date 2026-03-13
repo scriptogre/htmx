@@ -489,7 +489,7 @@ describe('swap() unit tests', function() {
         createProcessedHTML("<div id='d1'>Old</div>")
         let fragment = document.createDocumentFragment()
         fragment.append(document.createTextNode('New'))
-        await htmx.__insertContent({target: find('#d1'), swapSpec: 'innerHTML', fragment})
+        await htmx.__insertContent(find('#d1'), fragment, 'innerHTML')
         find('#d1').innerText.should.equal('New')
     })
 

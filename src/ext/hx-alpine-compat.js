@@ -27,28 +27,12 @@
             };
         },
         
-        htmx_before_swap: (elt, detail) => {
-            if (!window.Alpine?.closestDataStack || !window.Alpine?.cloneNode || !window.Alpine?.deferMutations) {
-                return;
-            }
-            if (deferCount === 0) {
-                window.Alpine.deferMutations();
-            }
+        htmx_before_request: (elt, detail) => {
+            if (!window.Alpine?.deferMutations) return;
+            if (deferCount === 0) window.Alpine.deferMutations();
             deferCount++;
-            
-            let {tasks} = detail;
-            for (let task of tasks) {
-                if (task.swapSpec.style === 'innerMorph' || task.swapSpec.style === 'outerMorph') {
-                    if (!task.fragment || !task.target) continue;
-                    
-                    let target = typeof task.target === 'string' 
-                        ? document.querySelector(task.target) 
-                        : task.target;
-                    if (!target) continue;
-                }
-            }
         },
-        
+
         htmx_before_morph_node: (elt, detail) => {
             if (!window.Alpine?.closestDataStack || !window.Alpine?.cloneNode) {
                 return;

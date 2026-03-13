@@ -18,7 +18,7 @@
             api = internalAPI;
         },
         htmx_process_upsert: (templateElt, detail) => {
-            let {ctx, tasks} = detail;
+            let {scheduleSwap} = detail;
             let swapSpec = {style: 'upsert'};
             let key = templateElt.getAttribute('key');
             let sort = templateElt.getAttribute('sort');
@@ -26,13 +26,11 @@
             if (key) swapSpec.key = key;
             if (sort !== null) swapSpec.sort = sort || true;
             if (prepend) swapSpec.prepend = true;
-            tasks.push({
-                type: 'partial',
-                fragment: templateElt.content.cloneNode(true),
-                target: api.attributeValue(templateElt, 'hx-target'),
-                swapSpec,
-                sourceElement: ctx.sourceElement
-            });
+            scheduleSwap(
+                api.attributeValue(templateElt, 'hx-target'),
+                templateElt.content.cloneNode(true),
+                swapSpec
+            );
         },
         handle_swap: (style, target, fragment, swapSpec) => {
             if (style === 'upsert') {

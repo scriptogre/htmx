@@ -18,28 +18,26 @@
             api = internalAPI;
         },
         htmx_before_swap: (elt, detail) => {
-            let {element, tasks} = detail;
+            let element = detail.element || elt;
             let selector = api.attributeValue(element, 'hx-targets');
             if (!selector) return;
 
-            let targets = htmx.findAll(ctx.sourceElement, selector);
+            let targets = htmx.findAll(element, selector);
             if (!targets.length) {
                 console.warn(`htmx: '${selector}' on hx-targets did not match any elements`);
                 return;
             }
 
-            // Replace main task with one task per target
-            let mainIndex = tasks.findIndex(t => t.type === 'main');
-            if (mainIndex === -1) return;
-
-            let mainTask = tasks[mainIndex];
-            let newTasks = Array.from(targets).map(target => ({
-                ...mainTask,
-                fragment: mainTask.fragment.cloneNode(true),
-                target
-            }));
-
-            tasks.splice(mainIndex, 1, ...newTasks);
+            // Replace execute to run the swap against every matched target
+            let originalFragment = detail.swap.fragment;
+            detail.swap.execute = async () => {
+                for (let [i, target] of targets.entries()) {
+                    let frag = i < targets.length - 1
+                        ? originalFragment.cloneNode(true)
+                        : originalFragment;
+                    await api.insertContent(target, frag, detail.swap.style, true);
+                }
+            };
         }
     });
 })();
