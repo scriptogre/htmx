@@ -2334,7 +2334,7 @@ htmx.install('history', {
             window.addEventListener('popstate', (event) => {
                 if (event.state?.htmx) {
                     const path = location.pathname + location.search
-                    if (api.emit(document.body, 'htmx:before:restore:history', {path, cacheMiss: true})) {
+                    if (api.emit(document.body, 'htmx:before:history:restore', {path, cacheMiss: true})) {
                         if (api.config.history === 'reload') {
                             location.reload()
                         } else {
@@ -2386,10 +2386,10 @@ htmx.install('history', {
 
             if (type === 'push') {
                 history.pushState({htmx: true}, '', path)
-                api.emit(document.body, 'htmx:after:push:into:history', {path})
+                api.emit(document.body, 'htmx:after:history:push', {path})
             } else {
                 history.replaceState({htmx: true}, '', path)
-                api.emit(document.body, 'htmx:after:replace:into:history', {path})
+                api.emit(document.body, 'htmx:after:history:replace', {path})
             }
 
             api.emit(document.body, 'htmx:after:history:update', historyDetail)

@@ -62,13 +62,13 @@
             'htmx:before:viewTransition': function (detail, api) {
                 maybeRetrigger(detail.element, "htmx:beforeTransition", detail);
             },
-            'htmx:before:restore:history': function (detail, api) {
+            'htmx:before:history:restore': function (detail, api) {
                 maybeRetrigger(detail.element, "htmx:historyRestore", detail);
             },
-            'htmx:after:push:into:history': function (detail, api) {
+            'htmx:after:history:push': function (detail, api) {
                 maybeRetrigger(detail.element, "htmx:pushedIntoHistory", detail);
             },
-            'htmx:after:replace:into:history': function (detail, api) {
+            'htmx:after:history:replace': function (detail, api) {
                 maybeRetrigger(detail.element, "htmx:replacedInHistory", detail);
             },
             'htmx:error': function (detail, api) {
