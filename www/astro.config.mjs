@@ -216,6 +216,9 @@ export default defineConfig({
         "/extensions/preload": "/extensions/hx-preload",
         "/extensions/browser-indicator": "/extensions/hx-browser-indicator",
         "/extensions/alpine-compat": "/extensions/hx-alpine-compat",
+        "/extensions/hx-alpine-compat": "/extensions/hx-alpine-compat",
+        "/extensions/htmx-2-compat": "/extensions/hx-htmx-2-compat",
+        "/extensions/hx-compat": "/extensions/hx-htmx-2-compat",
         "/extensions/optimistic": "/extensions/hx-optimistic",
         "/extensions/upsert": "/extensions/hx-upsert",
         "/extensions/building": "/docs#extension-system",
@@ -224,7 +227,7 @@ export default defineConfig({
         "/docs/extensions": "/extensions",
         "/docs/extensions/using-extensions": "/docs#extension-system",
         "/docs/extensions/extension-migration": "/docs/get-started/migration",
-        "/docs/extensions/htmx-2-compat": "/extensions/htmx-2-compat",
+        "/docs/extensions/htmx-2-compat": "/extensions/hx-htmx-2-compat",
         "/docs/extensions/sse": "/extensions/hx-sse",
         "/docs/extensions/ws": "/extensions/hx-ws",
         "/docs/extensions/head-support": "/extensions/hx-head",
@@ -236,6 +239,7 @@ export default defineConfig({
         "/docs/extensions/ptag": "/extensions/hx-ptag",
         "/docs/extensions/browser-indicator": "/extensions/hx-browser-indicator",
         "/docs/extensions/alpine-compat": "/extensions/hx-alpine-compat",
+        "/docs/extensions/hx-alpine-compat": "/extensions/hx-alpine-compat",
         "/docs/extensions/history-cache": "/extensions/hx-history-cache",
 
         // Old site: interviews were under /essays/

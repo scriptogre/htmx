@@ -6,8 +6,8 @@
     before(async () => {
         extBackup = backupExtensions();
         clearExtensions();
-        htmx.config.extensions = 'history-cache,alpine-compat';
-        htmx.__approvedExt = 'history-cache,alpine-compat';
+        htmx.config.extensions = 'hx-history-cache,hx-alpine-compat';
+        htmx.__approvedExt = 'hx-history-cache,hx-alpine-compat';
 
         let historyCacheScript = document.createElement('script');
         historyCacheScript.src = '../src/ext/hx-history-cache.js';

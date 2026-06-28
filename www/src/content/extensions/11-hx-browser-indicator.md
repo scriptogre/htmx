@@ -6,7 +6,7 @@ icon: "icon-[mdi--tab-search]"
 keywords: ["browser", "indicator", "loading", "spinner", "tab"]
 ---
 
-The `browser-indicator` extension shows the browser's native loading indicator (the tab spinner) during htmx requests. This gives users the same visual feedback they get during full-page navigations, without any custom CSS or HTML.
+The `hx-browser-indicator` extension shows the browser's native loading indicator (the tab spinner) during htmx requests. This gives users the same visual feedback they get during full-page navigations, without any custom CSS or HTML.
 
 This extension requires the [Navigation API](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API), which is available in Chromium-based browsers. In browsers that don't support it, the extension is a no-op.
 
@@ -34,7 +34,7 @@ While the request is in flight, the browser's tab spinner will be active just li
 Instead of marking individual elements, you can enable the indicator for all boosted links and forms via config:
 
 ```html
-<meta name="htmx-config" content='{"extensions": "browser-indicator", "boostBrowserIndicator": true}'>
+<meta name="htmx-config" content='{"extensions": "hx-browser-indicator", "boostBrowserIndicator": true}'>
 ```
 
 With this config, any element with [`hx-boost`](/reference/attributes/hx-boost) will automatically show the browser indicator during its requests.

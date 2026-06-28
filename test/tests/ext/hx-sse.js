@@ -12,8 +12,8 @@ describe('hx-sse SSE extension', function() {
         extBackup = backupExtensions();
         clearExtensions();
 
-        htmx.config.extensions = 'sse';
-        htmx.__approvedExt = 'sse';
+        htmx.config.extensions = 'hx-sse';
+        htmx.__approvedExt = 'hx-sse';
 
         let script = document.createElement('script');
         script.src = '../src/ext/hx-sse.js';
@@ -22,7 +22,7 @@ describe('hx-sse SSE extension', function() {
             document.head.appendChild(script);
         });
 
-        if (!htmx.__registeredExt.has('sse')) {
+        if (!htmx.__registeredExt.has('hx-sse')) {
             throw new Error('SSE extension failed to register - check approval');
         }
     });

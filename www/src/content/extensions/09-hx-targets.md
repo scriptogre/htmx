@@ -6,7 +6,7 @@ icon: "icon-[mdi--target]"
 keywords: ["targets", "multi-target", "selector", "swap", "broadcast"]
 ---
 
-The `targets` extension adds an `hx-targets` attribute that swaps the same response content into multiple elements matching a CSS selector. Useful when you want to update several elements at once with the same response.
+The `hx-targets` extension adds an `hx-targets` attribute that swaps the same response content into multiple elements matching a CSS selector. Useful when you want to update several elements at once with the same response.
 
 ## Installing
 

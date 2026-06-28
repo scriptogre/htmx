@@ -336,7 +336,7 @@
     // EXTENSION REGISTRATION
     // ========================================
 
-    htmx.registerExtension('sse', {
+    htmx.registerExtension('hx-sse', {
         init: (internalAPI) => {
             api = internalAPI;
         },

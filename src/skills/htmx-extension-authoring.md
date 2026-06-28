@@ -241,7 +241,7 @@ From `src/ext/hx-preload.js` -- prefetches requests on trigger events:
 (() => {
     let api;
 
-    htmx.registerExtension('preload', {
+    htmx.registerExtension('hx-preload', {
         init: (internalAPI) => { api = internalAPI; },
 
         htmx_after_init: (elt) => {

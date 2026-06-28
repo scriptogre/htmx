@@ -12,8 +12,7 @@
 //     stream the file directly as the htmx response)
 //
 // Usage:
-//   <button hx-get="/file.pdf" hx-swap="download"
-//           hx-ext="download">Download</button>
+//   <button hx-get="/file.pdf" hx-swap="download">Download</button>
 //
 // Events:
 //   htmx:download:start    {total}
@@ -23,7 +22,7 @@
 (() => {
     let api;
 
-    htmx.registerExtension('download', {
+    htmx.registerExtension('hx-download', {
         init: (internalAPI) => {
             api = internalAPI;
         },

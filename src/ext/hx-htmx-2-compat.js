@@ -4,13 +4,21 @@
     //========================================================
     let api
 
+    if (htmx.__approvedExt?.split(/\s*,\s*/).includes('compat')) {
+        console.error(`htmx 4.0 error: extension name "compat" is no longer supported
+  change: <meta name="htmx-config" content='extensions:"compat"'>
+
+  to:     <meta name="htmx-config" content='extensions:"hx-htmx-2-compat"'>
+  or:     <meta name="htmx-config" content='extensions:"htmx-2-compat"'>`)
+    }
+
     function maybeRetriggerEvent(elt, evtName, detail) {
         if (!htmx.config.compat?.doNotTriggerOldEvents) {
             htmx.trigger(elt, evtName, detail);
         }
     }
 
-    htmx.registerExtension('compat', {
+    htmx.registerExtension('hx-htmx-2-compat', {
         init: (internalAPI) => {
             api = internalAPI;
 

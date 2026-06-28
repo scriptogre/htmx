@@ -8,7 +8,7 @@ const routes = {
 <html>
 <head>
     <title>hx-download demo</title>
-    <meta name="htmx-config" content='{"extensions":"download"}'>
+    <meta name="htmx-config" content='{"extensions":"hx-download"}'>
     <script src="/htmx.js"></script>
     <script src="/ext/hx-download.js"></script>
     <style>
@@ -22,7 +22,7 @@ const routes = {
         .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }
     </style>
 </head>
-<body hx-ext="download">
+<body>
     <h1>hx-download demo</h1>
 
     <progress id="prog" value="0" max="100"></progress>

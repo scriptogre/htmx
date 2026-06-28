@@ -21,7 +21,7 @@ instant user feedback before the server responds.
 Load the extension in your htmx configuration:
 
 ```javascript
-htmx.config.extensions = 'optimistic';
+htmx.config.extensions = 'hx-optimistic';
 ```
 
 Or load the extension file directly (if available as a separate extension).

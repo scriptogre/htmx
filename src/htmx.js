@@ -242,7 +242,7 @@ var htmx = (() => {
         }
 
         registerExtension(name, extension) {
-            if (this.__approvedExt && !this.__approvedExt.split(/,\s*/).includes(name)) return false;
+            if (this.__approvedExt && !this.__approvedExt.split(/\s*,\s*/).some(approved => approved === name || `hx-${approved}` === name)) return false;
             if (this.__registeredExt.has(name)) return false;
             this.__registeredExt.add(name);
             if (extension.init) extension.init(this.#internalAPI);

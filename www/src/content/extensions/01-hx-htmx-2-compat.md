@@ -1,18 +1,18 @@
 ---
-title: "htmx-2-compat"
+title: "hx-htmx-2-compat"
 description: "Restore htmx 2.x defaults and event names on htmx 4"
 category: "Compatibility"
 icon: "icon-[mdi--backup-restore]"
 keywords: ["compatibility", "migration", "htmx 2", "legacy"]
 ---
 
-The `htmx-2-compat` extension provides a compatibility layer that allows htmx 2.x code to run on htmx 4 with minimal changes. This is useful for gradual migration of existing applications.
+The `hx-htmx-2-compat` extension provides a compatibility layer that allows htmx 2.x code to run on htmx 4 with minimal changes. This is useful for gradual migration of existing applications.
 
 ## Installing
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/htmx.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/htmx-2-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/hx-htmx-2-compat.js"></script>
 ```
 
 ## Usage

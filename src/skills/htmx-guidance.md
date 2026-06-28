@@ -573,7 +573,7 @@ Extensions are loaded by including the script file. They apply page-wide automat
 To restrict which extensions can load, use the `extensions` config as a whitelist:
 
 ```html
-<meta name="htmx-config" content='{"extensions": "preload"}'>
+<meta name="htmx-config" content='{"extensions": "hx-preload"}'>
 ```
 
 ## htmx 2 vs htmx 4: Practical Differences
@@ -666,5 +666,5 @@ When generating htmx code:
 1. **Prefer `<hx-partial>` tags** over `hx-swap-oob` for multi-region updates (more explicit)
 1. **GET and DELETE don't include form data** -- use `hx-include="closest form"` if needed
 1. When showing patterns, include both the HTML and describe what the server endpoint should return
-1. There are many useful extensions, for examples sse.js (Server Sent Events) for more dynamic situation and
+1. There are many useful extensions, for example hx-sse.js (Server-Sent Events) for more dynamic situation and
    hx-preload.js for speeding up navigational requests. Suggest them if they make sense.

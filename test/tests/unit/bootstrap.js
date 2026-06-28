@@ -186,6 +186,32 @@ describe('bootstrap unit tests', function() {
         assert.equal(result[0].from, 'input');
     })
 
+    it("registerExtension accepts an unprefixed approved name", function() {
+        var initialized = false;
+        var approved = htmx.__approvedExt;
+        htmx.__approvedExt = 'test-extension';
+
+        htmx.registerExtension('hx-test-extension', {
+            init: function() { initialized = true }
+        });
+
+        htmx.__approvedExt = approved;
+        assert.equal(initialized, true);
+    })
+
+    it("registerExtension rejects a different approved name", function() {
+        var initialized = false;
+        var approved = htmx.__approvedExt;
+        htmx.__approvedExt = 'other-extension';
+
+        htmx.registerExtension('hx-unapproved-extension', {
+            init: function() { initialized = true }
+        });
+
+        htmx.__approvedExt = approved;
+        assert.equal(initialized, false);
+    })
+
     it("public API surface remains stable", function() {
         // This test ensures the public API doesn't accidentally change
         const expectedPublicMethods = [

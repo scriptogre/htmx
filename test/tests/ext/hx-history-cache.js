@@ -6,8 +6,8 @@ describe('hx-history-cache extension', function () {
     before(async () => {
         extBackup = backupExtensions();
         clearExtensions();
-        htmx.config.extensions = 'history-cache';
-        htmx.__approvedExt = 'history-cache';
+        htmx.config.extensions = 'hx-history-cache';
+        htmx.__approvedExt = 'hx-history-cache';
 
         let script = document.createElement('script');
         script.src = '../src/ext/hx-history-cache.js';

@@ -66,7 +66,7 @@
         elt._htmx.preloadEvents = preloadEvents;
     }
 
-    htmx.registerExtension('preload', {
+    htmx.registerExtension('hx-preload', {
         init: (internalAPI) => {
             api = internalAPI;
         },

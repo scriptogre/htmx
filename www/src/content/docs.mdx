@@ -109,14 +109,37 @@ Add these two config lines to restore htmx 2.x behavior:
 [`implicitInheritance`](/reference/config/htmx-config-implicitInheritance) restores htmx 2's implicit attribute
 inheritance. [`noSwap`](/reference/config/htmx-config-noSwap) prevents swapping error responses.
 
-Or load the [`htmx-2-compat`](/extensions/htmx-2-compat) extension, which restores implicit inheritance, old event
+Or load the [`hx-htmx-2-compat`](/extensions/hx-htmx-2-compat) extension, which restores implicit inheritance, old event
 names, and previous error-swapping defaults:
 
 ```html
 
 <script src="/path/to/htmx.js"></script>
-<script src="/path/to/ext/htmx-2-compat.js"></script>
+<script src="/path/to/ext/hx-htmx-2-compat.js"></script>
 ```
+
+<details class="warning">
+<summary>Changed extension name</summary>
+
+Change:
+
+```html
+<meta name="htmx-config" content='extensions:"compat"'>
+```
+
+To:
+
+```html
+<meta name="htmx-config" content='extensions:"hx-htmx-2-compat"'>
+```
+
+Or:
+
+```html
+<meta name="htmx-config" content='extensions:"htmx-2-compat"'>
+```
+
+</details>
 
 Most htmx 2 apps should work with either approach. Then migrate incrementally using this guide.
 
@@ -556,19 +579,19 @@ htmx 4 ships with 9 core extensions. The SSE and WebSocket extensions have been 
 
 | Extension                                                 | Description                                                                          |
 |-----------------------------------------------------------|--------------------------------------------------------------------------------------|
-| [`alpine-compat`](/extensions/hx-alpine-compat)         | Alpine.js compatibility: initializes Alpine on fragments before swap                 |
-| [`browser-indicator`](/extensions/hx-browser-indicator) | Shows the browser's native loading indicator during requests                         |
-| [`head-support`](/extensions/hx-head)           | Merges head tag information (styles, etc.) in htmx requests                          |
-| [`htmx-2-compat`](/extensions/htmx-2-compat)         | Restores implicit inheritance, old event names, and previous error-swapping defaults |
-| [`optimistic`](/extensions/hx-optimistic)               | Shows expected content from a template before the server responds                    |
-| [`preload`](/extensions/hx-preload)                     | Triggers requests early (on mouseover/mousedown) for near-instant page loads ([upgrade guide](/extensions/hx-preload#upgrading-from-htmx-2x)) |
-| [`sse`](/extensions/hx-sse)                             | Server-Sent Events streaming support ([upgrade guide](/extensions/hx-sse#upgrading-from-htmx-2x)) |
-| [`upsert`](/extensions/hx-upsert)                       | Updates existing elements by ID and inserts new ones, preserving unmatched elements  |
-| [`ws`](/extensions/hx-ws)                               | Bi-directional WebSocket communication ([upgrade guide](/extensions/hx-ws#upgrading-from-htmx-2x)) |
+| [`hx-alpine-compat`](/extensions/hx-alpine-compat)         | Alpine.js compatibility: initializes Alpine on fragments before swap                 |
+| [`hx-browser-indicator`](/extensions/hx-browser-indicator) | Shows the browser's native loading indicator during requests                         |
+| [`hx-head`](/extensions/hx-head)           | Merges head tag information (styles, etc.) in htmx requests                          |
+| [`hx-htmx-2-compat`](/extensions/hx-htmx-2-compat)         | Restores implicit inheritance, old event names, and previous error-swapping defaults |
+| [`hx-optimistic`](/extensions/hx-optimistic)               | Shows expected content from a template before the server responds                    |
+| [`hx-preload`](/extensions/hx-preload)                     | Triggers requests early (on mouseover/mousedown) for near-instant page loads ([upgrade guide](/extensions/hx-preload#upgrading-from-htmx-2x)) |
+| [`hx-sse`](/extensions/hx-sse)                             | Server-Sent Events streaming support ([upgrade guide](/extensions/hx-sse#upgrading-from-htmx-2x)) |
+| [`hx-upsert`](/extensions/hx-upsert)                       | Updates existing elements by ID and inserts new ones, preserving unmatched elements  |
+| [`hx-ws`](/extensions/hx-ws)                               | Bi-directional WebSocket communication ([upgrade guide](/extensions/hx-ws#upgrading-from-htmx-2x)) |
 
 ### Checklist
 
-1. Optionally, add config options or load [`htmx-2-compat`](/extensions/htmx-2-compat) for backward compatibility
+1. Optionally, add config options or load [`hx-htmx-2-compat`](/extensions/hx-htmx-2-compat) for backward compatibility
 2. Run the [upgrade checker](#upgrade-checker) to get a full list of issues
 3. Rename `hx-disable` to [`hx-ignore`](/reference/attributes/hx-ignore), then `hx-disabled-elt` to [
    `hx-disable`](/reference/attributes/hx-disable)
@@ -3175,7 +3198,7 @@ They are listed below:
 | `htmx.config.includeIndicatorCSS` | defaults to `true` (determines if the indicator styles are loaded)                                                                                                                                                                                                         |
 | `htmx.config.defaultTimeout`      | defaults to `60000` (60 seconds), the number of milliseconds a request can take before automatically being terminated                                                                                                                                                      |
 | `htmx.config.inlineScriptNonce`   | defaults to `''`, meaning that no nonce will be added to inline scripts                                                                                                                                                                                                    |
-| `htmx.config.extensions`          | defaults to `''`, a comma-separated list of extension names to load (e.g., `'preload,optimistic'`)                                                                                                                                                                         |
+| `htmx.config.extensions`          | defaults to `''`, a comma-separated list of extension names to load (e.g., `'hx-preload,hx-optimistic'`)                                                                                                                                                                         |
 | `htmx.config.morphIgnore`         | defaults to `["data-htmx-powered"]`, array of attribute name prefixes to preserve when morphing elements                                                                                                                                                                   |
 | `htmx.config.morphScanLimit`      | limits the number of nodes scanned during morphing                                                                                                                                                                                                                         |
 | `htmx.config.morphSkip`           | defaults to `'[hx-morph-skip]'`, CSS selector for elements to completely skip during morphing (they stay frozen)                                                                                                                                                            |

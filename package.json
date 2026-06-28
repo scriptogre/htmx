@@ -48,7 +48,9 @@
     "www:build": "cd www && bun install && bun run build",
     "www:dev": "cd www && bun install && bun run dev",
     "merge": "  (echo \"src/** merge=ours\ndist/** merge=ours\ntest/** merge=ours\n\" > .gitattributes && git add .gitattributes && git merge master); git reset HEAD .gitattributes 2>/dev/null; rm .gitattributes 2>/dev/null\n",
-    "update-sha": "bash scripts/update-sha.sh"
+    "update-sha": "bash scripts/update-sha.sh",
+    "prepack": "for f in js min.js min.js.map; do cp dist/ext/hx-htmx-2-compat.$f dist/ext/htmx-2-compat.$f; done",
+    "postpack": "git restore -- dist/ext/htmx-2-compat.* 2>/dev/null || rm -f dist/ext/htmx-2-compat.*"
   },
   "repository": {
     "type": "git",

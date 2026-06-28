@@ -6,7 +6,7 @@ icon: "icon-[mdi--rocket-launch-outline]"
 keywords: ["preload", "prefetch", "performance", "hover", "mousedown"]
 ---
 
-The `preload` extension allows you to load HTML fragments into your browser's cache before they are requested by the user, so that additional pages appear to load nearly instantaneously.
+The `hx-preload` extension allows you to load HTML fragments into your browser's cache before they are requested by the user, so that additional pages appear to load nearly instantaneously.
 
 **Important:** Preloading content judiciously can improve your web application's perceived performance, but preloading too many resources can negatively impact your visitors' bandwidth and your server performance. Use this extension carefully!
 
@@ -30,10 +30,10 @@ All preload requests include an additional `HX-Preloaded: true` header.
 
 ## hx-boost Integration
 
-When the preload extension is loaded, all [`hx-boost`](/reference/attributes/hx-boost) anchor tags are automatically preloaded on `mousedown` without needing an explicit `hx-preload` attribute. To opt out of this behaviour, set `htmx.config.preload.autoBoost = false`.
+When the hx-preload extension is loaded, all [`hx-boost`](/reference/attributes/hx-boost) anchor tags are automatically preloaded on `mousedown` without needing an explicit `hx-preload` attribute. To opt out of this behaviour, set `htmx.config.preload.autoBoost = false`.
 
 ```html
-<!-- these are all automatically preloaded when the preload extension is loaded -->
+<!-- these are all automatically preloaded when hx-preload is loaded -->
 <nav hx-boost="true">
     <a href="/page1">Page 1</a>
     <a href="/page2">Page 2</a>

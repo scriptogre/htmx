@@ -74,8 +74,8 @@ describe('hx-ws WebSocket extension', function() {
         
         // CRITICAL: Approve extension BEFORE loading it
         // Extension registration silently fails if not approved
-        htmx.config.extensions = 'ws';
-        htmx.__approvedExt = 'ws';
+        htmx.config.extensions = 'hx-ws';
+        htmx.__approvedExt = 'hx-ws';
         
         let script = document.createElement('script');
         script.src = '../src/ext/hx-ws.js';
@@ -88,7 +88,7 @@ describe('hx-ws WebSocket extension', function() {
         if (!htmx.ext || !htmx.ext.ws) {
             throw new Error('WebSocket extension failed to load');
         }
-        if (!htmx.__registeredExt.has('ws')) {
+        if (!htmx.__registeredExt.has('hx-ws')) {
             throw new Error('WebSocket extension failed to register - check approval');
         }
     });

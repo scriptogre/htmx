@@ -16,7 +16,7 @@
         }
     }
 
-    htmx.registerExtension('alpine-compat', {
+    htmx.registerExtension('hx-alpine-compat', {
         init: (internalAPI) => {
             api = internalAPI;
             

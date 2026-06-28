@@ -6,7 +6,7 @@ icon: "icon-[mdi--history]"
 keywords: ["history", "cache", "sessionStorage", "back", "forward", "navigation"]
 ---
 
-The `history-cache` extension replaces htmx's default history handling with a client-side cache stored in `sessionStorage`. When the user navigates back or forward, the extension restores the page instantly from cache instead of fetching from the server.
+The `hx-history-cache` extension replaces htmx's default history handling with a client-side cache stored in `sessionStorage`. When the user navigates back or forward, the extension restores the page instantly from cache instead of fetching from the server.
 
 ## Installing
 
@@ -91,11 +91,11 @@ document.addEventListener('htmx:history:cache:hit', (evt) => {
 
 ## Head Restoration
 
-By default the extension saves the `<head>` snapshot but does not restore it. Including the [`head-support`](/extensions/hx-head) extension enables full `<head>` restoration on cache hits — styles, scripts, and meta tags are merged back in alongside the body content.
+By default the extension saves the `<head>` snapshot but does not restore it. Including the [`hx-head`](/extensions/hx-head) extension enables full `<head>` restoration on cache hits — styles, scripts, and meta tags are merged back in alongside the body content.
 
 ```html
 <script src="/path/to/ext/hx-history-cache.js"></script>
-<script src="/path/to/ext/hx-head-support.js"></script>
+<script src="/path/to/ext/hx-head.js"></script>
 ```
 
 ## How It Works

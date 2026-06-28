@@ -21,7 +21,7 @@ perceived performance.
 Load the extension in your htmx configuration:
 
 ```javascript
-htmx.config.extensions = 'preload';
+htmx.config.extensions = 'hx-preload';
 ```
 
 Or load the extension file directly (if available as a separate extension).

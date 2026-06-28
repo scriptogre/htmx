@@ -57,7 +57,7 @@
         }
     }
 
-    htmx.registerExtension('browser-indicator', {
+    htmx.registerExtension('hx-browser-indicator', {
         init: (internalAPI) => {
             api = internalAPI;
         },

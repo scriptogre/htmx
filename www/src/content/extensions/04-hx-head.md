@@ -6,7 +6,7 @@ icon: "icon-[mdi--page-layout-header]"
 keywords: ["head", "styles", "scripts", "merge", "append"]
 ---
 
-The `head-support` extension adds support for [head tags](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/head) in responses to htmx requests.
+The `hx-head` extension adds support for [head tags](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/head) in responses to htmx requests.
 
 htmx began as a library focused on partial replacement of HTML within the `body` tag. The [`hx-boost`](/reference/attributes/hx-boost) attribute moved htmx closer to full HTML-document support, and support for extracting the `title` tag was eventually added, but full head tag support has never been a feature of the core library. This extension addresses that.
 

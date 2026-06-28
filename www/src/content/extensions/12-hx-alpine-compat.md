@@ -6,7 +6,7 @@ icon: "icon-[simple-icons--alpinedotjs]"
 keywords: ["alpine", "alpinejs", "compatibility", "integration", "history"]
 ---
 
-The `alpine-compat` extension provides a compatibility layer between htmx and [Alpine.js](https://alpinejs.dev/), ensuring Alpine components are correctly initialized and preserved across htmx-driven DOM updates.
+The `hx-alpine-compat` extension provides a compatibility layer between htmx and [Alpine.js](https://alpinejs.dev/), ensuring Alpine components are correctly initialized and preserved across htmx-driven DOM updates.
 
 ## Installing
 
@@ -34,7 +34,7 @@ Alpine can bind reactive values to an element's `id` attribute via `:id` or `x-b
 
 ## Combining with `history-cache`
 
-When used alongside the [`hx-history-cache`](/extensions/hx-history-cache) extension, `alpine-compat` also handles saving and restoring Alpine component state across history navigation.
+When used alongside the [`hx-history-cache`](/extensions/hx-history-cache) extension, `hx-alpine-compat` also handles saving and restoring Alpine component state across history navigation.
 
 ### How it works
 

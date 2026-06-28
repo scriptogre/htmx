@@ -12,8 +12,8 @@
 //==========================================================
 (() => {
     let api;
-    
-    htmx.registerExtension('upsert', {
+
+    htmx.registerExtension('hx-upsert', {
         init: (internalAPI) => {
             api = internalAPI;
         },

@@ -15,7 +15,8 @@
 //==========================================================
 (() => {
     let api;
-    htmx.registerExtension('ptag', {
+
+    htmx.registerExtension('hx-ptag', {
         init(internalAPI) { api = internalAPI },
 
         htmx_after_init(elt) {

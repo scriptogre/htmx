@@ -184,7 +184,7 @@
         });
     }
 
-    htmx.registerExtension('history-cache', {
+    htmx.registerExtension('hx-history-cache', {
         init: (internalAPI) => {
             api = internalAPI;
             htmx.config.historyCache            ??= {};

@@ -569,8 +569,7 @@
     // ========================================
     // EXTENSION REGISTRATION
     // ========================================
-    
-    htmx.registerExtension('ws', {
+    htmx.registerExtension('hx-ws', {
         init: (internalAPI) => {
             api = internalAPI;
             

@@ -6,7 +6,7 @@ icon: "icon-[mdi--tag-outline]"
 keywords: ["ptag", "polling", "etag", "conditional", "caching"]
 ---
 
-The `ptag` extension provides per-element polling tags (metadata) that let your server skip swaps when content hasn't changed. It works like ETags in HTTP, but at the application and element level rather than the protocol and URL level.
+The `hx-ptag` extension provides per-element polling tags (metadata) that let your server skip swaps when content hasn't changed. It works like ETags in HTTP, but at the application and element level rather than the protocol and URL level.
 
 Useful in polling scenarios where responses depend on what content has already been shipped to the client.
 

@@ -6,7 +6,7 @@ icon: "icon-[mdi--download-outline]"
 keywords: ["download", "file", "save", "progress", "streaming"]
 ---
 
-The `download` extension saves a response as a file download instead of swapping it into the DOM. It streams the response body and fires progress events.
+The `hx-download` extension saves a response as a file download instead of swapping it into the DOM. It streams the response body and fires progress events.
 
 It activates in three ways:
 

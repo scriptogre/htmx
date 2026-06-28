@@ -6,7 +6,7 @@ icon: "icon-[mdi--update]"
 keywords: ["upsert", "swap", "list", "update", "insert"]
 ---
 
-The `upsert` extension adds a new swap style that intelligently updates existing elements by ID and inserts new ones, while preserving elements not in the response. This is particularly useful for maintaining dynamic lists where you want to update specific items without replacing the entire container.
+The `hx-upsert` extension adds a new swap style that intelligently updates existing elements by ID and inserts new ones, while preserving elements not in the response. This is particularly useful for maintaining dynamic lists where you want to update specific items without replacing the entire container.
 
 ## Installing
 
