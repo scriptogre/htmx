@@ -101,6 +101,60 @@ describe('ajax() unit Tests', function() {
         assert.equal(div.innerHTML, 'foo!');
     });
 
+    it('ajax promise for a queued request resolves after that request completes', async function() {
+        const div = createProcessedHTML('<div hx-sync="queue all"></div>');
+        const ok = { status: 200, headers: new Headers(), text: async () => '' };
+        let releaseFirst;
+        let releaseSecond;
+        let secondStarted = false;
+        let secondResolved = false;
+        let first;
+
+        const firstStarted = new Promise(resolve => {
+            first = htmx.ajax('GET', '/first', {
+                source: div,
+                target: div,
+                swap: 'none',
+                fetch: async () => {
+                    resolve();
+                    await new Promise(release => releaseFirst = release);
+                    return ok;
+                }
+            });
+        });
+
+        await firstStarted;
+
+        const second = htmx.ajax('GET', '/second', {
+            source: div,
+            target: div,
+            swap: 'none',
+            fetch: async () => {
+                secondStarted = true;
+                await new Promise(release => releaseSecond = release);
+                return ok;
+            }
+        });
+        second.then(() => { secondResolved = true; });
+
+        await htmx.timeout(1);
+        assert.isFalse(secondStarted);
+        assert.isFalse(secondResolved);
+
+        const secondBeforeRequest = new Promise(resolve => {
+            div.addEventListener('htmx:before:request', resolve, {once: true});
+        });
+        releaseFirst();
+        await first;
+        await secondBeforeRequest;
+        assert.isTrue(secondStarted);
+        assert.isFalse(secondResolved);
+
+        releaseSecond();
+        await second;
+        assert.isTrue(secondResolved);
+    });
+
     it('ajax can pass values', async function() {
         mockResponse('POST', '/test', 'Clicked!');
         const div = createProcessedHTML('<div id="d1"></div>');

@@ -83,6 +83,7 @@ describe('__issueRequest unit tests', function() {
 
         await htmx.__issueRequest(ctx2)
         assert.isFalse(fetchCalled)
+        assert.equal(ctx2.status, 'created')
     })
 
     it('returns early if htmx:before:request is cancelled', async function () {
@@ -191,22 +192,23 @@ describe('__issueRequest unit tests', function() {
     })
 
     it('updates ctx.status through request lifecycle', async function () {
-        let div = createProcessedHTML('<div hx-get="/test" hx-swap="none"></div>')
+        let div = createProcessedHTML('<div hx-get="/test" hx-swap="innerHTML"></div>')
         let ctx = htmx.__createRequestContext(div, new Event('click'))
 
         let statuses = []
         div.addEventListener('htmx:before:request', () => statuses.push(ctx.status))
+        div.addEventListener('htmx:before:swap', () => statuses.push(ctx.status))
 
         ctx.fetch = async () => {
             statuses.push(ctx.status)
-            return { status: 200, headers: new Headers(), text: async () => '' }
+            return { status: 200, headers: new Headers(), text: async () => 'response text' }
         }
 
         await htmx.__issueRequest(ctx)
-        statuses.push(ctx.status)
 
         assert.include(statuses, 'issuing')
-        assert.include(statuses, 'swapped')
+        assert.include(statuses, 'response received')
+        assert.equal(ctx.status, 'swapped')
     })
 
     it('processes next queued request after completion', async function () {

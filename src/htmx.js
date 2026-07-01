@@ -87,58 +87,121 @@ var htmx = (() => {
         },
     };
 
-    class ReqQ {
-        #c = null
-        #q = []
+    /**
+     * Coordinates requests that share a sync queue.
+     */
+    class RequestQueue {
+        #current = null
+        #waiting = []
 
-        issue(ctx, queueStrategy) {
-            ctx.queueStrategy = queueStrategy
-            if (!this.#c) {
-                this.#c = ctx
-                return true
-            } else {
-                // Replace strategy OR current is abortable: abort current and issue new
-                if (queueStrategy === "replace" || (queueStrategy !== "abort" && this.#c.queueStrategy === "abort")) {
-                    this.#q.forEach(value => value.status = "dropped");
-                    this.#q = []
-                    this.#c.request?.abort?.();
-                    this.#c = ctx
-                    return true
-                } else if (queueStrategy === "queue all") {
-                    this.#q.push(ctx)
-                    ctx.status = "queued";
-                } else if (queueStrategy === "drop") {
-                    // ignore the request
-                    ctx.status = "dropped";
-                } else if (queueStrategy === "queue last") {
-                    this.#q.forEach(value => value.status = "dropped");
-                    this.#q = [ctx]
-                    ctx.status = "queued";
-                } else if (this.#q.length === 0 && queueStrategy !== "abort") {
-                    // default queue first
-                    this.#q.push(ctx)
-                    ctx.status = "queued";
-                } else {
-                    ctx.status = "dropped";
-                }
-                return false
+        /**
+         * Waits until a request may run, or returns null if it is dropped.
+         *
+         * @param {'drop'|'abort'|'replace'|'queue first'|'queue all'|'queue last'} strategy
+         * @param {Function} abort
+         * @returns {{leave: Function}|Promise<{leave: Function}|null>|null}
+         */
+        enter(strategy, abort = () => {}) {
+            let slot = this.#slot(strategy, abort)
+
+            this.#admit(slot)
+
+            if (slot.dropped) return null
+            if (slot.running) return this.#queueSlot(slot)
+
+            return slot.ready.then(() => {
+                if (slot.dropped) return null
+                return this.#queueSlot(slot)
+            })
+        }
+
+        #admit(slot) {
+            if (!this.#current) {
+                this.#run(slot)
+                return
+            }
+
+            if (
+                slot.strategy === "replace" ||
+                (slot.strategy !== "abort" && this.#current.strategy === "abort")
+            ) {
+                this.#dropWaiting()
+                this.#current.abort()
+                this.#run(slot)
+                return
+            }
+
+            if (slot.strategy === "queue all") {
+                this.#waiting.push(slot)
+                return
+            }
+
+            if (slot.strategy === "queue last") {
+                this.#dropWaiting()
+                this.#waiting.push(slot)
+                return
+            }
+
+            if (
+                slot.strategy !== "abort" &&
+                slot.strategy !== "drop" &&
+                this.#waiting.length === 0
+            ) {
+                this.#waiting.push(slot)
+                return
+            }
+
+            this.#drop(slot)
+        }
+
+        #leave(slot) {
+            if (this.#current !== slot) return
+
+            let next = this.#waiting.shift()
+            this.#current = next || null
+            if (next) this.#run(next)
+        }
+
+        #run(slot) {
+            this.#current = slot
+            slot.running = true
+            slot.release()
+        }
+
+        #queueSlot(slot) {
+            return {
+                leave: () => this.#leave(slot)
             }
         }
 
-        finish() {
-            this.#c = null
+        #dropWaiting() {
+            for (let slot of this.#waiting) {
+                this.#drop(slot)
+            }
+            this.#waiting = []
         }
 
-        next() {
-            return this.#q.shift()
+        #drop(slot) {
+            slot.dropped = true
+            slot.release()
+        }
+
+        #slot(strategy, abort) {
+            let release
+            let ready = new Promise(resolve => release = resolve)
+
+            return {
+                strategy,
+                abort,
+                ready,
+                release,
+                dropped: false,
+                running: false
+            }
         }
 
         abort() {
-            this.#c?.request?.abort?.()
-        }
-
-        more() {
-            return this.#q?.length
+            this.#current?.abort()
         }
     }
 
@@ -571,10 +634,16 @@ var htmx = (() => {
 
         async __issueRequest(ctx) {
             let elt = ctx.sourceElement
-            let syncStrategy = this.__determineSyncStrategy(elt);
-            let requestQueue = this.__getRequestQueue(elt);
 
-            if (!requestQueue.issue(ctx, syncStrategy)) return
+            // Apply hx-sync before issuing the request
+            let queue = this.__getRequestQueue(elt)
+            let queueStrategy = this.__determineSyncStrategy(elt)
+            let queueSlot = queue.enter(
+                queueStrategy,
+                () => ctx.request?.abort?.()
+            )
+            if (queueSlot?.then) queueSlot = await queueSlot
+            if (!queueSlot) return // request dropped
 
             ctx.status = "issuing"
 
@@ -622,15 +691,13 @@ var htmx = (() => {
                     return
                 }
 
-                if (ctx.status === "issuing") {
-                    if (ctx.hx.retarget) ctx.target = ctx.hx.retarget;   // HX-Retarget
-                    if (ctx.hx.reswap) ctx.swap = ctx.hx.reswap;       // HX-Reswap
-                    if (ctx.hx.reselect) ctx.select = ctx.hx.reselect; // HX-Reselect
-                    ctx.status = "response received";
-                    this.__handleStatusCodes(ctx);
-                    await this.swap(ctx);
-                    ctx.status = "swapped";
-                }
+                if (ctx.hx.retarget) ctx.target = ctx.hx.retarget;   // HX-Retarget
+                if (ctx.hx.reswap) ctx.swap = ctx.hx.reswap;       // HX-Reswap
+                if (ctx.hx.reselect) ctx.select = ctx.hx.reselect; // HX-Reselect
+                ctx.status = "response received";
+                this.__handleStatusCodes(ctx);
+                await this.swap(ctx);
+                ctx.status = "swapped";
 
             } catch (error) {
                 ctx.status = "error: " + error;
@@ -643,11 +710,7 @@ var htmx = (() => {
                     this.__enableElements(disableElements);
                 }
 
-                requestQueue.finish()
-                if (requestQueue.more()) {
-                    // intentionally not awaited — __issueRequest has its own try/catch
-                    this.__issueRequest(requestQueue.next())
-                }
+                queueSlot.leave()
             }
         }
 
@@ -714,7 +777,7 @@ var htmx = (() => {
                     : (/^(drop|abort|replace|queue)/.test(syncValue) ? null : syncValue);
                 if (selector) syncElt = this.__findOrWarn(elt, selector, "hx-sync") || elt;
             }
-            return this.__htmxState(syncElt).rq ||= new ReqQ()
+            return this.__htmxState(syncElt).rq ||= new RequestQueue()
         }
 
         __isModifierKeyClick(evt) {
