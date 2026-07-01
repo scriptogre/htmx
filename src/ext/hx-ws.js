@@ -469,10 +469,12 @@
 
             htmx.swap({
                 sourceElement: connectionElement,
-                target: target || connectionElement,
-                swap: swap || (target ? htmx.config.defaultSwap : 'none'),
-                text: html,
-                transition: false
+                swap: {
+                    ...htmx.__parseSwapSpec(swap || (target ? htmx.config.defaultSwap : 'none')),
+                    target: target || connectionElement,
+                    content: html,
+                    transition: false
+                }
             });
         }
 

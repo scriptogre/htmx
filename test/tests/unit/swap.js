@@ -262,22 +262,114 @@ describe('swap() unit tests', function() {
         transitioned.should.be.true;
     })
 
-    it('triggers htmx:before:swap event', async function () {
-        let triggered = false;
-        htmx.on('htmx:before:swap', () => {
-            triggered = true;
-        });
-        await htmx.swap({"target":"#test-playground", "text":"<div>Content</div>"})
-        triggered.should.be.true;
+    it('triggers htmx:before:swaps once for the resolved swap set', async function () {
+        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
+        let count = 0;
+        let types;
+        let listener = e => {
+            count++;
+            types = e.detail.ctx.swaps.map(swap => swap.type);
+        };
+        try {
+            htmx.on('htmx:before:swaps', listener);
+            await htmx.swap({target: '#d1', text: "<div>Main</div><div id='d2' hx-swap-oob='true'>OOB</div>"})
+            count.should.equal(1);
+            types.should.deep.equal(['main', 'oob']);
+        } finally {
+            document.removeEventListener('htmx:before:swaps', listener);
+        }
     })
 
-    it('triggers htmx:after:swap event', async function () {
-        let triggered = false;
-        htmx.on('htmx:after:swap', () => {
-            triggered = true;
-        });
-        await htmx.swap({"target":"#test-playground", "text":"<div>Content</div>"})
-        triggered.should.be.true;
+    it('triggers htmx:before:swap once per resolved swap', async function () {
+        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
+        let types = [];
+        let listener = e => types.push(e.detail.ctx.swap.type);
+        try {
+            htmx.on('htmx:before:swap', listener);
+            await htmx.swap({target: '#d1', text: "<div>Main</div><div id='d2' hx-swap-oob='true'>OOB</div>"})
+            types.should.deep.equal(['main', 'oob']);
+        } finally {
+            document.removeEventListener('htmx:before:swap', listener);
+        }
+    })
+
+    it('triggers htmx:after:swap once per completed swap', async function () {
+        createProcessedHTML("<div id='d1'></div><div id='d2'></div>")
+        let details = [];
+        let listener = e => details.push({type: e.detail.ctx.swap.type, newContent: e.detail.newContent.length});
+        try {
+            htmx.on('htmx:after:swap', listener);
+            await htmx.swap({target: '#d1', text: "<div>Main</div><div id='d2' hx-swap-oob='true'>OOB</div>"})
+            details.should.deep.equal([{type: 'main', newContent: 1}, {type: 'oob', newContent: 1}]);
+        } finally {
+            document.removeEventListener('htmx:after:swap', listener);
+        }
+    })
+
+    it('cancels only the current swap from htmx:before:swap', async function () {
+        createProcessedHTML("<div id='d1'></div><div id='d2'>Original</div>")
+        let listener = e => {
+            if (e.detail.ctx.swap.type === 'oob') e.preventDefault();
+        };
+        try {
+            htmx.on('htmx:before:swap', listener);
+            await htmx.swap({target: '#d1', text: "<div>Main</div><div id='d2' hx-swap-oob='true'>OOB</div>"})
+            find('#d1').innerText.trim().should.equal('Main');
+            find('#d2').innerText.should.equal('Original');
+        } finally {
+            document.removeEventListener('htmx:before:swap', listener);
+        }
+    })
+
+    it('supports ctx.swap string assignment beta compatibility during htmx:before:swap', async function () {
+        htmx.__compatWarnings.clear();
+        createProcessedHTML("<div id='d1'>Original</div>")
+        let warnings = [];
+        let originalWarn = console.warn;
+        console.warn = message => warnings.push(message);
+        let listener = e => e.detail.ctx.swap = 'none';
+        try {
+            htmx.on('htmx:before:swap', listener);
+            await htmx.swap({target: '#d1', text: '<div>New</div>'})
+            find('#d1').innerText.should.equal('Original');
+            assert.include(warnings[0], 'assigning ctx.swap');
+        } finally {
+            document.removeEventListener('htmx:before:swap', listener);
+            console.warn = originalWarn;
+        }
+    })
+
+    it('warns when reading detail.tasks beta alias', async function () {
+        htmx.__compatWarnings.clear();
+        let warnings = [];
+        let originalWarn = console.warn;
+        console.warn = message => warnings.push(message);
+        let listener = e => e.detail.tasks.length;
+        try {
+            htmx.on('htmx:before:swaps', listener);
+            await htmx.swap({target: '#test-playground', text: '<div>Content</div>'})
+            assert.include(warnings[0], 'detail.tasks');
+            assert.include(warnings[0], 'detail.ctx.swaps');
+        } finally {
+            document.removeEventListener('htmx:before:swaps', listener);
+            console.warn = originalWarn;
+        }
+    })
+
+    it('warns when reading flat ctx beta aliases', function () {
+        htmx.__compatWarnings.clear();
+        let warnings = [];
+        let originalWarn = console.warn;
+        console.warn = message => warnings.push(message);
+        try {
+            let button = createProcessedHTML('<button hx-get="/test"></button>')
+            let ctx = htmx.__createRequestContext(button, new Event('click'))
+            assert.equal(ctx.target, button);
+            assert.include(warnings[0], 'target');
+            assert.include(warnings[0], 'ctx.swap.target');
+        } finally {
+            console.warn = originalWarn;
+        }
     })
 
     it('triggers htmx:after:settle event', async function () {

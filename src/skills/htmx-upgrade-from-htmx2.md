@@ -130,7 +130,7 @@ htmx 2 uses camelCase event names. htmx 4 uses colon-separated names.
 | `htmx:afterRequest`         | `htmx:after:request`              |
 | `htmx:beforeSwap`           | `htmx:before:swap`                |
 | `htmx:afterSwap`            | `htmx:after:swap`                 |
-| `htmx:afterSettle`          | `htmx:after:swap`                 |
+| `htmx:afterSettle`          | `htmx:after:settle`               |
 | `htmx:beforeSend`           | `htmx:before:request`             |
 | `htmx:load`                 | `htmx:after:init`                 |
 | `htmx:beforeOnLoad`         | `htmx:before:init`                |
@@ -271,7 +271,7 @@ htmx.registerExtension('my-ext', {
         // detail.ctx has request context
     },
     htmx_after_request(elt, detail) {
-        // detail.ctx.text has response text
+        // detail.ctx.swap.content has response text
     }
 });
 ```

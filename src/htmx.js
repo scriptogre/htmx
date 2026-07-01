@@ -173,6 +173,8 @@ var htmx = (() => {
                 createRequestContext: this.__createRequestContext.bind(this),
                 collectFormData: this.__collectFormData.bind(this),
                 getAttributeObject: this.__getAttributeObject.bind(this),
+                readHxHeaders: this.__extractHxHeaders.bind(this),
+                handleSwapContent: this.__handleSwapContent.bind(this),
                 insertContent: this.__insertContent.bind(this),
                 morph: this.__morph.bind(this),
                 isSoftMatch: this.__isSoftMatch.bind(this),
@@ -411,17 +413,22 @@ var htmx = (() => {
             let {action, method} = this.__determineMethodAndAction(sourceElement, sourceEvent);
             let [fullAction, anchor] = (action || '').split('#');
             let ac = new AbortController();
+            let swap = this.__parseSwapSpec(this.__attributeValue(sourceElement, "hx-swap") ?? this.config.defaultSwap);
+            swap.target ??= this.__attributeValue(sourceElement, "hx-target");
+            Object.assign(swap, {
+                select: this.__attributeValue(sourceElement, "hx-select"),
+                selectOOB: this.__attributeValue(sourceElement, "hx-select-oob"),
+                transition: this.config.transitions
+            });
             let ctx = {
                 sourceElement,
                 sourceEvent,
                 status: "created",
-                select: this.__attributeValue(sourceElement, "hx-select"),
-                selectOOB: this.__attributeValue(sourceElement, "hx-select-oob"),
-                target: this.__attributeValue(sourceElement, "hx-target"),
-                swap: this.__attributeValue(sourceElement, "hx-swap") ?? this.config.defaultSwap,
-                push: this.__attributeValue(sourceElement, "hx-push-url"),
-                replace: this.__attributeValue(sourceElement, "hx-replace-url"),
-                transition: this.config.transitions,
+                history: {
+                    push: this.__attributeValue(sourceElement, "hx-push-url"),
+                    replace: this.__attributeValue(sourceElement, "hx-replace-url")
+                },
+                swap,
                 confirm: this.__attributeValue(sourceElement, "hx-confirm"),
                 request: {
                     validate: "true" === this.__attributeValue(sourceElement, "hx-validate", sourceElement.matches('form') && !sourceElement.noValidate && !sourceEvent.submitter?.formNoValidate ? "true" : "false"),
@@ -436,14 +443,14 @@ var htmx = (() => {
                 }
             };
             // Apply boost config overrides
-            if (sourceElement._htmx?.boosted) {
-                HCON.merge(sourceElement._htmx.boosted, ctx);
+            if (sourceElement._htmx?.boosted && sourceElement._htmx.boosted !== 'true') {
+                this.__mergeContextConfig(ctx, sourceElement._htmx.boosted);
             }
-            ctx.target = this.__resolveTarget(sourceElement, ctx.target);
-            ctx.request.headers["HX-Request-Type"] = (ctx.target === document.body || ctx.select) ? "full" : "partial";
-            if (ctx.target) {
-                ctx.request.headers["HX-Target"] = this.__buildIdentifier(ctx.target);
-            }
+            ctx.swap = this.__normalizeSwap(ctx);
+            this.__normalizeHistory(ctx);
+            this.__installCtxCompat(ctx);
+            ctx.swap.target = this.__resolveTarget(sourceElement, ctx.swap.target);
+            this.__setRequestTargetHeaders(ctx);
 
             // Apply hx-config overrides
             let configAttr = this.__attributeValue(sourceElement, "hx-config");
@@ -469,6 +476,13 @@ var htmx = (() => {
                 headers["HX-Boosted"] = "true"
             }
             return headers;
+        }
+
+        __setRequestTargetHeaders(ctx) {
+            ctx.request.headers["HX-Request-Type"] = (ctx.swap.target === document.body || ctx.swap.select) ? "full" : "partial";
+            if (ctx.swap.target) {
+                ctx.request.headers["HX-Target"] = this.__buildIdentifier(ctx.swap.target);
+            }
         }
 
         __handleHxHeaders(elt, ctx) {
@@ -608,29 +622,7 @@ var htmx = (() => {
                     status: response.status,
                     headers: response.headers,
                 }
-                this.__extractHxHeaders(ctx);
-                if (!this.__trigger(elt, "htmx:before:response", {ctx})) return;
-                ctx.text = await response.text();
-                if (!this.__trigger(elt, "htmx:after:request", {ctx})) return;
-
-                if (ctx.response.status >= 400) {
-                    this.__trigger(elt, "htmx:response:error", {ctx})
-                }
-
-                if(this.__handleHeadersAndMaybeReturnEarly(ctx)){
-                    ctx.keepIndicators = true;
-                    return
-                }
-
-                if (ctx.status === "issuing") {
-                    if (ctx.hx.retarget) ctx.target = ctx.hx.retarget;   // HX-Retarget
-                    if (ctx.hx.reswap) ctx.swap = ctx.hx.reswap;       // HX-Reswap
-                    if (ctx.hx.reselect) ctx.select = ctx.hx.reselect; // HX-Reselect
-                    ctx.status = "response received";
-                    this.__handleStatusCodes(ctx);
-                    await this.swap(ctx);
-                    ctx.status = "swapped";
-                }
+                await this.__handleResponse(ctx);
 
             } catch (error) {
                 ctx.status = "error: " + error;
@@ -651,15 +643,50 @@ var htmx = (() => {
             }
         }
 
-        // Extract HX-* response headers into ctx.hx
-        // Maps: HX-Trigger → ctx.hx.trigger, HX-Push-Url → ctx.hx.pushurl, etc.
-        __extractHxHeaders(ctx) {
+        async __handleResponse(ctx) {
+            this.__extractHxHeaders(ctx, ctx.response.headers);
+            if (!this.__trigger(ctx.sourceElement, "htmx:before:response", {ctx})) return;
+            ctx.swap.content = await ctx.response.raw.text();
+            if (!this.__trigger(ctx.sourceElement, "htmx:after:request", {ctx})) return;
+
+            if (ctx.response.status >= 400) {
+                this.__trigger(ctx.sourceElement, "htmx:response:error", {ctx})
+            }
+
+            await this.__handleSwapContent(ctx, ctx.response.status);
+        }
+
+        async __handleSwapContent(ctx, status) {
+            if(this.__handleHeadersAndMaybeReturnEarly(ctx)){
+                ctx.keepIndicators = true;
+                return
+            }
+
+            if (ctx.status === "issuing") {
+                ctx.status = "response received";
+                this.__handleStatusCodes(ctx, status);
+                await this.swap(ctx);
+                ctx.status = "swapped";
+            }
+        }
+
+        // Extract HX-* response headers into ctx.hx and map swap/history fields onto ctx.
+        __extractHxHeaders(ctx, headers = ctx.response?.raw?.headers) {
             ctx.hx = {}
-            for (let [k, v] of ctx.response.raw.headers) {
+            headers ||= [];
+            let entries = headers[Symbol.iterator] ? headers : Object.entries(headers);
+            for (let [k, v] of entries) {
                 if (k.toLowerCase().startsWith('hx-')) {
                     ctx.hx[k.slice(3).toLowerCase().replace(/-/g, '')] = v
                 }
             }
+            ctx.swap ??= {};
+            ctx.history ??= {};
+            if (ctx.hx.retarget) ctx.swap.target = ctx.hx.retarget;   // HX-Retarget
+            if (ctx.hx.reswap) this.__mergeSwapSpec(ctx.swap, ctx.hx.reswap); // HX-Reswap
+            if (ctx.hx.reselect) ctx.swap.select = ctx.hx.reselect; // HX-Reselect
+            if (ctx.hx.pushurl) ctx.history.push = ctx.hx.pushurl; // HX-Push-Url
+            if (ctx.hx.replaceurl) ctx.history.replace = ctx.hx.replaceurl; // HX-Replace-Url
         }
 
         // Handle response headers that abort normal swap processing.
@@ -1098,35 +1125,35 @@ var htmx = (() => {
             };
         }
 
-        __createOOBTask(tasks, elt, oobValue, sourceElement) {
+        __createOOBSwap(swaps, elt, oobValue, sourceElement) {
             let targetSelector = elt.id ? '#' + CSS.escape(elt.id) : null;
             if (oobValue !== 'true' && oobValue && !oobValue.includes(' ')) {
                 [oobValue, targetSelector = targetSelector] = oobValue.split(/:(.*)/);
             }
             if (oobValue === 'true' || !oobValue) oobValue = 'outerHTML';
 
-            let swapSpec = this.__parseSwapSpec(oobValue);
-            targetSelector = swapSpec.target || targetSelector;
-            swapSpec.strip ??= !swapSpec.style.startsWith('outer');
+            let swap = this.__parseSwapSpec(oobValue);
+            targetSelector = swap.target || targetSelector;
+            swap.strip ??= !swap.style.startsWith('outer');
             if (!targetSelector) return;
             let targets = [...document.querySelectorAll(targetSelector)];
             for (let target of targets) {
                 let fragment = document.createDocumentFragment();
                 fragment.append(elt.cloneNode(true));
-                tasks.push({type: 'oob', fragment, target, swapSpec, sourceElement});
+                swaps.push({type: 'oob', fragment, target, sourceElement, ...swap});
             }
             elt.remove();
         }
 
         __processOOB(fragment, sourceElement, selectOOB) {
-            let tasks = [];
+            let swaps = [];
 
             // Process hx-select-oob first (select elements from response)
             if (selectOOB) {
                 for (let spec of selectOOB.split(',')) {
                     let [selector, oobValue = 'true'] = spec.split(/:(.*)/);
                     for (let elt of fragment.querySelectorAll(selector)) {
-                        this.__createOOBTask(tasks, elt, oobValue, sourceElement);
+                        this.__createOOBSwap(swaps, elt, oobValue, sourceElement);
                     }
                 }
             }
@@ -1136,9 +1163,9 @@ var htmx = (() => {
                 let oobAttr = this.__attrName(oobElt, 'hx-swap-oob');
                 let oobValue = oobElt.getAttribute(oobAttr);
                 oobElt.removeAttribute(oobAttr);
-                this.__createOOBTask(tasks, oobElt, oobValue, sourceElement);
+                this.__createOOBSwap(swaps, oobElt, oobValue, sourceElement);
             }
-            return tasks;
+            return swaps;
         }
 
         __insertNodes(parent, before, fragment) {
@@ -1160,8 +1187,83 @@ var htmx = (() => {
             return {style: this.__normalizeSwapStyle(style), ...HCON.parse(swapStr)};
         }
 
+        __mergeSwapSpec(swap, value) {
+            if (value == null) return;
+            if (typeof value === 'string') {
+                Object.assign(swap, this.__parseSwapSpec(value));
+            } else {
+                Object.assign(swap, value);
+            }
+        }
+
+        __normalizeSwap(ctx) {
+            let value = ctx.swap;
+            let swap = (value == null || typeof value === 'string')
+                ? this.__parseSwapSpec(value || this.config.defaultSwap)
+                : {style: this.__normalizeSwapStyle(value.style || this.config.defaultSwap), ...value};
+
+            let text = this.__legacyValue(ctx, 'text');
+            let target = this.__legacyValue(ctx, 'target');
+            let select = this.__legacyValue(ctx, 'select');
+            let selectOOB = this.__legacyValue(ctx, 'selectOOB');
+            let transition = this.__legacyValue(ctx, 'transition');
+            if (text !== undefined && swap.content === undefined) swap.content = text;
+            if (target !== undefined && swap.target === undefined) swap.target = target;
+            if (select !== undefined && swap.select === undefined) swap.select = select;
+            if (selectOOB !== undefined && swap.selectOOB === undefined) swap.selectOOB = selectOOB;
+            if (transition !== undefined && swap.transition === undefined) swap.transition = transition;
+            return this.__installSwapCompat(swap);
+        }
+
+        __normalizeHistory(ctx) {
+            ctx.history ??= {};
+            let push = this.__legacyValue(ctx, 'push');
+            let replace = this.__legacyValue(ctx, 'replace');
+            if (push !== undefined) ctx.history.push = push;
+            if (replace !== undefined) ctx.history.replace = replace;
+            if (ctx.hx?.pushurl !== undefined) ctx.history.push = ctx.hx.pushurl;
+            if (ctx.hx?.replaceurl !== undefined) ctx.history.replace = ctx.hx.replaceurl;
+            return ctx.history;
+        }
+
+        __mergeContextConfig(ctx, value) {
+            ctx.swap = this.__normalizeSwap(ctx);
+            this.__normalizeHistory(ctx);
+            this.__installCtxCompat(ctx);
+            let config = typeof value === 'string' ? HCON.parse(value) : {...value};
+            if (config.swap !== undefined) {
+                this.__mergeSwapSpec(ctx.swap, config.swap);
+                delete config.swap;
+            }
+            if (config.target !== undefined) {
+                ctx.swap.target = config.target;
+                delete config.target;
+            }
+            if (config.select !== undefined) {
+                ctx.swap.select = config.select;
+                delete config.select;
+            }
+            if (config.selectOOB !== undefined) {
+                ctx.swap.selectOOB = config.selectOOB;
+                delete config.selectOOB;
+            }
+            if (config.transition !== undefined) {
+                ctx.swap.transition = config.transition;
+                delete config.transition;
+            }
+            if (config.push !== undefined) {
+                ctx.history.push = config.push;
+                delete config.push;
+            }
+            if (config.replace !== undefined) {
+                ctx.history.replace = config.replace;
+                delete config.replace;
+            }
+            HCON.merge(config, ctx);
+        }
+
         __processPartials(fragment, ctx) {
-            let tasks = [];
+            let swaps = [];
 
             for (let templateElt of fragment.querySelectorAll('template[hx]')) {
                 let type = templateElt.getAttribute('type');
@@ -1170,24 +1272,26 @@ var htmx = (() => {
                     let targetSelector = this.__attr(templateElt, 'hx-target') || (templateElt.id ? '#' + CSS.escape(templateElt.id) : null);
                     if (targetSelector) {
                         this.__processScripts(templateElt.content);
-                        let swapSpec = this.__parseSwapSpec(this.__attr(templateElt, 'hx-swap') || this.config.defaultSwap);
+                        let swap = this.__parseSwapSpec(this.__attr(templateElt, 'hx-swap') || this.config.defaultSwap);
                         for (let target of document.querySelectorAll(targetSelector)) {
-                            tasks.push({
+                            swaps.push({
                                 type: 'partial',
                                 fragment: templateElt.content.cloneNode(true),
                                 target,
-                                swapSpec,
-                                sourceElement: ctx.sourceElement
+                                sourceElement: ctx.sourceElement,
+                                ...swap
                             });
                         }
                     }
                 } else {
-                    this.__triggerExtensions(templateElt, 'htmx:process:' + type, { ctx, tasks });
+                    let start = ctx.swaps.length;
+                    this.__triggerExtensions(templateElt, 'htmx:process:' + type, {ctx});
+                    swaps.push(...ctx.swaps.splice(start));
                 }
                 templateElt.remove();
             }
 
-            return tasks;
+            return swaps;
         }
 
         __setFocus(elt, options, start, end) {
@@ -1251,125 +1355,159 @@ var htmx = (() => {
         //============================================================================================
 
         async swap(ctx) {
+            ctx.swap = this.__normalizeSwap(ctx);
+            this.__normalizeHistory(ctx);
+            this.__installCtxCompat(ctx);
+
             try {
                 this.__handleHistoryUpdate(ctx);
-                let {fragment, title} = this.__makeFragment(ctx.text);
+                let {fragment, title} = this.__makeFragment(ctx.swap.content ?? '');
                 ctx.title = title;
-                let tasks = [];
 
-                // Process OOB and partials
-                let oobTasks = this.__processOOB(fragment, ctx.sourceElement, ctx.selectOOB);
-                let partialTasks = this.__processPartials(fragment, ctx);
-                tasks.push(...oobTasks, ...partialTasks);
+                ctx.swaps = this.__processOOB(fragment, ctx.sourceElement, ctx.swap.selectOOB);
+                let partialSwaps = this.__processPartials(fragment, ctx);
+                ctx.swaps.push(...partialSwaps);
 
-                // Process main swap first
-                let mainSwap = this.__processMainSwap(ctx, fragment, partialTasks);
+                let mainSwap = this.__processMainSwap(ctx, fragment, partialSwaps);
                 if (mainSwap) {
-                    tasks.unshift(mainSwap);
+                    ctx.swaps.unshift(mainSwap);
                 }
 
-                if(!this.__trigger(ctx.sourceElement, "htmx:before:swap", {ctx, tasks})){
+                if(!this.__trigger(ctx.sourceElement, "htmx:before:swaps", {ctx})){
                     return
                 }
 
                 let swapPromises = [];
-                let transitionTasks = [];
-                for (let task of tasks) {
-                    if (task.swapSpec?.transition ?? mainSwap?.transition ?? ctx.transition) {
-                        transitionTasks.push(task);
+                let transitionSwaps = [];
+                for (let swap of ctx.swaps) {
+                    if (swap.transition ?? mainSwap?.transition ?? ctx.swap.transition) {
+                        transitionSwaps.push(swap);
                     } else {
-                        swapPromises.push(this.__insertContent(task));
+                        swapPromises.push(this.__insertSwap(ctx, swap));
                     }
                 }
 
-                // submit all transition tasks in the transition queue w/no CSS transitions
-                if (transitionTasks.length > 0) {
-                    let tasksWrapper = async ()=> {
-                        for (let task of transitionTasks) {
-                            await this.__insertContent(task, false)
+                if (transitionSwaps.length > 0) {
+                    let swapsWrapper = async ()=> {
+                        for (let swap of transitionSwaps) {
+                            await this.__insertSwap(ctx, swap, false)
                         }
                     }
-                    swapPromises.push(this.__submitTransitionTask(tasksWrapper));
+                    swapPromises.push(this.__submitTransitionTask(swapsWrapper));
                 }
 
                 await Promise.all(swapPromises);
 
-                this.__trigger(ctx.sourceElement, "htmx:after:swap", {ctx});
-                if (ctx.title && !mainSwap?.swapSpec?.ignoreTitle) document.title = ctx.title;
+                this.__trigger(ctx.sourceElement, "htmx:after:swaps", {ctx});
+                if (ctx.title && !mainSwap?.ignoreTitle) document.title = ctx.title;
                 this.__handleAnchorScroll(ctx);
             } finally {
                 this.__trigger(ctx.sourceElement, "htmx:finally:swap", {ctx});
             }
         }
 
-        __processMainSwap(ctx, fragment, partialTasks) {
-            // Create main task if needed
-            let swapSpec = this.__parseSwapSpec(ctx.swap || this.config.defaultSwap);
-            // skip main swap if fragment is empty after hx-partial removal but respect empty modifier
+        __processMainSwap(ctx, fragment, partialSwaps) {
+            let swap = {...ctx.swap};
             if (
-                swapSpec.style === 'delete' ||    // delete always runs regardless of content
+                swap.style === 'delete' ||    // delete always runs regardless of content
                 fragment.childElementCount > 0 || // or fragment has elements
                 fragment.textContent.trim() ||    // or fragment has text
-                (swapSpec.swapEmpty ?? this.config.defaultSwapEmpty ?? !partialTasks.length) // swapEmpty:true/false overrides, default: allow if no partials
+                (swap.swapEmpty ?? this.config.defaultSwapEmpty ?? !partialSwaps.length) // swapEmpty:true/false overrides, default: allow if no partials
             ) {
-                if (ctx.select) {
-                    let selected = fragment.querySelectorAll(ctx.select);
+                if (swap.select) {
+                    let selected = fragment.querySelectorAll(swap.select);
                     fragment = document.createDocumentFragment();
                     fragment.append(...selected);
                 }
                 if (this.__isBoosted(ctx.sourceElement)) {
-                    swapSpec.show ||= 'top';
+                    swap.show ||= 'top';
                 }
-                let mainSwap = {
+                return {
+                    ...swap,
                     type: 'main',
                     fragment,
-                    target: this.__resolveTarget(ctx.sourceElement || document.body, swapSpec.target || ctx.target),
-                    swapSpec,
+                    target: this.__resolveTarget(ctx.sourceElement || document.body, swap.target),
                     sourceElement: ctx.sourceElement,
-                    transition: ctx.transition && swapSpec.transition !== false
+                    transition: swap.transition && swap.transition !== false
                 };
-                return mainSwap;
             }
         }
 
-        async __insertContent(task, cssTransition = true) {
-            let {target, swapSpec, fragment} = task;
-            if (typeof target === 'string') {
-                target = document.querySelector(target);
+        async __insertSwap(ctx, swap, cssTransition = true) {
+            swap = this.__normalizeResolvedSwap(ctx, swap);
+            let target = this.__resolveSwapTarget(swap.target);
+            if (!target) return false;
+            swap.target = target;
+            let swapCtx = {...ctx, swap};
+            this.__installCtxCompat(swapCtx);
+            return this.__insertContent(swapCtx, cssTransition);
+        }
+
+        __resolveSwapTarget(target) {
+            return typeof target === 'string' ? document.querySelector(target) : target;
+        }
+
+        async __insertContent(ctx, cssTransition = true) {
+            if (!ctx.swap) {
+                let {swapSpec, ...rest} = ctx;
+                let swap = typeof swapSpec === 'string'
+                    ? this.__parseSwapSpec(swapSpec)
+                    : {style: this.config.defaultSwap, ...swapSpec};
+                ctx = {...ctx, swap: {...rest, ...swap}};
             }
-            if (!target) return;
-            if (typeof swapSpec === 'string') {
-                swapSpec = this.__parseSwapSpec(swapSpec);
+            let swap = ctx.swap;
+            let {target, fragment} = swap;
+            target = this.__resolveSwapTarget(target);
+            if (!target) return false;
+            swap.target = target;
+
+            let swapStyle = swap.style;
+            if (swapStyle === 'none') return false;
+            if (!this.__trigger(target, "htmx:before:swap", {ctx})) return false;
+
+            if (ctx.swap !== swap) {
+                this.__warnCompat('assigning ctx.swap', 'ctx.swap.style and ctx.swap.*');
+                this.__mergeSwapSpec(swap, ctx.swap);
+                ctx.swap = swap;
             }
-            let swapStyle = swapSpec.style;
-            if (swapStyle === 'none') return;
+            target = this.__resolveSwapTarget(swap.target);
+            if (!target) return false;
+            swap.target = target;
+            fragment = swap.fragment;
+            swapStyle = swap.style;
+            if (swapStyle === 'none') return false;
+
+            let swapTarget = target;
             // full-page response: fragment has a <body> wrapper — upgrade outerHTML to outerSync, strip for everything else
             if (fragment.firstElementChild?.tagName === 'BODY') {
                 if (swapStyle === 'outerHTML') swapStyle = 'outerSync';
-                else if (!swapStyle.startsWith('outer')) swapSpec.strip = true;
+                else if (!swapStyle.startsWith('outer')) swap.strip = true;
             }
-            if (swapSpec.strip && fragment.firstElementChild) {
+            if (swap.strip && fragment.firstElementChild) {
                 fragment = document.createDocumentFragment();
-                fragment.append(...(task.fragment.firstElementChild.content || task.fragment.firstElementChild).childNodes);
+                fragment.append(...(swap.fragment.firstElementChild.content || swap.fragment.firstElementChild).childNodes);
             }
 
             this.__addClass(target, "htmx-swapping")
-            if (cssTransition && task.swapSpec?.swap) {
-                await this.timeout(task.swapSpec?.swap)
+            if (cssTransition && swap.swap) {
+                await this.timeout(swap.swap)
             }
 
             if (swapStyle === 'delete') {
+                let newContent = [];
                 if (target.parentNode) {
                     this.__cleanup(target);
                     target.parentNode.removeChild(target);
                 }
-                return;
+                swap.newContent = newContent;
+                this.__trigger(swapTarget, "htmx:after:swap", {ctx, newContent});
+                return newContent;
             }
 
             // innerHTML/outerHTML swaps backup focus and handle CSS transitions
             let focusInfo;
-            let settleTasks = []
-            let settleDelay = swapSpec.settle ?? this.config.defaultSettleDelay;
+            let settleCallbacks = []
+            let settleDelay = swap.settle ?? this.config.defaultSettleDelay;
             let parentNode = target.parentNode;
             if (swapStyle === 'innerHTML' || (swapStyle === 'outerHTML' && parentNode)) {
                 let activeElt = document.activeElement;
@@ -1378,7 +1516,7 @@ var htmx = (() => {
                     try { start = activeElt.selectionStart; end = activeElt.selectionEnd; } catch (e) {}
                     focusInfo = { elt: activeElt, start, end };
                 }
-                settleTasks = cssTransition && settleDelay ? this.__startCSSTransitions(fragment, target) : []
+                settleCallbacks = cssTransition && settleDelay ? this.__startCSSTransitions(fragment, target) : []
             }
 
             let pantry = this.__handlePreservedElements(fragment);
@@ -1430,7 +1568,7 @@ var htmx = (() => {
                     let methods = this.__extMethods.get('handle_swap') || []
                     let handled = false;
                     for (const method of methods) {
-                        let result = method(swapStyle, target, fragment, swapSpec);
+                        let result = method(swapStyle, target, fragment, swap);
                         if (result) {
                             handled = true;
                             if (Array.isArray(result)) {
@@ -1450,28 +1588,31 @@ var htmx = (() => {
             if (focusInfo && !focusInfo.elt.matches(':focus')) {
                 let newElt = document.getElementById(focusInfo.elt.id);
                 if (newElt) {
-                    let focusOptions = { preventScroll: swapSpec.focusScroll !== undefined ? !swapSpec.focusScroll : !this.config.defaultFocusScroll };
+                    let focusOptions = { preventScroll: swap.focusScroll !== undefined ? !swap.focusScroll : !this.config.defaultFocusScroll };
                     this.__setFocus(newElt, focusOptions, focusInfo.start, focusInfo.end);
                 }
             }
 
-            this.__trigger(target, "htmx:before:settle", {task, newContent, settleTasks})
+            swap.newContent = newContent;
+            swap.settleCallbacks = settleCallbacks;
+            this.__trigger(swapTarget, "htmx:after:swap", {ctx, newContent});
+            swap.target = target;
+            this.__trigger(target, "htmx:before:settle", {ctx, newContent, settleCallbacks})
 
             for (const elt of newContent) {
                 this.__addClass(elt, "htmx-added")
             }
 
-            if (cssTransition && settleTasks.length > 0) {
+            if (cssTransition && settleCallbacks.length > 0) {
                 this.__addClass(target, "htmx-settling")
                 await this.timeout(settleDelay);
-                // invoke settle tasks
-                for (let settleTask of settleTasks) {
-                    settleTask()
+                for (let settleCallback of settleCallbacks) {
+                    settleCallback()
                 }
                 this.__removeClass(target, "htmx-settling")
             }
 
-            this.__trigger(target, "htmx:after:settle", {task, newContent, settleTasks})
+            this.__trigger(target, "htmx:after:settle", {ctx, newContent, settleCallbacks})
 
             for (const elt of newContent) {
                 this.__removeClass(elt, "htmx-added")
@@ -1479,7 +1620,75 @@ var htmx = (() => {
                 this.__handleAutoFocus(elt);
             }
             
-            this.__handleScroll(swapSpec, target);
+            this.__handleScroll(swap, target);
+            return newContent;
+        }
+
+        //============================================================================================
+        // Beta compatibility aliases. Remove this section before the first 4.0 RC.
+        //============================================================================================
+
+        __installCtxCompat(ctx) {
+            if (ctx.__ctxCompatInstalled) return ctx;
+            Object.defineProperty(ctx, '__ctxCompatInstalled', {value: true});
+            this.__defineCompatAlias(ctx, 'text', 'ctx.swap.content', () => ctx.swap.content, value => ctx.swap.content = value);
+            this.__defineCompatAlias(ctx, 'target', 'ctx.swap.target', () => ctx.swap.target, value => ctx.swap.target = value);
+            this.__defineCompatAlias(ctx, 'select', 'ctx.swap.select', () => ctx.swap.select, value => ctx.swap.select = value);
+            this.__defineCompatAlias(ctx, 'selectOOB', 'ctx.swap.selectOOB', () => ctx.swap.selectOOB, value => ctx.swap.selectOOB = value);
+            this.__defineCompatAlias(ctx, 'transition', 'ctx.swap.transition', () => ctx.swap.transition, value => ctx.swap.transition = value);
+            this.__defineCompatAlias(ctx, 'push', 'ctx.history.push', () => ctx.history.push, value => ctx.history.push = value);
+            this.__defineCompatAlias(ctx, 'replace', 'ctx.history.replace', () => ctx.history.replace, value => ctx.history.replace = value);
+            return ctx;
+        }
+
+        __swapString(swap) {
+            let ignored = new Set(['content', 'fragment', 'newContent', 'settleCallbacks', 'sourceElement', 'target', 'type']);
+            let modifiers = Object.entries(swap)
+                .filter(([key, value]) => !ignored.has(key) && key !== 'style' && value !== undefined && value !== null)
+                .map(([key, value]) => value === true ? key : `${key}:${value}`);
+            return [swap.style || this.config.defaultSwap, ...modifiers].join(' ');
+        }
+
+        __installSwapCompat(swap) {
+            if (!swap || swap.__swapCompatInstalled) return swap;
+            Object.defineProperty(swap, '__swapCompatInstalled', {value: true});
+            let warn = () => this.__warnCompat('ctx.swap as a string', 'ctx.swap.style and ctx.swap.*');
+            let style = () => (warn(), swap.style || this.config.defaultSwap);
+            let full = () => (warn(), this.__swapString(swap));
+            Object.defineProperty(swap, Symbol.toPrimitive, {value: hint => hint === 'string' ? full() : style()});
+            Object.defineProperty(swap, 'toString', {value: full});
+            Object.defineProperty(swap, 'valueOf', {value: style});
+            Object.defineProperty(swap, 'includes', {value: value => full().includes(value)});
+            Object.defineProperty(swap, 'trim', {value: () => full().trim()});
+            return swap;
+        }
+
+        __installResolvedSwapCompat(swap) {
+            if (!swap || swap.__resolvedSwapCompatInstalled) return swap;
+            Object.defineProperty(swap, '__resolvedSwapCompatInstalled', {value: true});
+            Object.defineProperty(swap, 'swapSpec', {
+                configurable: true,
+                enumerable: false,
+                get: this.__compatGetter(() => {
+                    this.__warnCompat('swap.swapSpec', 'swap');
+                    return swap;
+                }),
+                set: value => {
+                    this.__warnCompat('swap.swapSpec', 'swap');
+                    this.__mergeSwapSpec(swap, value);
+                }
+            });
+            return swap;
+        }
+
+        __normalizeResolvedSwap(ctx, swap) {
+            if (!swap.__resolvedSwapCompatInstalled && swap.swapSpec) {
+                this.__mergeSwapSpec(swap, swap.swapSpec);
+            }
+            swap.style ??= this.config.defaultSwap;
+            swap.sourceElement ??= ctx.sourceElement;
+            this.__installResolvedSwapCompat(swap);
+            return swap;
         }
 
         __trigger(on, eventName, detail = {}, bubbles = true) {
@@ -1594,10 +1803,24 @@ var htmx = (() => {
             sourceElt ||= document.body;
 
             let ctx = this.__createRequestContext(sourceElt, context.event || {});
-            Object.assign(ctx, context);
-            if (context.target) ctx.target = this.__resolveTarget(document.body, context.target);
+            let {event, headers, replace, push, request, select, selectOOB, source, swap, target, transition, ...rest} = context;
+            Object.assign(ctx, rest);
+            this.__mergeSwapSpec(ctx.swap, swap);
+            if (target) ctx.swap.target = this.__resolveTarget(document.body, target);
+            if (select !== undefined) ctx.swap.select = select;
+            if (selectOOB !== undefined) ctx.swap.selectOOB = selectOOB;
+            if (transition !== undefined) ctx.swap.transition = transition;
+            if (push !== undefined) ctx.history.push = push;
+            if (replace !== undefined) ctx.history.replace = replace;
+            if (request) {
+                let {headers: requestHeaders, ...requestRest} = request;
+                Object.assign(ctx.request, requestRest);
+                if (requestHeaders) Object.assign(ctx.request.headers, requestHeaders);
+            }
             Object.assign(ctx.request, {action: path, method: verb.toUpperCase()});
-            if (context.headers) Object.assign(ctx.request.headers, context.headers);
+            if (headers) Object.assign(ctx.request.headers, headers);
+            ctx.swap.target = this.__resolveTarget(sourceElt, ctx.swap.target);
+            this.__setRequestTargetHeaders(ctx);
 
             return this.__handleTriggerEvent(ctx);
         }
@@ -1653,13 +1876,9 @@ var htmx = (() => {
         }
 
         __resolveHistoryAction(ctx) {
-            let {sourceElement, push, replace, hx, response} = ctx;
-
-            // allow response headers to override history action
-            if (hx?.pushurl || hx?.replaceurl) { // HX-Push-Url, HX-Replace-Url
-                push = hx.pushurl;
-                replace = hx.replaceurl;
-            }
+            let {sourceElement, response} = ctx;
+            this.__normalizeHistory(ctx);
+            let {push, replace} = ctx.history;
 
             // if this is a boosted element, default to pushing
             if (push == null && replace == null && this.__isBoosted(sourceElement)) {
@@ -2243,18 +2462,21 @@ var htmx = (() => {
             return persistentIds;
         }
 
-        __handleStatusCodes(ctx) {
-            let status = ctx.response.raw.status;
+        __handleStatusCodes(ctx, status = ctx.response?.raw?.status ?? ctx.response?.status) {
+            if (status == null) return;
+            ctx.swap = this.__normalizeSwap(ctx);
+            this.__normalizeHistory(ctx);
+            this.__installCtxCompat(ctx);
             let noSwapStrings = this.config.noSwap.map(x => x + "");
             let str = status + ""
             for (let pattern of [str, str.slice(0, 2) + 'x', str[0] + 'xx']) {
                 if (noSwapStrings.includes(pattern)) {
-                    ctx.swap = "none";
+                    ctx.swap.style = "none";
                     return
                 }
                 let statusValue = this.__attributeValue(ctx.sourceElement, "hx-status:" + pattern);
                 if (statusValue) {
-                    HCON.merge(statusValue, ctx);
+                    this.__mergeContextConfig(ctx, statusValue);
                     return;
                 }
             }
@@ -2340,7 +2562,96 @@ var htmx = (() => {
 
     }
 
-    return new Htmx()
+    let htmx = new Htmx()
+
+    // Beta compatibility extension. Remove before the first 4.0 RC.
+    let betaCompatExtension = (() => {
+        let warnings = new Set();
+
+        function warn(oldName, newName) {
+            let key = oldName + ' -> ' + newName;
+            if (warnings.has(key)) return;
+            warnings.add(key);
+            console.warn(`htmx: ${oldName} is a beta compatibility alias. Use ${newName}; this alias will go away before 4.0 RC.`);
+        }
+
+        function compatGetter(fn) {
+            fn.__htmxCompat = true;
+            return fn;
+        }
+
+        function legacyValue(obj, name) {
+            let descriptor = Object.getOwnPropertyDescriptor(obj, name);
+            if (!descriptor || descriptor.get?.__htmxCompat) return undefined;
+            return obj[name];
+        }
+
+        function defineNamedAlias(obj, name, oldName, newName, get, set) {
+            let descriptor = Object.getOwnPropertyDescriptor(obj, name);
+            if (descriptor?.get?.__htmxCompat) return;
+            Object.defineProperty(obj, name, {
+                configurable: true,
+                enumerable: false,
+                get: compatGetter(() => {
+                    warn(oldName, newName);
+                    return get();
+                }),
+                set: value => {
+                    warn(oldName, newName);
+                    set(value);
+                }
+            });
+        }
+
+        function defineAlias(obj, name, newName, get, set) {
+            defineNamedAlias(obj, name, name, newName, get, set);
+        }
+
+        function installDetailAliases(eventName, detail) {
+            let ctx = detail?.ctx;
+            if (!ctx) return;
+
+            if (ctx.swaps && (eventName === 'htmx:before:swaps' || eventName === 'htmx:after:swaps' || eventName.startsWith('htmx:process:'))) {
+                defineNamedAlias(detail, 'tasks', 'detail.tasks', 'detail.ctx.swaps', () => {
+                    ctx.swaps.forEach(swap => htmx.__installResolvedSwapCompat(swap));
+                    return ctx.swaps;
+                }, value => ctx.swaps = value);
+            }
+
+            if (ctx.swap && (eventName === 'htmx:before:swap' || eventName === 'htmx:after:swap')) {
+                defineNamedAlias(detail, 'task', 'detail.task', 'detail.ctx.swap', () => ctx.swap, value => ctx.swap = value);
+            }
+
+            if (detail.settleCallbacks && (eventName === 'htmx:before:settle' || eventName === 'htmx:after:settle')) {
+                defineNamedAlias(detail, 'settleTasks', 'detail.settleTasks', 'detail.settleCallbacks', () => detail.settleCallbacks, value => detail.settleCallbacks = value);
+            }
+        }
+
+        return {
+            init(api) {
+                htmx.__compatWarnings = warnings;
+                htmx.__warnCompat = warn;
+                htmx.__compatGetter = compatGetter;
+                htmx.__legacyValue = legacyValue;
+                htmx.__defineCompatAlias = defineAlias;
+
+                let triggerExtensions = htmx.__triggerExtensions.bind(htmx);
+                htmx.__triggerExtensions = (elt, eventName, detail = {}) => {
+                    installDetailAliases(eventName, detail);
+                    return triggerExtensions(elt, eventName, detail);
+                }
+            }
+        }
+    })()
+
+    let approvedExt = htmx.__approvedExt;
+    if (approvedExt && !approvedExt.split(/,\s*/).includes('beta-compat')) {
+        htmx.__approvedExt += ',beta-compat';
+    }
+    htmx.registerExtension('beta-compat', betaCompatExtension);
+    htmx.__approvedExt = approvedExt;
+
+    return htmx
 })()
 
 ;

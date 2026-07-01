@@ -476,13 +476,23 @@
           "doc-url": "https://four.htmx.org/reference/events/htmx-error"
         },
         {
+          "name": "before:swaps",
+          "description": "Fires before the resolved swap set is applied. `detail.ctx.swaps` contains the swaps. Cancel to skip all swaps.",
+          "doc-url": "https://four.htmx.org/reference/events/htmx-before-swaps"
+        },
+        {
+          "name": "after:swaps",
+          "description": "Fires after the resolved swap set is applied. `detail.ctx.swaps` contains the swaps that ran or were skipped.",
+          "doc-url": "https://four.htmx.org/reference/events/htmx-after-swaps"
+        },
+        {
           "name": "before:swap",
-          "description": "Fires before content is swapped. `detail.ctx` is the request context and `detail.tasks` contains the swap tasks. Cancel to skip the swap.",
+          "description": "Fires before each resolved swap is applied. `detail.ctx.swap` is the current swap. Cancel to skip this swap.",
           "doc-url": "https://four.htmx.org/reference/events/htmx-before-swap"
         },
         {
           "name": "after:swap",
-          "description": "Fires after content is swapped into the DOM. `detail.ctx` is the request context.",
+          "description": "Fires after each resolved swap is applied. `detail.ctx.swap` is the current swap and `detail.newContent` contains new nodes.",
           "doc-url": "https://four.htmx.org/reference/events/htmx-after-swap"
         },
         {
@@ -492,12 +502,12 @@
         },
         {
           "name": "before:settle",
-          "description": "Fires before the settle phase. `detail.task`, `detail.newContent`, and `detail.settleTasks` describe the settle work.",
+          "description": "Fires before the settle phase. `detail.ctx.swap`, `detail.newContent`, and `detail.settleCallbacks` describe the settle work.",
           "doc-url": "https://four.htmx.org/reference/events/htmx-before-settle"
         },
         {
           "name": "after:settle",
-          "description": "Fires after the settle phase completes. `detail.task`, `detail.newContent`, and `detail.settleTasks` describe the settled work.",
+          "description": "Fires after the settle phase completes. `detail.ctx.swap`, `detail.newContent`, and `detail.settleCallbacks` describe the settled work.",
           "doc-url": "https://four.htmx.org/reference/events/htmx-after-settle"
         },
         {
@@ -527,12 +537,12 @@
         },
         {
           "name": "before:viewTransition",
-          "description": "Fires before a View Transition API swap task starts. `detail.task` is the swap task.",
+          "description": "Fires before a View Transition API swap function starts. `detail.task` is the transition callback.",
           "doc-url": "https://four.htmx.org/reference/events/htmx-before-viewTransition"
         },
         {
           "name": "after:viewTransition",
-          "description": "Fires after a View Transition API swap task completes. `detail.task` is the swap task.",
+          "description": "Fires after a View Transition API swap function completes. `detail.task` is the transition callback.",
           "doc-url": "https://four.htmx.org/reference/events/htmx-after-viewTransition"
         },
         {

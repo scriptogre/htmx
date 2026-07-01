@@ -107,7 +107,7 @@ You can also style based on the request parameters:
 
 1. On `htmx:config:request` — captures the raw `FormData` before htmx transforms it
 2. On `htmx:before:request` — clones the template, sets `data-*` for each param, inserts it into the target (respecting swap style), and calls `htmx.process()` so hx-live bindings activate
-3. On `htmx:before:swap` or `htmx:error` — removes the optimistic content and unhides any hidden elements
+3. On `htmx:finally:swap` or `htmx:error` — removes the optimistic content and unhides any hidden elements
 
 ## Swap Style Behavior
 

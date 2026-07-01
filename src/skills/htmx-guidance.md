@@ -218,7 +218,8 @@ htmx 4 naming convention: `htmx:phase:action`
 
 **Swap:**
 
-- `htmx:before:swap` / `htmx:after:swap` -- before/after content swap
+- `htmx:before:swaps` / `htmx:after:swaps` -- before/after the resolved swap set
+- `htmx:before:swap` / `htmx:after:swap` -- before/after each resolved swap
 - `htmx:before:settle` / `htmx:after:settle` -- before/after settle phase
 - `htmx:confirm` -- after trigger, before request (for async confirmation)
 
@@ -240,8 +241,8 @@ Events expose `detail.ctx` with the full request context:
 document.body.addEventListener('htmx:config:request', (evt) => {
     let ctx = evt.detail.ctx;
     // ctx.sourceElement  -- element that triggered request
-    // ctx.target         -- swap target element
-    // ctx.swap           -- hx-swap value
+    // ctx.swap.target    -- swap target element
+    // ctx.swap.style     -- hx-swap style
     // ctx.request.action -- URL
     // ctx.request.method -- HTTP method
     // ctx.request.headers -- headers object

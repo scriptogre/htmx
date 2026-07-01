@@ -31,7 +31,7 @@
             };
         },
         
-        htmx_before_swap: (elt, detail) => {
+        htmx_before_swaps: (elt, detail) => {
             if (!window.Alpine?.closestDataStack || !window.Alpine?.cloneNode || !window.Alpine?.deferMutations) {
                 return;
             }
@@ -40,14 +40,13 @@
             }
             deferCount++;
             
-            let {tasks} = detail;
-            for (let task of tasks) {
-                if (task.swapSpec.style === 'innerMorph' || task.swapSpec.style === 'outerMorph') {
-                    if (!task.fragment || !task.target) continue;
+            for (let swap of detail.ctx.swaps) {
+                if (swap.style === 'innerMorph' || swap.style === 'outerMorph') {
+                    if (!swap.fragment || !swap.target) continue;
                     
-                    let target = typeof task.target === 'string' 
-                        ? document.querySelector(task.target) 
-                        : task.target;
+                    let target = typeof swap.target === 'string'
+                        ? document.querySelector(swap.target)
+                        : swap.target;
                     if (!target) continue;
                 }
             }
@@ -98,7 +97,7 @@
             });
         },
 
-        htmx_after_swap: (elt, detail) => {
+        htmx_after_swaps: (elt, detail) => {
             detail.ctx._alpineFlushed = true;
             maybeFlush();
         },

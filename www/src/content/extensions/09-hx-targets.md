@@ -76,10 +76,10 @@ When `hx-targets` is present, it overrides [`hx-target`](/reference/attributes/h
 
 ## How It Works
 
-The extension hooks into the `htmx_before_swap` event. When `hx-targets` is set on the source element:
+The extension hooks into the `htmx_before_swaps` event. When `hx-targets` is set on the source element:
 
 1. All elements matching the selector are found
-2. The main swap task is replaced with one task per matched element
+2. The main resolved swap is replaced with one swap per matched element
 3. The response fragment is cloned for each target so every element receives the full response content
 
 ## Notes

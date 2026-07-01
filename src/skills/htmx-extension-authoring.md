@@ -35,16 +35,17 @@ Extensions are global -- they apply page-wide, activated by custom attributes wh
 
         htmx_after_request: (elt, detail) => {
             // After request completes
-            // detail.ctx.text has response text
+            // detail.ctx.swap.content has response text
             // detail.ctx.response has status, headers
         },
 
-        htmx_before_swap: (elt, detail) => {
-            // Before content swap
+        htmx_before_swaps: (elt, detail) => {
+            // Before resolved swaps run
+            // detail.ctx.swaps has resolved swaps
         },
 
-        htmx_after_swap: (elt, detail) => {
-            // After content swap
+        htmx_after_swaps: (elt, detail) => {
+            // After resolved swaps run
         },
 
         htmx_before_cleanup: (elt, detail) => {
@@ -96,9 +97,11 @@ Hook names use underscores (not colons). All hooks receive `(elt, detail)` unles
 
 | Hook | Event | Description |
 |------|-------|-------------|
-| `htmx_before_swap` | `htmx:before:swap` | Before content swap |
-| `htmx_after_swap` | `htmx:after:swap` | After content swap |
-| `htmx_finally_swap` | `htmx:finally:swap` | After swap (success or error) |
+| `htmx_before_swaps` | `htmx:before:swaps` | Before resolved swaps run |
+| `htmx_after_swaps` | `htmx:after:swaps` | After resolved swaps run |
+| `htmx_before_swap` | `htmx:before:swap` | Before each resolved swap |
+| `htmx_after_swap` | `htmx:after:swap` | After each resolved swap |
+| `htmx_finally_swap` | `htmx:finally:swap` | Always called after swap handling |
 | `htmx_before_settle` | `htmx:before:settle` | Before settle phase |
 | `htmx_after_settle` | `htmx:after:settle` | After settle phase |
 | `handle_swap` | _(direct call)_ | Custom swap handler. Signature: `(swapStyle, target, fragment, swapSpec)`. Return truthy if handled. |
@@ -191,14 +194,21 @@ The context object available via `detail.ctx` in hook callbacks:
         status,         // HTTP status code
         headers,        // Response headers
     },
-    text,               // Response text (after request)
+    swap: {             // Incoming swap request
+        content,        // Response text (after request)
+        target,         // Swap target
+        style,          // Swap style
+        select,         // Optional selector
+        selectOOB,      // Optional out-of-band selector
+    },
+    swaps,              // Resolved swaps during swap events
     hx,                 // Parsed HX-* response headers
 }
 ```
 
 **Modifying the request:** Change `detail.ctx.request` properties in `htmx_config_request` or `htmx_before_request`.
 
-**Modifying the response:** Change `detail.ctx.text` in `htmx_after_request` (before swap).
+**Modifying the response:** Change `detail.ctx.swap.content` in `htmx_after_request` (before swap).
 
 **Overriding fetch:** Set `detail.ctx.fetch` to a function returning a Response or Promise<Response>.
 
@@ -295,8 +305,8 @@ From `src/ext/hx-optimistic.js` -- shows optimistic content during request:
             // Revert on error
             removeOptimisticContent(detail.ctx);
         },
-        htmx_before_swap: (elt, detail) => {
-            // Remove optimistic content before real swap
+        htmx_finally_swap: (elt, detail) => {
+            // Remove optimistic content when swapping finishes
             removeOptimisticContent(detail.ctx);
         },
     });
@@ -315,7 +325,7 @@ Key patterns:
 |-----------|---------|-------|
 | `htmx.defineExtension()` | `htmx.registerExtension()` | Different function name |
 | `onEvent(name, evt)` | Specific hooks (`htmx_before_request`, etc.) | Use underscored hook names |
-| `transformResponse(text, xhr, elt)` | `htmx_after_request` | Modify `detail.ctx.text` |
+| `transformResponse(text, xhr, elt)` | `htmx_after_request` | Modify `detail.ctx.swap.content` |
 | `handleSwap(style, target, fragment)` | `handle_swap(style, target, fragment, swapSpec)` | Extra `swapSpec` param, return truthy |
 | `encodeParameters(xhr, params, elt)` | `htmx_config_request` | Modify `detail.ctx.request.body` and `.headers` |
 | `getSelectors()` | `htmx_after_init` | Check `api.attributeValue(elt, "attr")` instead |

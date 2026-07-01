@@ -1,24 +1,30 @@
 ---
 title: "htmx:after:swap"
-description: "After content is swapped into DOM"
+description: "After each resolved swap is applied"
 ---
 
-The `htmx:after:swap` event fires after new content has been swapped into the DOM.
+The `htmx:after:swap` event fires once after each resolved swap changes the DOM.
 
 ## When It Fires
 
-Immediately after the DOM swap operation completes, before elements are processed.
+After an individual swap inserts, replaces, morphs, or deletes content, and before the settle phase for that swap.
+
+The event is dispatched on the swap target. If that target is no longer connected, htmx dispatches the event on `document`.
 
 ## Event Detail
 
-- `ctx` - Request context including swap details
+- `ctx` - Request context for the current swap
+  - `ctx.swap` - The resolved swap that was applied
+  - `ctx.swaps` - The resolved swap set for this content unit
+- `newContent` - Array of nodes inserted or updated by the swap
+- `task` - Beta compatibility alias for `ctx.swap`
 
 ## Example
 
 ```javascript
 htmx.on('htmx:after:swap', (evt) => {
-  console.log('Content swapped into:', evt.detail.ctx.target);
-  // Initialize widgets, scroll to position, etc.
+  console.log('Finished swap:', evt.detail.ctx.swap.type);
+  console.log('New nodes:', evt.detail.newContent.length);
 });
 ```
 

@@ -168,10 +168,12 @@
 
         let ctx = {
             sourceElement: document.body,
-            target: getHistoryTarget(),
-            swap: cfg().swapStyle,
-            text: item.content,
-            transition: false,
+            swap: {
+                ...htmx.__parseSwapSpec(cfg().swapStyle),
+                target: getHistoryTarget(),
+                content: item.content,
+                transition: false
+            },
             _deferredHeadScripts: detail._deferredHeadScripts
         };
         await htmx.swap(ctx);

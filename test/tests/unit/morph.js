@@ -605,8 +605,8 @@ describe('Morph Swap Styles Tests', function() {
 
             let fragmentChild;
             document.addEventListener('htmx:before:swap', (e) => {
-                const mainTask = (e.detail.tasks || []).find(t => t.type === 'main');
-                fragmentChild = mainTask && mainTask.fragment && mainTask.fragment.querySelector('.child');
+                const swap = e.detail.ctx.swap;
+                fragmentChild = swap.type === 'main' && swap.fragment && swap.fragment.querySelector('.child');
             }, { once: true });
 
             await htmx.ajax('GET', '/test', {target: '#target', swap: 'outerMorph'});

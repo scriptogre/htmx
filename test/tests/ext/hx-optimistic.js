@@ -96,6 +96,8 @@ describe('hx-optimistic attribute', function() {
         find('button').click()
         await forRequest()
         assert.equal(find('#result').textContent.trim(), 'Original');
+        assert.equal(find('#result').style.display, '');
+        assert.isNull(document.querySelector('.hx-optimistic'));
     })
 
     it('removes optimistic content after successful response', async function () {

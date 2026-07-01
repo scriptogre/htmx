@@ -1,27 +1,31 @@
 ---
 title: "htmx:before:swap"
-description: "Before content is swapped into DOM"
+description: "Before each resolved swap is applied"
 ---
 
-The `htmx:before:swap` event fires after response content is parsed but before it's inserted or swapped into the DOM.
+The `htmx:before:swap` event fires once for each resolved swap, after htmx resolves the swap target and before it changes the DOM.
 
 ## When It Fires
 
-After the response is received and parsed, but before any DOM modifications occur.
+After [`htmx:before:swaps`](/reference/events/htmx-before-swaps) and immediately before an individual swap runs.
+
+This event does not fire for `swap:none` entries or swaps whose target cannot be resolved.
 
 ## Event Detail
 
-- `ctx` - Request context including parsed response
-- `tasks` - Array of swap tasks to be performed
+- `ctx` - Request context for the current swap
+  - `ctx.swap` - The resolved swap being applied
+  - `ctx.swaps` - The resolved swap set for this content unit
+- `task` - Beta compatibility alias for `ctx.swap`
 
 ## Example
 
 ```javascript
 htmx.on('htmx:before:swap', (evt) => {
-  console.log('About to swap:', evt.detail.ctx.response);
-  // Modify response before swapping
-  // Or cancel swap by calling evt.preventDefault()
+  if (evt.detail.ctx.swap.type === 'oob') {
+    console.log('About to run an out-of-band swap');
+  }
 });
 ```
 
-Cancel this event to prevent the swap from occurring.
+Cancel this event to skip only the current swap. Use [`htmx:before:swaps`](/reference/events/htmx-before-swaps) to inspect or cancel the whole swap set.

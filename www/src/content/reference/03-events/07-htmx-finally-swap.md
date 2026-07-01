@@ -1,25 +1,26 @@
 ---
 title: "htmx:finally:swap"
-description: "At the end of swap lifecycle"
+description: "After swap handling finishes"
 ---
 
-The `htmx:finally:swap` event fires at the very end of the swap cycle, whether successful or failed.
+The `htmx:finally:swap` event fires after a content unit finishes swap handling, even when the swap set is canceled or an individual swap is skipped.
 
 ## When It Fires
 
-After all swap processing completes, similar to a `finally` block in try/catch. Fires after [`htmx:after:swap`](/reference/events/htmx-after-swap) on the success path, or after an error if the swap fails.
+After [`htmx:after:swaps`](/reference/events/htmx-after-swaps), or after swap handling exits early.
 
 ## Event Detail
 
-- `ctx` - Request context object
+- `ctx` - Request context
+  - `ctx.swap` - The incoming swap request
+  - `ctx.swaps` - Array of resolved swaps, when swap planning completed
 
 ## Example
 
 ```javascript
 htmx.on('htmx:finally:swap', (evt) => {
-  console.log('Swap complete:', evt.detail.ctx);
-  // Always hide loading indicator, clean up resources
+  console.log('Swap handling finished');
 });
 ```
 
-Useful for cleanup operations that should always run after a swap, regardless of success or failure.
+Use this event for cleanup that must run whether swaps complete, are canceled, or are skipped.

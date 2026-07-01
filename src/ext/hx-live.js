@@ -1,7 +1,7 @@
 // hx-live extension: reactive live expressions + q() proxy + scope helpers.
 // Hooks:
 //   htmx:after:process  find new [hx-live] elements and register them
-//   htmx:before:swap    increment swap depth (defer recomputes)
+//   htmx:before:swaps   increment swap depth (defer recomputes)
 //   htmx:finally:swap   decrement, fire one consolidated recompute
 //   htmx:scope          inject q, wait, trigger, debounce into JS expression scopes
 (() => {
@@ -631,7 +631,7 @@
         htmx_after_process: (elt) => {
             processLive(elt);
         },
-        htmx_before_swap: () => {
+        htmx_before_swaps: () => {
             swaps++;
         },
         htmx_finally_swap: () => {

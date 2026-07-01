@@ -46,8 +46,10 @@
             maybeRetriggerEvent(elt, "htmx:afterRequest", detail);
         },
         htmx_after_swap: function (elt, detail) {
-            maybeRetriggerEvent(elt, "htmx:afterSettle", detail);
             maybeRetriggerEvent(elt, "htmx:afterSwap", detail);
+        },
+        htmx_after_settle: function (elt, detail) {
+            maybeRetriggerEvent(elt, "htmx:afterSettle", detail);
         },
         htmx_before_cleanup: function (elt, detail) {
             maybeRetriggerEvent(elt, "htmx:beforeCleanupElement", detail);

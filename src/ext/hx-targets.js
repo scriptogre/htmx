@@ -17,8 +17,8 @@
         init: (internalAPI) => {
             api = internalAPI;
         },
-        htmx_before_swap: (elt, detail) => {
-            let {ctx, tasks} = detail;
+        htmx_before_swaps: (elt, detail) => {
+            let {ctx} = detail;
             let selector = api.attributeValue(ctx.sourceElement, 'hx-targets');
             if (!selector) return;
 
@@ -28,18 +28,18 @@
                 return;
             }
 
-            // Replace main task with one task per target
-            let mainIndex = tasks.findIndex(t => t.type === 'main');
+            // Replace main swap with one swap per target
+            let mainIndex = ctx.swaps.findIndex(s => s.type === 'main');
             if (mainIndex === -1) return;
 
-            let mainTask = tasks[mainIndex];
-            let newTasks = Array.from(targets).map(target => ({
-                ...mainTask,
-                fragment: mainTask.fragment.cloneNode(true),
+            let mainSwap = ctx.swaps[mainIndex];
+            let newSwaps = Array.from(targets).map(target => ({
+                ...mainSwap,
+                fragment: mainSwap.fragment.cloneNode(true),
                 target
             }));
 
-            tasks.splice(mainIndex, 1, ...newTasks);
+            ctx.swaps.splice(mainIndex, 1, ...newSwaps);
         }
     });
 })();

@@ -18,20 +18,20 @@
             api = internalAPI;
         },
         htmx_process_upsert: (templateElt, detail) => {
-            let {ctx, tasks} = detail;
-            let swapSpec = {style: 'upsert'};
+            let {ctx} = detail;
+            let swap = {style: 'upsert'};
             let key = templateElt.getAttribute('key');
             let sort = templateElt.getAttribute('sort');
             let prepend = templateElt.hasAttribute('prepend');
-            if (key) swapSpec.key = key;
-            if (sort !== null) swapSpec.sort = sort || true;
-            if (prepend) swapSpec.prepend = true;
-            tasks.push({
+            if (key) swap.key = key;
+            if (sort !== null) swap.sort = sort || true;
+            if (prepend) swap.prepend = true;
+            ctx.swaps.push({
                 type: 'partial',
                 fragment: templateElt.content.cloneNode(true),
                 target: api.attributeValue(templateElt, 'hx-target'),
-                swapSpec,
-                sourceElement: ctx.sourceElement
+                sourceElement: ctx.sourceElement,
+                ...swap
             });
         },
         handle_swap: (style, target, fragment, swapSpec) => {
