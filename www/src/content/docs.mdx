@@ -554,7 +554,7 @@ All events provide a consistent `ctx` object with request/response information.
 
 #### Core extensions
 
-htmx 4 ships with 9 core extensions. The SSE and WebSocket extensions have been significantly rewritten. See their upgrade guides for details.
+htmx 4 ships with 10 core extensions. The SSE and WebSocket extensions have been significantly rewritten. See their upgrade guides for details.
 
 | Extension                                                 | Description                                                                          |
 |-----------------------------------------------------------|--------------------------------------------------------------------------------------|
@@ -562,6 +562,7 @@ htmx 4 ships with 9 core extensions. The SSE and WebSocket extensions have been 
 | [`browser-indicator`](/extensions/hx-browser-indicator) | Shows the browser's native loading indicator during requests                         |
 | [`head-support`](/extensions/hx-head)           | Merges head tag information (styles, etc.) in htmx requests                          |
 | [`htmx-2-compat`](/extensions/htmx-2-compat)         | Restores implicit inheritance, old event names, and previous error-swapping defaults |
+| [`multipart`](/extensions/hx-multipart)                | Advertises support for multipart htmx responses                                     |
 | [`optimistic`](/extensions/hx-optimistic)               | Shows expected content from a template before the server responds                    |
 | [`preload`](/extensions/hx-preload)                     | Triggers requests early (on mouseover/mousedown) for near-instant page loads ([upgrade guide](/extensions/hx-preload#upgrading-from-htmx-2x)) |
 | [`sse`](/extensions/hx-sse)                             | Server-Sent Events streaming support ([upgrade guide](/extensions/hx-sse#upgrading-from-htmx-2x)) |

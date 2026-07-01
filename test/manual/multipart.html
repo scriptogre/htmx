@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>hx-multipart manual test</title>
+  <script src="/htmx.js"></script>
+  <script src="/ext/hx-multipart.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; line-height: 1.4; }
+    button { font: inherit; padding: 0.5rem 0.8rem; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+    .panel { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; min-height: 8rem; }
+    .panel h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+    .item { padding: 0.4rem 0; border-top: 1px solid #eee; }
+    .status { font-weight: 700; }
+    code { background: #f6f6f6; padding: 0.1rem 0.25rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>hx-multipart manual test</h1>
+  <p>
+    Click the button. The server streams a <code>multipart/mixed</code> response.
+    Each part has its own <code>HX-Retarget</code> and <code>HX-Reswap</code> headers.
+  </p>
+  <p>
+    This demo streams one part per second for about 20 seconds, so you can watch it in DevTools.
+    A boundary finalizes the previous part, so each panel updates as the next part begins.
+    The request indicator remains active until the final boundary closes the response.
+  </p>
+
+  <button hx-get="/multipart-stream" hx-swap="none" hx-indicator="#indicator">
+    Start multipart stream
+  </button>
+  <span id="indicator" class="htmx-indicator"> streaming...</span>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Notifications</h2>
+      <div id="notifications"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Activity</h2>
+      <div id="activity"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Status</h2>
+      <div id="status" class="status">Idle</div>
+    </section>
+
+    <section class="panel">
+      <h2>HX-Trigger</h2>
+      <div id="events"></div>
+    </section>
+  </div>
+
+  <script>
+    document.body.addEventListener('multipartDone', () => {
+      document.querySelector('#events').insertAdjacentHTML('beforeend', '<div class="item">multipartDone fired</div>')
+    })
+  </script>
+</body>
+</html>

@@ -21,12 +21,77 @@ const sse = (handler) => (req, res) => {
     handler(req, res);
 };
 
+const multipart = (handler) => (req, res) => {
+    const boundary = 'updates';
+    res.writeHead(200, {
+        'Content-Type': `multipart/mixed; boundary=${boundary}`,
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+    });
+    handler(req, res, boundary);
+};
+
 const routes = {
-    '/':               (req, res) => { res.writeHead(302, {'Location': '/sse'}); res.end(); },
-    '/sse':            serve('test/manual/sse.html'),
-    '/ios-sse':        serve('test/manual/ios-sse.html'),
-    '/htmx.js':        serve('src/htmx.js', 'application/javascript'),
-    '/ext/hx-sse.js':  serve('src/ext/hx-sse.js', 'application/javascript'),
+    '/':                    (req, res) => { res.writeHead(302, {'Location': '/sse'}); res.end(); },
+    '/sse':                 serve('test/manual/sse.html'),
+    '/multipart':           serve('test/manual/multipart.html'),
+    '/ios-sse':             serve('test/manual/ios-sse.html'),
+    '/htmx.js':             serve('src/htmx.js', 'application/javascript'),
+    '/ext/hx-sse.js':       serve('src/ext/hx-sse.js', 'application/javascript'),
+    '/ext/hx-multipart.js': serve('src/ext/hx-multipart.js', 'application/javascript'),
+
+    '/multipart-stream': multipart((req, res, boundary) => {
+        const writePart = (headers, body) => {
+            res.write(`--${boundary}\r\n`);
+            for (const [name, value] of Object.entries(headers)) {
+                res.write(`${name}: ${value}\r\n`);
+            }
+            res.write(`\r\n${body}\r\n`);
+        };
+
+        let count = 0;
+        const send = () => {
+            count++;
+            let time = new Date().toLocaleTimeString();
+            if (count % 3 === 1) {
+                writePart({
+                    'Content-Type': 'text/html',
+                    'HX-Retarget': '#notifications',
+                    'HX-Reswap': 'beforeend'
+                }, `<div class="item">Notification ${count} streamed at ${time}</div>`);
+            } else if (count % 3 === 2) {
+                writePart({
+                    'Content-Type': 'text/html',
+                    'HX-Retarget': '#activity',
+                    'HX-Reswap': 'beforeend'
+                }, `<div class="item">Activity ${count} streamed at ${time}</div>`);
+            } else {
+                writePart({
+                    'Content-Type': 'text/html',
+                    'HX-Retarget': '#status',
+                    'HX-Reswap': 'innerHTML'
+                }, `Streaming part ${count} at ${time}`);
+            }
+
+            if (count < 18) {
+                setTimeout(send, 1000);
+            } else {
+                setTimeout(() => {
+                    writePart({
+                        'Content-Type': 'text/html',
+                        'HX-Retarget': '#status',
+                        'HX-Reswap': 'innerHTML',
+                        'HX-Trigger': 'multipartDone'
+                    }, 'Complete');
+                    res.write(`--${boundary}--\r\n`);
+                    res.end();
+                }, 1000);
+            }
+        };
+
+        setTimeout(send, 1000);
+        req.on('close', () => count = 18);
+    }),
 
     '/heartbeat': sse((req, res) => {
         let count = 0;
