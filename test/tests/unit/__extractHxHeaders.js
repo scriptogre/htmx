@@ -8,120 +8,90 @@ describe('__extractHxHeaders unit tests', function() {
         cleanupTest();
     });
 
-    it('extracts HX headers from response', function () {
-        let ctx = {
-            response: {
-                raw: {
-                    headers: new Headers({
-                        'HX-Trigger': 'myEvent',
-                        'HX-Redirect': '/new-page',
-                        'Content-Type': 'text/html'
-                    })
-                }
-            }
-        }
+    it('extracts HX headers from response headers', function () {
+        let result = htmx.__extractHxHeaders(new Headers({
+            'HX-Trigger': 'myEvent',
+            'HX-Redirect': '/new-page',
+            'Content-Type': 'text/html'
+        }))
 
-        htmx.__extractHxHeaders(ctx)
-
-        assert.equal(ctx.hx.trigger, 'myEvent')
-        assert.equal(ctx.hx.redirect, '/new-page')
-        assert.isUndefined(ctx.hx.contenttype)
+        assert.equal(result.trigger, 'myEvent')
+        assert.equal(result.redirect, '/new-page')
+        assert.isUndefined(result.contenttype)
     })
 
-    it('converts header names to lowercase and removes hyphens', function () {
-        let ctx = {
-            response: {
-                raw: {
-                    headers: new Headers({
-                        'HX-Push-Url': '/new-url',
-                        'HX-Replace-Url': '/replace-url',
-                        'HX-Re-Swap': 'outerHTML'
-                    })
-                }
-            }
-        }
+    it('converts header names to camelCase', function () {
+        let result = htmx.__extractHxHeaders(new Headers({
+            'HX-Push-Url': '/new-url',
+            'HX-Replace-Url': '/replace-url',
+            'HX-Reswap': 'outerHTML'
+        }))
 
-        htmx.__extractHxHeaders(ctx)
-
-        assert.equal(ctx.hx.pushurl, '/new-url')
-        assert.equal(ctx.hx.replaceurl, '/replace-url')
-        assert.equal(ctx.hx.reswap, 'outerHTML')
+        assert.equal(result.pushUrl, '/new-url')
+        assert.equal(result.replaceUrl, '/replace-url')
+        assert.equal(result.reswap, 'outerHTML')
     })
 
     it('handles empty headers', function () {
-        let ctx = {
-            response: {
-                raw: {
-                    headers: new Headers()
-                }
-            }
-        }
+        let result = htmx.__extractHxHeaders(new Headers())
 
-        htmx.__extractHxHeaders(ctx)
-
-        assert.deepEqual(ctx.hx, {})
+        assert.deepEqual(result, {})
     })
 
     it('only extracts headers that start with HX-', function () {
-        let ctx = {
-            response: {
-                raw: {
-                    headers: new Headers({
-                        'HX-Trigger': 'myEvent',
-                        'X-Custom-Header': 'value',
-                        'Content-Type': 'text/html',
-                        'HX-Refresh': 'true'
-                    })
-                }
-            }
-        }
+        let result = htmx.__extractHxHeaders(new Headers({
+            'HX-Trigger': 'myEvent',
+            'X-Custom-Header': 'value',
+            'Content-Type': 'text/html',
+            'HX-Refresh': 'true'
+        }))
 
-        htmx.__extractHxHeaders(ctx)
-
-        assert.equal(ctx.hx.trigger, 'myEvent')
-        assert.equal(ctx.hx.refresh, 'true')
-        assert.isUndefined(ctx.hx.customheader)
-        assert.isUndefined(ctx.hx.contenttype)
+        assert.equal(result.trigger, 'myEvent')
+        assert.equal(result.refresh, 'true')
+        assert.isUndefined(result.customheader)
+        assert.isUndefined(result.contenttype)
     })
 
     it('handles case-insensitive HX- prefix', function () {
-        let ctx = {
-            response: {
-                raw: {
-                    headers: new Headers({
-                        'hx-trigger': 'lowercase',
-                        'Hx-Redirect': 'mixedcase',
-                        'HX-REFRESH': 'uppercase'
-                    })
-                }
-            }
-        }
+        let result = htmx.__extractHxHeaders(new Headers({
+            'hx-trigger': 'lowercase',
+            'Hx-Redirect': 'mixedcase',
+            'HX-REFRESH': 'uppercase'
+        }))
 
-        htmx.__extractHxHeaders(ctx)
-
-        assert.equal(ctx.hx.trigger, 'lowercase')
-        assert.equal(ctx.hx.redirect, 'mixedcase')
-        assert.equal(ctx.hx.refresh, 'uppercase')
+        assert.equal(result.trigger, 'lowercase')
+        assert.equal(result.redirect, 'mixedcase')
+        assert.equal(result.refresh, 'uppercase')
     })
 
-    it('overwrites existing ctx.hx object', function () {
-        let ctx = {
-            hx: {
-                oldValue: 'should be removed'
-            },
-            response: {
-                raw: {
-                    headers: new Headers({
-                        'HX-Trigger': 'newEvent'
-                    })
-                }
-            }
-        }
+    it('handles plain objects and Headers instances the same way', function () {
+        let objectResult = htmx.__extractHxHeaders({
+            'HX-Push-Url': '/new-url',
+            'HX-Request-Type': 'partial'
+        })
+        let headersResult = htmx.__extractHxHeaders(new Headers({
+            'HX-Push-Url': '/new-url',
+            'HX-Request-Type': 'partial'
+        }))
 
-        htmx.__extractHxHeaders(ctx)
+        assert.deepEqual(objectResult, headersResult)
+        assert.deepEqual(objectResult, {
+            pushUrl: '/new-url',
+            requestType: 'partial'
+        })
+    })
 
-        assert.equal(ctx.hx.trigger, 'newEvent')
-        assert.isUndefined(ctx.hx.oldValue)
+    it('returns a fresh object for each extraction', function () {
+        let first = htmx.__extractHxHeaders(new Headers({
+            'HX-Trigger': 'oldEvent'
+        }))
+        let second = htmx.__extractHxHeaders(new Headers({
+            'HX-Redirect': '/new-page'
+        }))
+
+        assert.equal(first.trigger, 'oldEvent')
+        assert.equal(second.redirect, '/new-page')
+        assert.isUndefined(second.trigger)
     })
 
 });

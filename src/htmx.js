@@ -173,6 +173,7 @@ var htmx = (() => {
                 createRequestContext: this.__createRequestContext.bind(this),
                 collectFormData: this.__collectFormData.bind(this),
                 getAttributeObject: this.__getAttributeObject.bind(this),
+                extractHxHeaders: this.__extractHxHeaders.bind(this),
                 insertContent: this.__insertContent.bind(this),
                 morph: this.__morph.bind(this),
                 isSoftMatch: this.__isSoftMatch.bind(this),
@@ -608,7 +609,7 @@ var htmx = (() => {
                     status: response.status,
                     headers: response.headers,
                 }
-                this.__extractHxHeaders(ctx);
+                ctx.hx = this.__extractHxHeaders(ctx.response.headers);
                 if (!this.__trigger(elt, "htmx:before:response", {ctx})) return;
                 ctx.text = await response.text();
                 if (!this.__trigger(elt, "htmx:after:request", {ctx})) return;
@@ -651,15 +652,19 @@ var htmx = (() => {
             }
         }
 
-        // Extract HX-* response headers into ctx.hx
-        // Maps: HX-Trigger → ctx.hx.trigger, HX-Push-Url → ctx.hx.pushurl, etc.
-        __extractHxHeaders(ctx) {
-            ctx.hx = {}
-            for (let [k, v] of ctx.response.raw.headers) {
-                if (k.toLowerCase().startsWith('hx-')) {
-                    ctx.hx[k.slice(3).toLowerCase().replace(/-/g, '')] = v
-                }
+        /**
+         * Extract HX-* headers as camelCase keys.
+         *
+         * @param {Headers} headers
+         * @returns {Object<string, string>} e.g. {trigger, pushUrl, requestType}
+         */
+        __extractHxHeaders(headers) {
+            let result = {}
+            for (let [name, value] of new Headers(headers)) {
+                if (!name.startsWith('hx-')) continue
+                result[name.slice(3).replace(/-./g, match => match[1].toUpperCase())] = value
             }
+            return result
         }
 
         // Handle response headers that abort normal swap processing.
@@ -1656,9 +1661,9 @@ var htmx = (() => {
             let {sourceElement, push, replace, hx, response} = ctx;
 
             // allow response headers to override history action
-            if (hx?.pushurl || hx?.replaceurl) { // HX-Push-Url, HX-Replace-Url
-                push = hx.pushurl;
-                replace = hx.replaceurl;
+            if (hx?.pushUrl || hx?.replaceUrl) { // HX-Push-Url, HX-Replace-Url
+                push = hx.pushUrl;
+                replace = hx.replaceUrl;
             }
 
             // if this is a boosted element, default to pushing
