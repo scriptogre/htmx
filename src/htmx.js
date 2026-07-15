@@ -400,6 +400,7 @@ var htmx = (() => {
             let {action, method} = this.__determineMethodAndAction(sourceElement, sourceEvent);
             let [fullAction, anchor] = (action || '').split('#');
 
+            let defaultHxSwap = this.config.defaultSwap;
             let hxSwap = this.__attributeValue(sourceElement, "hx-swap");
             let hxTarget = this.__attributeValue(sourceElement, "hx-target");
             let hxSelect = this.__attributeValue(sourceElement, "hx-select");
@@ -408,8 +409,10 @@ var htmx = (() => {
             let hxReplaceUrl = this.__attributeValue(sourceElement, "hx-replace-url");
             let hxConfirm = this.__attributeValue(sourceElement, "hx-confirm");
             let hxValidate = this.__attributeValue(sourceElement, "hx-validate", sourceElement.matches('form') && !sourceElement.noValidate && !sourceEvent.submitter?.formNoValidate ? "true" : "false");
-            let defaultSwap = this.__parseSwapSpec(this.config.defaultSwap);
-            let swap = this.__parseSwapSpec(hxSwap);
+
+            // Convert "innerHTML transition:true ..." -> { style: "innerHTML", transition: true, ... }.
+            defaultHxSwap = this.__parseSwapSpec(defaultHxSwap);
+            hxSwap = this.__parseSwapSpec(hxSwap);
 
             let ac = new AbortController();
             let ctx = {
@@ -435,11 +438,11 @@ var htmx = (() => {
                     select: undefined,
                     selectOOB: undefined,
                     transition: this.config.transitions,
-                    ...defaultSwap,
+                    ...defaultHxSwap,
                     ...(hxTarget !== undefined && {target: hxTarget}),
                     ...(hxSelect !== undefined && {select: hxSelect}),
                     ...(hxSelectOOB !== undefined && {selectOOB: hxSelectOOB}),
-                    ...swap
+                    ...hxSwap
                 },
                 actions: {
                     pushUrl: hxPushUrl,
@@ -631,7 +634,7 @@ var htmx = (() => {
                 }
                 this.__extractHxHeaders(ctx);
                 if (!this.__trigger(elt, "htmx:before:response", {ctx})) return;
-                ctx.text = await response.text();
+                ctx.swap.content = await response.text();
                 if (!this.__trigger(elt, "htmx:after:request", {ctx})) return;
 
                 if (ctx.response.status >= 400) {
@@ -644,13 +647,26 @@ var htmx = (() => {
                 }
 
                 if (ctx.status === "issuing") {
-                    if (ctx.hx.retarget) ctx.target = ctx.hx.retarget;   // HX-Retarget
-                    if (ctx.hx.reswap) ctx.swap = ctx.hx.reswap;       // HX-Reswap
-                    if (ctx.hx.reselect) ctx.select = ctx.hx.reselect; // HX-Reselect
+                    if (ctx.hx.retarget) ctx.swap.target = ctx.hx.retarget; // HX-Retarget
+                    if (ctx.hx.reswap) {
+                        ctx.swap = {
+                            content: ctx.swap.content,
+                            target: ctx.swap.target,
+                            style: undefined, // default or HX-Reswap
+                            select: ctx.swap.select,
+                            selectOOB: ctx.swap.selectOOB,
+                            transition: this.config.transitions,
+                            // default
+                            ...this.__parseSwapSpec(this.config.defaultSwap),
+                            // HX-Reswap
+                            ...this.__parseSwapSpec(ctx.hx.reswap)
+                        };
+                    }
+                    if (ctx.hx.reselect) ctx.swap.select = ctx.hx.reselect; // HX-Reselect
                     ctx.status = "response received";
                     this.__handleStatusCodes(ctx);
                     this.__handleHistoryUpdate(ctx);
-                    await this.swap(ctx);
+                    await this.__handleSwap(ctx);
                     ctx.status = "swapped";
                 }
 
@@ -1185,9 +1201,12 @@ var htmx = (() => {
                 style = m[1];
                 swapStr = m[2];
             }
+            let {swap: swapDelay, settle: settleDelay, ...modifiers} = HCON.parse(swapStr);
             return {
                 ...(style !== undefined && {style: this.__normalizeSwapStyle(style)}),
-                ...HCON.parse(swapStr)
+                ...(swapDelay !== undefined && {swapDelay}),
+                ...(settleDelay !== undefined && {settleDelay}),
+                ...modifiers
             };
         }
 
@@ -1284,14 +1303,42 @@ var htmx = (() => {
         // Public JS API
         //============================================================================================
 
-        async swap(ctx) {
+        async swap(content, target, options = {}) {
+            let {source, ...swapOptions} = options;
+            let sourceElement = typeof source === 'string' ? document.querySelector(source) : source;
+            if (typeof source === 'string' && !sourceElement) {
+                throw new Error('Source not found');
+            }
+
+            let targetElement = this.__resolveTarget(sourceElement || document.body, target);
+            if (!targetElement) {
+                throw new Error('Target not found');
+            }
+            sourceElement ||= targetElement;
+
+            return this.__handleSwap({
+                sourceElement,
+                swap: {
+                    content,
+                    target: targetElement,
+                    style: undefined,
+                    select: undefined,
+                    selectOOB: undefined,
+                    transition: this.config.transitions,
+                    ...this.__parseSwapSpec(this.config.defaultSwap),
+                    ...swapOptions
+                }
+            });
+        }
+
+        async __handleSwap(ctx) {
             try {
-                let {fragment, title} = this.__makeFragment(ctx.text);
+                let {fragment, title} = this.__makeFragment(ctx.swap.content);
                 ctx.title = title;
                 let tasks = [];
 
                 // Process OOB and partials
-                let oobTasks = this.__processOOB(fragment, ctx.sourceElement, ctx.selectOOB);
+                let oobTasks = this.__processOOB(fragment, ctx.sourceElement, ctx.swap.selectOOB);
                 let partialTasks = this.__processPartials(fragment, ctx);
                 tasks.push(...oobTasks, ...partialTasks);
 
@@ -1308,7 +1355,7 @@ var htmx = (() => {
                 let swapPromises = [];
                 let transitionTasks = [];
                 for (let task of tasks) {
-                    if (task.swapSpec?.transition ?? mainSwap?.transition ?? ctx.transition) {
+                    if (task.swapSpec?.transition ?? mainSwap?.transition ?? ctx.swap.transition) {
                         transitionTasks.push(task);
                     } else {
                         swapPromises.push(this.__insertContent(task));
@@ -1337,10 +1384,7 @@ var htmx = (() => {
 
         __processMainSwap(ctx, fragment, partialTasks) {
             // Create main task if needed
-            let swapSpec = {
-                ...this.__parseSwapSpec(this.config.defaultSwap),
-                ...this.__parseSwapSpec(ctx.swap)
-            };
+            let swapSpec = {...ctx.swap};
             // skip main swap if fragment is empty after hx-partial removal but respect empty modifier
             if (
                 swapSpec.style === 'delete' ||    // delete always runs regardless of content
@@ -1348,8 +1392,8 @@ var htmx = (() => {
                 fragment.textContent.trim() ||    // or fragment has text
                 (swapSpec.swapEmpty ?? this.config.defaultSwapEmpty ?? !partialTasks.length) // swapEmpty:true/false overrides, default: allow if no partials
             ) {
-                if (ctx.select) {
-                    let selected = fragment.querySelectorAll(ctx.select);
+                if (ctx.swap.select) {
+                    let selected = fragment.querySelectorAll(ctx.swap.select);
                     fragment = document.createDocumentFragment();
                     fragment.append(...selected);
                 }
@@ -1359,10 +1403,10 @@ var htmx = (() => {
                 let mainSwap = {
                     type: 'main',
                     fragment,
-                    target: this.__resolveTarget(ctx.sourceElement || document.body, swapSpec.target || ctx.target),
+                    target: this.__resolveTarget(ctx.sourceElement || document.body, ctx.swap.target),
                     swapSpec,
                     sourceElement: ctx.sourceElement,
-                    transition: ctx.transition && swapSpec.transition !== false
+                    transition: ctx.swap.transition && swapSpec.transition !== false
                 };
                 return mainSwap;
             }
@@ -1393,8 +1437,8 @@ var htmx = (() => {
             }
 
             this.__addClass(target, "htmx-swapping")
-            if (cssTransition && task.swapSpec?.swap) {
-                await this.timeout(task.swapSpec?.swap)
+            if (cssTransition && task.swapSpec?.swapDelay) {
+                await this.timeout(task.swapSpec.swapDelay)
             }
 
             if (swapStyle === 'delete') {
@@ -1408,7 +1452,7 @@ var htmx = (() => {
             // innerHTML/outerHTML swaps backup focus and handle CSS transitions
             let focusInfo;
             let settleTasks = []
-            let settleDelay = swapSpec.settle ?? this.config.defaultSettleDelay;
+            let settleDelay = swapSpec.settleDelay ?? this.config.defaultSettleDelay;
             let parentNode = target.parentNode;
             if (swapStyle === 'innerHTML' || (swapStyle === 'outerHTML' && parentNode)) {
                 let activeElt = document.activeElement;
@@ -1607,36 +1651,61 @@ var htmx = (() => {
             let result = !detail.cancelled && target.dispatchEvent(evt);
             return result
         }
-        ajax(verb, path, context) {
-            // Normalize context to object
-            if (!context || context instanceof Element || typeof context === 'string') {
-                context = {target: context};
+        ajax(verb, path, options) {
+            if (!options || options instanceof Element || typeof options === 'string') {
+                options = {target: options};
             }
 
-            let sourceElt = typeof context.source === 'string' ?
-                document.querySelector(context.source) : context.source;
+            let {
+                source,
+                event,
+                target,
+                swap,
+                select,
+                selectOOB,
+                transition,
+                headers,
+                request,
+                ...contextOverrides
+            } = options;
 
-            // If source selector was provided but didn't match, reject
-            if (typeof context.source === 'string' && !sourceElt) {
+            let sourceElement = typeof source === 'string'
+                ? document.querySelector(source)
+                : source;
+
+            if (typeof source === 'string' && !sourceElement) {
                 return Promise.reject(new Error('Source not found'));
             }
 
-            // Resolve explicit target if provided; otherwise __createRequestContext
-            // will resolve from hx-target on the source element
-            if (context.target) {
-                let target = this.__resolveTarget(document.body, context.target);
-                if (!target) {
-                    return Promise.reject(new Error('Target not found'));
-                }
-                sourceElt ||= target;
-            }
-            sourceElt ||= document.body;
+            let targetElement = target
+                ? this.__resolveTarget(document.body, target)
+                : null;
 
-            let ctx = this.__createRequestContext(sourceElt, context.event || {});
-            Object.assign(ctx, context);
-            if (context.target) ctx.target = this.__resolveTarget(document.body, context.target);
-            Object.assign(ctx.request, {action: path, method: verb.toUpperCase()});
-            if (context.headers) Object.assign(ctx.request.headers, context.headers);
+            if (target && !targetElement) {
+                return Promise.reject(new Error('Target not found'));
+            }
+
+            sourceElement ||= targetElement || document.body;
+
+            let ctx = this.__createRequestContext(sourceElement, event || {}, {
+                ...contextOverrides,
+                swap: {
+                    ...(targetElement && {target: targetElement}),
+                    ...(select !== undefined && {select}),
+                    ...(selectOOB !== undefined && {selectOOB}),
+                    ...(transition !== undefined && {transition}),
+                    ...this.__parseSwapSpec(swap)
+                },
+                request: {
+                    ...request,
+                    action: path,
+                    method: verb.toUpperCase(),
+                    headers: {
+                        ...request?.headers,
+                        ...headers
+                    }
+                }
+            });
 
             return this.__handleTriggerEvent(ctx);
         }
@@ -1692,7 +1761,8 @@ var htmx = (() => {
         }
 
         __resolveHistoryAction(ctx) {
-            let {sourceElement, push, replace, hx, response} = ctx;
+            let {sourceElement, hx, response} = ctx;
+            let {pushUrl: push, replaceUrl: replace} = ctx.actions;
 
             // allow response headers to override history action
             if (hx?.pushurl || hx?.replaceurl) { // HX-Push-Url, HX-Replace-Url
@@ -2287,12 +2357,20 @@ var htmx = (() => {
             let str = status + ""
             for (let pattern of [str, str.slice(0, 2) + 'x', str[0] + 'xx']) {
                 if (noSwapStrings.includes(pattern)) {
-                    ctx.swap = "none";
+                    ctx.swap.style = "none";
                     return
                 }
-                let statusValue = this.__attributeValue(ctx.sourceElement, "hx-status:" + pattern);
-                if (statusValue) {
-                    HCON.merge(statusValue, ctx);
+                let hxStatus = this.__attributeValue(ctx.sourceElement, "hx-status:" + pattern);
+                if (hxStatus) {
+                    let {swap, push, replace, ...swapOverrides} = HCON.parse(hxStatus);
+                    HCON.merge({
+                        ...this.__parseSwapSpec(swap),
+                        ...swapOverrides
+                    }, ctx.swap);
+                    if (push !== undefined || replace !== undefined) {
+                        ctx.actions.pushUrl = push;
+                        ctx.actions.replaceUrl = replace;
+                    }
                     return;
                 }
             }
