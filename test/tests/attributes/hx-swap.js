@@ -15,7 +15,7 @@ describe('hx-swap modifiers', function() {
         assert.equal(htmx.__parseSwapSpec('innerHTML swap:0').swap, '0')
         assert.equal(htmx.__parseSwapSpec('innerHTML swap:0ms').swap, '0ms')
 
-        assert.equal(htmx.__parseSwapSpec('swap:10').style, 'innerHTML')
+        assert.equal(htmx.__parseSwapSpec('swap:10').style, undefined)
         assert.equal(htmx.__parseSwapSpec('swap:10').swap, '10')
         assert.equal(htmx.__parseSwapSpec('swap:0').swap, '0')
         assert.equal(htmx.__parseSwapSpec('swap:0s').swap, '0s')

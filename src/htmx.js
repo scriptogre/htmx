@@ -74,8 +74,8 @@ var htmx = (() => {
             for (let [key, val] of Object.entries(source)) {
                 if (['__proto__', 'constructor', 'prototype'].includes(key)) continue;
 
-                let sourceIsObject = val && typeof val === 'object' && !Array.isArray(val);
-                let targetIsObject = target[key] && typeof target[key] === 'object' && !Array.isArray(target[key]);
+                let sourceIsObject = val?.constructor === Object;
+                let targetIsObject = target[key]?.constructor === Object;
 
                 if (sourceIsObject && targetIsObject) {
                     HCON.merge(val, target[key]);
@@ -396,24 +396,29 @@ var htmx = (() => {
             };
         }
 
-        __createRequestContext(sourceElement, sourceEvent) {
+        __createRequestContext(sourceElement, sourceEvent, overrides = {}) {
             let {action, method} = this.__determineMethodAndAction(sourceElement, sourceEvent);
             let [fullAction, anchor] = (action || '').split('#');
+
+            let hxSwap = this.__attributeValue(sourceElement, "hx-swap");
+            let hxTarget = this.__attributeValue(sourceElement, "hx-target");
+            let hxSelect = this.__attributeValue(sourceElement, "hx-select");
+            let hxSelectOOB = this.__attributeValue(sourceElement, "hx-select-oob");
+            let hxPushUrl = this.__attributeValue(sourceElement, "hx-push-url");
+            let hxReplaceUrl = this.__attributeValue(sourceElement, "hx-replace-url");
+            let hxConfirm = this.__attributeValue(sourceElement, "hx-confirm");
+            let hxValidate = this.__attributeValue(sourceElement, "hx-validate", sourceElement.matches('form') && !sourceElement.noValidate && !sourceEvent.submitter?.formNoValidate ? "true" : "false");
+            let defaultSwap = this.__parseSwapSpec(this.config.defaultSwap);
+            let swap = this.__parseSwapSpec(hxSwap);
+
             let ac = new AbortController();
             let ctx = {
                 sourceElement,
                 sourceEvent,
                 status: "created",
-                select: this.__attributeValue(sourceElement, "hx-select"),
-                selectOOB: this.__attributeValue(sourceElement, "hx-select-oob"),
-                target: this.__attributeValue(sourceElement, "hx-target"),
-                swap: this.__attributeValue(sourceElement, "hx-swap") ?? this.config.defaultSwap,
-                push: this.__attributeValue(sourceElement, "hx-push-url"),
-                replace: this.__attributeValue(sourceElement, "hx-replace-url"),
-                transition: this.config.transitions,
-                confirm: this.__attributeValue(sourceElement, "hx-confirm"),
+                confirm: hxConfirm,
                 request: {
-                    validate: "true" === this.__attributeValue(sourceElement, "hx-validate", sourceElement.matches('form') && !sourceElement.noValidate && !sourceEvent.submitter?.formNoValidate ? "true" : "false"),
+                    validate: hxValidate === "true",
                     action: fullAction,
                     anchor,
                     method,
@@ -422,16 +427,42 @@ var htmx = (() => {
                     credentials: "same-origin",
                     signal: ac.signal,
                     mode: this.config.mode
+                },
+                swap: {
+                    content: undefined, // Populated from the response.
+                    target: undefined,
+                    style: undefined,
+                    select: undefined,
+                    selectOOB: undefined,
+                    transition: this.config.transitions,
+                    ...defaultSwap,
+                    ...(hxTarget !== undefined && {target: hxTarget}),
+                    ...(hxSelect !== undefined && {select: hxSelect}),
+                    ...(hxSelectOOB !== undefined && {selectOOB: hxSelectOOB}),
+                    ...swap
+                },
+                actions: {
+                    pushUrl: hxPushUrl,
+                    replaceUrl: hxReplaceUrl
                 }
             };
-            // Apply boost config overrides
-            if (sourceElement._htmx?.boosted) {
-                HCON.merge(sourceElement._htmx.boosted, ctx);
+
+            let hxBoost = sourceElement._htmx?.boosted;
+            if (hxBoost && hxBoost !== "true") {
+                let {swap, ...swapOverrides} = HCON.parse(hxBoost);
+                HCON.merge({
+                    ...this.__parseSwapSpec(swap),
+                    ...swapOverrides
+                }, ctx.swap);
             }
-            ctx.target = this.__resolveTarget(sourceElement, ctx.target);
-            ctx.request.headers["HX-Request-Type"] = (ctx.target === document.body || ctx.select) ? "full" : "partial";
-            if (ctx.target) {
-                ctx.request.headers["HX-Target"] = this.__buildIdentifier(ctx.target);
+
+            let {request: requestOverrides, ...contextOverrides} = overrides;
+            HCON.merge(contextOverrides, ctx);
+
+            ctx.swap.target = this.__resolveTarget(sourceElement, ctx.swap.target);
+            ctx.request.headers["HX-Request-Type"] = (ctx.swap.target === document.body || ctx.swap.select) ? "full" : "partial";
+            if (ctx.swap.target) {
+                ctx.request.headers["HX-Target"] = this.__buildIdentifier(ctx.swap.target);
             }
 
             // Apply hx-config overrides
@@ -440,6 +471,7 @@ var htmx = (() => {
                 HCON.merge(configAttr, ctx.request);
                 ctx.request.mode = this.config.mode;  // mode is security-sensitive, never allow per-element override
             }
+            if (requestOverrides) HCON.merge(requestOverrides, ctx.request);
             return ctx;
         }
 
@@ -1094,7 +1126,10 @@ var htmx = (() => {
             }
             if (oobValue === 'true' || !oobValue) oobValue = 'outerHTML';
 
-            let swapSpec = this.__parseSwapSpec(oobValue);
+            let swapSpec = {
+                ...this.__parseSwapSpec(this.config.defaultSwap),
+                ...this.__parseSwapSpec(oobValue)
+            };
             targetSelector = swapSpec.target || targetSelector;
             swapSpec.strip ??= !swapSpec.style.startsWith('outer');
             if (!targetSelector) return;
@@ -1138,15 +1173,21 @@ var htmx = (() => {
             }
         }
 
-        __parseSwapSpec(swapStr) {
-            swapStr = swapStr.trim();
-            let style = this.config.defaultSwap
+        __parseSwapSpec(value) {
+            if (!value) return {};
+            if (value.constructor === Object) return {...value};
+
+            let swapStr = value.trim();
+            let style;
             if (swapStr && !/^\S*:/.test(swapStr)) {
                 let m = swapStr.match(/^(\S+)\s*(.*)$/);
                 style = m[1];
                 swapStr = m[2];
             }
-            return {style: this.__normalizeSwapStyle(style), ...HCON.parse(swapStr)};
+            return {
+                ...(style !== undefined && {style: this.__normalizeSwapStyle(style)}),
+                ...HCON.parse(swapStr)
+            };
         }
 
         __processPartials(fragment, ctx) {
@@ -1159,7 +1200,10 @@ var htmx = (() => {
                     let targetSelector = this.__attr(templateElt, 'hx-target') || (templateElt.id ? '#' + CSS.escape(templateElt.id) : null);
                     if (targetSelector) {
                         this.__processScripts(templateElt.content);
-                        let swapSpec = this.__parseSwapSpec(this.__attr(templateElt, 'hx-swap') || this.config.defaultSwap);
+                        let swapSpec = {
+                            ...this.__parseSwapSpec(this.config.defaultSwap),
+                            ...this.__parseSwapSpec(this.__attr(templateElt, 'hx-swap'))
+                        };
                         for (let target of document.querySelectorAll(targetSelector)) {
                             tasks.push({
                                 type: 'partial',
@@ -1293,7 +1337,10 @@ var htmx = (() => {
 
         __processMainSwap(ctx, fragment, partialTasks) {
             // Create main task if needed
-            let swapSpec = this.__parseSwapSpec(ctx.swap || this.config.defaultSwap);
+            let swapSpec = {
+                ...this.__parseSwapSpec(this.config.defaultSwap),
+                ...this.__parseSwapSpec(ctx.swap)
+            };
             // skip main swap if fragment is empty after hx-partial removal but respect empty modifier
             if (
                 swapSpec.style === 'delete' ||    // delete always runs regardless of content
@@ -1328,7 +1375,10 @@ var htmx = (() => {
             }
             if (!target) return;
             if (typeof swapSpec === 'string') {
-                swapSpec = this.__parseSwapSpec(swapSpec);
+                swapSpec = {
+                    ...this.__parseSwapSpec(this.config.defaultSwap),
+                    ...this.__parseSwapSpec(swapSpec)
+                };
             }
             let swapStyle = swapSpec.style;
             if (swapStyle === 'none') return;

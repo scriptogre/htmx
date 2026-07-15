@@ -396,6 +396,14 @@ describe('HCON.merge unit tests', function() {
         assert.deepEqual(result.list, [3, 4])
     })
 
+    // Platform objects currently merge as empty records, retaining the old value.
+    // Treat opaque values as replacements while still merging plain objects.
+    it('does not deep-merge non-plain objects (replaces them)', function () {
+        let signal = new AbortController().signal
+        let result = HCON.merge({ signal }, { signal: new AbortController().signal })
+        assert.strictEqual(result.signal, signal)
+    })
+
     // string source (auto-parse)
 
     it('parses an HCON string source', function () {

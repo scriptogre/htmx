@@ -79,9 +79,17 @@ describe('__parseSwapSpec unit tests', function() {
         assert.equal(spec.transition, true)
     })
 
-    it('uses default swap when empty', function () {
-        let spec = htmx.__parseSwapSpec('')
-        assert.equal(spec.style, htmx.config.defaultSwap)
+    // The parser currently hides config.defaultSwap inside otherwise partial results.
+    // Leave defaults to callers so parsed swap layers compose predictably.
+    it('does not apply an implicit style', function () {
+        assert.deepEqual(htmx.__parseSwapSpec(''), {})
+        assert.deepEqual(htmx.__parseSwapSpec('transition:true'), {transition: true})
+    })
+
+    it('accepts structured swap fields', function () {
+        let swap = {style: 'outerHTML', settle: '200ms'}
+        assert.deepEqual(htmx.__parseSwapSpec(swap), swap)
+        assert.notStrictEqual(htmx.__parseSwapSpec(swap), swap)
     })
 
     it('parses legacy style names with modifiers', function () {
