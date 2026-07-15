@@ -20,7 +20,7 @@ describe('__createRequestContext unit tests', function() {
             'select',
             'selectOOB',
             'transition',
-            'settle'
+            'settleDelay'
         ])
         assert.equal(ctx.swap.content, 'Initial content')
         assert.equal(ctx.swap.target?.id, 'target')
@@ -28,7 +28,7 @@ describe('__createRequestContext unit tests', function() {
         assert.equal(ctx.swap.select, '#selected')
         assert.equal(ctx.swap.selectOOB, '#oob')
         assert.isTrue(ctx.swap.transition)
-        assert.equal(ctx.swap.settle, '200ms')
+        assert.equal(ctx.swap.settleDelay, '200ms')
         assert.deepEqual(ctx.actions, {
             pushUrl: '/pushed',
             replaceUrl: '/replaced'
@@ -45,7 +45,7 @@ describe('__createRequestContext unit tests', function() {
             let ctx = htmx.__createRequestContext(source, new Event('click'))
 
             assert.equal(ctx.swap.style, 'outerHTML')
-            assert.equal(ctx.swap.settle, '200ms')
+            assert.equal(ctx.swap.settleDelay, '200ms')
             assert.isTrue(ctx.swap.transition)
         } finally {
             htmx.config.defaultSwap = originalDefaultSwap
@@ -62,7 +62,7 @@ describe('__createRequestContext unit tests', function() {
             let ctx = htmx.__createRequestContext(source, new Event('click'))
 
             assert.equal(ctx.swap.style, 'outerHTML')
-            assert.equal(ctx.swap.settle, '200ms')
+            assert.equal(ctx.swap.settleDelay, '200ms')
         } finally {
             htmx.config.defaultSwap = originalDefaultSwap
         }
@@ -71,12 +71,12 @@ describe('__createRequestContext unit tests', function() {
     it('accepts structured global swap defaults', function() {
         let originalDefaultSwap = htmx.config.defaultSwap
         try {
-            htmx.config.defaultSwap = {style: 'outerHTML', settle: '200ms'}
+            htmx.config.defaultSwap = {style: 'outerHTML', settleDelay: '200ms'}
             let source = createProcessedHTML('<button hx-get="/test"></button>')
             let ctx = htmx.__createRequestContext(source, new Event('click'))
 
             assert.equal(ctx.swap.style, 'outerHTML')
-            assert.equal(ctx.swap.settle, '200ms')
+            assert.equal(ctx.swap.settleDelay, '200ms')
         } finally {
             htmx.config.defaultSwap = originalDefaultSwap
         }

@@ -22,6 +22,44 @@ describe('ajax() unit Tests', function() {
         assert.equal(div.innerHTML, 'foo!');
     });
 
+    it('ajax derives request headers from the target option', async function() {
+        mockResponse('GET', '/test', 'foo!');
+        createProcessedHTML('<button id="source"></button><div id="target"></div>');
+        const source = document.querySelector('#source');
+        let request;
+        source.addEventListener('htmx:config:request', (event) => {
+            request = event.detail.ctx.request;
+        });
+
+        await htmx.ajax('GET', '/test', {
+            source,
+            target: '#target',
+            swap: 'innerHTML'
+        });
+
+        assert.equal(request.headers['HX-Source'], 'button#source');
+        assert.equal(request.headers['HX-Target'], 'div#target');
+    });
+
+    it('ajax derives request type from the select option', async function() {
+        mockResponse('GET', '/test', '<div id="selected">foo!</div>');
+        createProcessedHTML('<button id="source"></button><div id="target"></div>');
+        const source = document.querySelector('#source');
+        let request;
+        source.addEventListener('htmx:config:request', (event) => {
+            request = event.detail.ctx.request;
+        });
+
+        await htmx.ajax('GET', '/test', {
+            source,
+            target: '#target',
+            select: '#selected',
+            swap: 'innerHTML'
+        });
+
+        assert.equal(request.headers['HX-Request-Type'], 'full');
+    });
+
     it('ajax rejects when target selector invalid', async function() {
         mockResponse('GET', '/test', 'foo!');
         createProcessedHTML('<div id="d1"></div>');
@@ -129,6 +167,33 @@ describe('ajax() unit Tests', function() {
         assert.equal(div.innerHTML, 'Clicked!');
         const lastCall = lastFetch();
         assert.equal(lastCall.request.headers['X-Custom'], 'test-value');
+    });
+
+    it('ajax merges nested request options with request defaults', async function() {
+        mockResponse('GET', '/test', 'Done!');
+        const div = createProcessedHTML('<div></div>');
+        const controller = new AbortController();
+        let request;
+        div.addEventListener('htmx:config:request', (event) => {
+            request = event.detail.ctx.request;
+        });
+
+        await htmx.ajax('GET', '/test', {
+            target: div,
+            swap: 'innerHTML',
+            request: {
+                credentials: 'include',
+                headers: { 'X-Custom': 'test-value' },
+                signal: controller.signal
+            }
+        });
+
+        assert.equal(request.credentials, 'include');
+        assert.equal(request.mode, 'same-origin');
+        assert.isFunction(request.abort);
+        assert.strictEqual(request.signal, controller.signal);
+        assert.equal(request.headers['HX-Request'], 'true');
+        assert.equal(request.headers['X-Custom'], 'test-value');
     });
 
     it('ajax collects form data from source element', async function() {
