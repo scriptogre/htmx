@@ -649,6 +649,7 @@ var htmx = (() => {
                     if (ctx.hx.reselect) ctx.select = ctx.hx.reselect; // HX-Reselect
                     ctx.status = "response received";
                     this.__handleStatusCodes(ctx);
+                    this.__handleHistoryUpdate(ctx);
                     await this.swap(ctx);
                     ctx.status = "swapped";
                 }
@@ -1285,7 +1286,6 @@ var htmx = (() => {
 
         async swap(ctx) {
             try {
-                this.__handleHistoryUpdate(ctx);
                 let {fragment, title} = this.__makeFragment(ctx.text);
                 ctx.title = title;
                 let tasks = [];

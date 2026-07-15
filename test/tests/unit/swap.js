@@ -37,6 +37,19 @@ describe('swap() unit tests', function() {
         child.innerText.should.equal("Hello Swap")
     })
 
+    // Manual swaps currently infer a history push from a boosted source and crash
+    // when the synthetic context has no request URL. Keep history in requests only.
+    it('does not inherit boosted history behavior', async function () {
+        createProcessedHTML('<a id="source" href="/next" hx-boost="true">Source</a><div id="target">Old</div>')
+        await htmx.swap({
+            sourceElement: find('#source'),
+            target: find('#target'),
+            swap: 'innerHTML',
+            text: 'New'
+        })
+        assert.equal(find('#target').innerText, 'New')
+    })
+
     it('initializes htmx content properly', async function () {
         await htmx.swap({"target":"#test-playground", "text":"<a hx-get='/foo'>Hello Swap</a>"})
         let child = playground().children[0];
