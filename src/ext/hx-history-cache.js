@@ -161,26 +161,27 @@
         return canUseStorage() ? getFromStorage(id) : null;
     }
 
-    async function restoreFromCache(item) {
-        let detail = { head: item.head, ready: null };
+    async function restoreFromCache(cacheEntry) {
+        let detail = { head: cacheEntry.head, ready: null };
         api.triggerHtmxEvent(document, 'htmx:history:cache:before:restore', detail);
         if (detail.ready) await detail.ready;
 
-        let ctx = {
-            sourceElement: document.body,
-            target: getHistoryTarget(),
-            swap: cfg().swapStyle,
-            text: item.content,
-            transition: false,
-            _deferredHeadScripts: detail._deferredHeadScripts
-        };
-        await htmx.swap(ctx);
+        let cachedHTML = cacheEntry.content;
+        let restoreSwapTarget = getHistoryTarget();
+        let restoreSwapStyle = cfg().swapStyle;
 
-        document.title = item.title || document.title;
+        await htmx.swap(cachedHTML, restoreSwapTarget, {
+            source: document.body,
+            style: restoreSwapStyle,
+            transition: false
+        });
+
+        document.title = cacheEntry.title || document.title;
         requestAnimationFrame(() => {
-            window.scrollTo(0, item.scroll || 0);
+            window.scrollTo(0, cacheEntry.scroll || 0);
             restoreAnnotations(getHistoryTarget());
-            api.triggerHtmxEvent(document, 'htmx:history:cache:after:restore', { item });
+            detail.item = cacheEntry;
+            api.triggerHtmxEvent(document, 'htmx:history:cache:after:restore', detail);
         });
     }
 

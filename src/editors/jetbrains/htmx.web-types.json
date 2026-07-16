@@ -280,7 +280,7 @@
         },
         {
           "name": "hx-head",
-          "description": "Controls how the head-support extension merges or appends response `<head>` content.",
+          "description": "Controls how the hx-head extension merges or appends response `<head>` content.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#controlling-merge-behavior"
         },
         {
@@ -622,22 +622,22 @@
         },
         {
           "name": "before:head:merge",
-          "description": "Fires before the head-support extension processes response `<head>` content. `detail.ctx` is the request context.",
+          "description": "Fires before the hx-head extension processes response `<head>` content. `detail.ctx` is the request context.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
         {
           "name": "before:head:add",
-          "description": "Fires before the head-support extension adds a new head element. `detail.headElement` is the element. Cancel to skip it.",
+          "description": "Fires before the hx-head extension adds a new head element. `detail.headElement` is the element. Cancel to skip it.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
         {
           "name": "before:head:remove",
-          "description": "Fires before the head-support extension removes a head element. `detail.headElement` is the element. Cancel to keep it.",
+          "description": "Fires before the hx-head extension removes a head element. `detail.headElement` is the element. Cancel to keep it.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
         {
           "name": "after:head:merge",
-          "description": "Fires after the head-support extension merges head content. `detail.added`, `detail.kept`, and `detail.removed` list affected elements.",
+          "description": "Fires after the hx-head extension merges head content. `detail.added`, `detail.kept`, and `detail.removed` list affected elements.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
         {

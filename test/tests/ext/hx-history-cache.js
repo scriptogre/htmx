@@ -430,6 +430,7 @@ describe('hx-history-cache extension', function () {
         }
     });
 
+    // Cache restores use public swap options without enabling transitions.
     it('uses configured swapStyle for cache restore', async function () {
         htmx.config.historyCache.swapStyle = 'innerHTML';
         let cachedPath = location.pathname + location.search;
@@ -447,11 +448,17 @@ describe('hx-history-cache extension', function () {
         let htmxId = index[index.length - 1];
         history.replaceState({ htmx: true, htmxId }, '', cachedPath);
 
+        let swapEvent;
+        document.addEventListener('htmx:before:swap', e => { swapEvent = e; }, { once: true });
         await new Promise(resolve => {
             document.addEventListener('htmx:history:cache:after:restore', resolve, { once: true });
             htmx.__restoreHistory(cachedPath);
         });
 
+        assert.equal(swapEvent.target, document.body);
+        assert.equal(swapEvent.detail.ctx.swap.target, historyElt);
+        assert.equal(swapEvent.detail.ctx.swap.style, 'innerHTML');
+        assert.isFalse(swapEvent.detail.ctx.swap.transition);
         assert.include(historyElt.innerHTML, 'swap style test');
     });
 
@@ -608,7 +615,7 @@ describe('hx-history-cache extension', function () {
             playground().appendChild(prefixedElt);
 
             mockResponse('GET', '/page2', '<p>page 2</p>');
-            htmx.ajax('GET', '/page2', { push: '/page2', swap: 'none' });
+            htmx.ajax('GET', '/page2', { actions: { pushUrl: '/page2' }, swap: 'none' });
             await forRequest();
 
             assert.isNotNull(savedDetail);
@@ -629,7 +636,7 @@ describe('hx-history-cache extension', function () {
             playground().appendChild(sensitiveElt);
 
             mockResponse('GET', '/page2', '<p>page 2</p>');
-            htmx.ajax('GET', '/page2', { push: '/page2', swap: 'none' });
+            htmx.ajax('GET', '/page2', { actions: { pushUrl: '/page2' }, swap: 'none' });
             await forRequest();
 
             assert.equal(readCache().length, 0);
