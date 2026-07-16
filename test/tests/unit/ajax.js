@@ -41,7 +41,7 @@ describe('ajax() unit Tests', function() {
         assert.equal(request.headers['HX-Target'], 'div#target');
     });
 
-    it('ajax derives request type from the select option', async function() {
+    it('ajax derives request type from the swap selection', async function() {
         mockResponse('GET', '/test', '<div id="selected">foo!</div>');
         createProcessedHTML('<button id="source"></button><div id="target"></div>');
         const source = document.querySelector('#source');
@@ -53,8 +53,7 @@ describe('ajax() unit Tests', function() {
         await htmx.ajax('GET', '/test', {
             source,
             target: '#target',
-            select: '#selected',
-            swap: 'innerHTML'
+            swap: 'innerHTML select:#selected'
         });
 
         assert.equal(request.headers['HX-Request-Type'], 'full');
@@ -118,13 +117,46 @@ describe('ajax() unit Tests', function() {
         assert.equal(container.innerHTML, '<p class="test">foo!</p>');
     });
 
-    it('ajax works with select option', async function() {
+    // Serialized swap input carries style, modifiers, and selection together.
+    it('ajax accepts a serialized swap specification', async function() {
+        mockResponse('GET', '/test', '<div id="selected">Selected</div><div>Ignored</div>');
+        const div = createProcessedHTML('<div id="target"></div>');
+        let finalSwap;
+        div.addEventListener('htmx:before:swap', event => finalSwap = event.detail.ctx.swap);
+
+        await htmx.ajax('GET', '/test', {
+            target: '#target',
+            swap: 'innerHTML transition:false select:#selected'
+        });
+
+        assert.equal(div.innerText, 'Selected');
+        assert.equal(finalSwap.style, 'innerHTML');
+        assert.isFalse(finalSwap.transition);
+        assert.equal(finalSwap.select, '#selected');
+    });
+
+    // Structured swap input uses canonical field names.
+    it('ajax accepts structured swap fields', async function() {
+        mockResponse('GET', '/test', '<p id="replacement">Replaced</p>');
+        const container = createProcessedHTML('<div><div id="target"></div></div>');
+
+        await htmx.ajax('GET', '/test', {
+            target: '#target',
+            swap: { style: 'outerHTML' }
+        });
+
+        assert.equal(container.innerHTML, '<p id="replacement">Replaced</p>');
+    });
+
+    it('ajax selects response content from swap fields', async function() {
         mockResponse('GET', '/test', '<div id="d1">foo</div><div id="d2">bar</div>');
         const div = createProcessedHTML('<div id="target"></div>');
         await htmx.ajax('GET', '/test', {
             target: '#target',
-            swap: 'innerHTML',
-            select: '#d2'
+            swap: {
+                style: 'innerHTML',
+                select: '#d2'
+            }
         });
         assert.include(div.innerHTML, 'bar');
         assert.notInclude(div.innerHTML, 'foo');
@@ -258,13 +290,15 @@ describe('ajax() unit Tests', function() {
         assert.equal(div.innerHTML, 'final!');
     });
 
-    it('ajax respects transition option', async function() {
+    it('ajax respects transition in structured swap fields', async function() {
         mockResponse('GET', '/test', 'content!');
         const div = createProcessedHTML('<div id="d1"></div>');
         await htmx.ajax('GET', '/test', {
             target: '#d1',
-            swap: 'innerHTML',
-            transition: false
+            swap: {
+                style: 'innerHTML',
+                transition: false
+            }
         });
         assert.equal(div.innerHTML, 'content!');
     });
@@ -298,6 +332,14 @@ describe('ajax() unit Tests', function() {
         const div = createProcessedHTML('<div id="d1"></div>');
         await htmx.ajax('DELETE', '/test', {target: '#d1', swap: 'innerHTML'});
         assert.equal(div.innerHTML, 'deleted!');
+    });
+
+    // AJAX accepts custom HTTP methods such as QUERY.
+    it('ajax custom verb', async function() {
+        mockResponse('QUERY', '/test', 'queried!');
+        const div = createProcessedHTML('<div id="d1"></div>');
+        await htmx.ajax('QUERY', '/test', {target: '#d1', swap: 'innerHTML'});
+        assert.equal(div.innerHTML, 'queried!');
     });
 
     it('ajax with event context', async function() {

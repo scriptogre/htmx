@@ -37,6 +37,70 @@ describe('swap() unit tests', function() {
         child.innerText.should.equal("Hello Swap")
     })
 
+    // The third argument accepts the same serialized form as hx-swap.
+    it('accepts a serialized swap specification', async function () {
+        createProcessedHTML('<div id="target">Old</div>')
+        let finalSwap
+        find('#target').addEventListener('htmx:before:swap', event => finalSwap = event.detail.ctx.swap)
+
+        await htmx.swap('New', '#target', 'innerHTML transition:true')
+
+        assert.equal(finalSwap.style, 'innerHTML')
+        assert.isTrue(finalSwap.transition)
+    })
+
+    // Nested swap input composes with source and flat canonical overrides.
+    it('composes swap input with options', async function () {
+        createProcessedHTML('<button id="source">Source</button><div id="target">Old</div>')
+        let finalSwap, eventSource
+        find('#source').addEventListener('htmx:before:swap', event => {
+            finalSwap = event.detail.ctx.swap
+            eventSource = event.target
+        })
+
+        await htmx.swap('New', '#target', {
+            swap: 'outerHTML transition:true',
+            style: 'innerHTML',
+            transition: false,
+            source: '#source'
+        })
+
+        assert.equal(finalSwap.style, 'innerHTML')
+        assert.isFalse(finalSwap.transition)
+        assert.equal(eventSource, find('#source'))
+        assert.equal(find('#target').innerText, 'New')
+    })
+
+    // Nested structured swap input normalizes through the same options boundary.
+    it('accepts nested structured swap fields', async function () {
+        createProcessedHTML('<div id="target">Old</div>')
+        let finalSwap
+        find('#target').addEventListener('htmx:before:swap', event => finalSwap = event.detail.ctx.swap)
+
+        await htmx.swap('New', '#target', {
+            swap: {
+                style: 'innerHTML',
+                transition: false
+            }
+        })
+
+        assert.equal(finalSwap.style, 'innerHTML')
+        assert.isFalse(finalSwap.transition)
+    })
+
+    // Positional content and target cannot be replaced by options.
+    it('uses positional content and target', async function () {
+        createProcessedHTML('<div id="target">Old</div><div id="other">Other</div>')
+
+        await htmx.swap('New', '#target', {
+            content: 'Wrong',
+            target: '#other'
+        })
+
+        assert.equal(find('#target').innerText, 'New')
+        assert.equal(find('#other').innerText, 'Other')
+    })
+
     it('uses the resolved target as the default source', async function () {
         let target = createProcessedHTML('<div>Old</div>')
         let source, bubbledSource
