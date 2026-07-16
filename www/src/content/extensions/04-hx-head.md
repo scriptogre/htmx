@@ -80,7 +80,7 @@ Then the following operations will occur:
 
 ## Events
 
-- `htmx:before:head:remove` - triggered when a head element is about to be removed. The element is available in `event.detail.headElement`. Call `preventDefault()` to keep it.
-- `htmx:before:head:add` - triggered when a head element is about to be added. The element is available in `event.detail.headElement`. Call `preventDefault()` to skip it.
-- `htmx:after:head:merge` - triggered after a head tag merge has occurred, with `detail.added`, `detail.kept`, and `detail.removed` arrays.
-- `htmx:before:head:merge` - triggered before a head merge occurs.
+- `htmx:head:before:remove` - triggered when a head element is about to be removed. The element is available in `event.detail.headElement`. Call `preventDefault()` to keep it.
+- `htmx:head:before:add` - triggered when a head element is about to be added. The element is available in `event.detail.headElement`. Call `preventDefault()` to skip it.
+- `htmx:head:after:merge` - triggered after a head tag merge has occurred, with `detail.added`, `detail.kept`, and `detail.removed` arrays.
+- `htmx:head:before:merge` - triggered before a head merge occurs.

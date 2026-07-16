@@ -249,8 +249,8 @@ that were sent in the meantime.
 
 | Event | Cancelable | Detail | Description |
 |-------|------------|--------|-------------|
-| `htmx:before:sse:connection` | ✅ | `{connection}` | Before connection attempt (initial or reconnect) |
-| `htmx:after:sse:connection` | ❌ | `{connection}` | After successful connection |
+| `htmx:sse:before:connection` | ✅ | `{connection}` | Before connection attempt (initial or reconnect) |
+| `htmx:sse:after:connection` | ❌ | `{connection}` | After successful connection |
 | `htmx:sse:close` | ❌ | `{connection, reason}` | When connection closes (see below) |
 | `htmx:sse:error` | ❌ | `{error, url, status}` | On stream error |
 
@@ -268,7 +268,7 @@ The `htmx:sse:close` detail includes:
   - `"message"`  - closed by `hx-sse:close` matching a named event
   - `"removed"`  - the element was removed from the DOM
   - `"ended"`  - the stream ended naturally or reconnection was exhausted
-  - `"cancelled"`  - the initial connection was cancelled via `htmx:before:sse:connection`
+  - `"cancelled"`  - the initial connection was cancelled via `htmx:sse:before:connection`
   - `"cleanup"`  - closed during element cleanup (e.g., parent swap)
 
 The `htmx:sse:error` detail includes:
@@ -280,8 +280,8 @@ The `htmx:sse:error` detail includes:
 
 | Event | Cancelable | Detail | Description |
 |-------|------------|--------|-------------|
-| `htmx:before:sse:message` | ✅ | `{message: {data, event, id, cancelled}}` | Before processing an SSE message |
-| `htmx:after:sse:message` | ❌ | `{message: {data, event, id}}` | After processing an SSE message |
+| `htmx:sse:before:message` | ✅ | `{message: {data, event, id, cancelled}}` | Before processing an SSE message |
+| `htmx:sse:after:message` | ❌ | `{message: {data, event, id}}` | After processing an SSE message |
 
 The `message` detail includes:
 - `data`: the message data (modifiable)
@@ -293,7 +293,7 @@ The `message` detail includes:
 
 **Cancel Connection Based on Condition:**
 ```javascript
-document.body.addEventListener('htmx:before:sse:connection', function(evt) {
+document.body.addEventListener('htmx:sse:before:connection', function(evt) {
     if (evt.detail.connection.attempt > 10) {
         evt.detail.connection.cancelled = true;
     }
@@ -302,7 +302,7 @@ document.body.addEventListener('htmx:before:sse:connection', function(evt) {
 
 **Skip Heartbeat Messages:**
 ```javascript
-document.body.addEventListener('htmx:before:sse:message', function(evt) {
+document.body.addEventListener('htmx:sse:before:message', function(evt) {
     // Skip heartbeats
     if (evt.detail.message.event === 'heartbeat') {
         evt.detail.message.cancelled = true;
@@ -413,10 +413,10 @@ The old `sse-connect` and `sse-close` attributes still work but emit a deprecati
 
 | htmx 2.x Event | htmx 4.x Event | Notes |
 |-----------------|-----------------|-------|
-| `htmx:sseOpen` | `htmx:after:sse:connection` | `detail.connection.attempt === 0` for initial |
+| `htmx:sseOpen` | `htmx:sse:after:connection` | `detail.connection.attempt === 0` for initial |
 | `htmx:sseError` | `htmx:sse:error` | `detail.error` contains the error |
-| `htmx:sseBeforeMessage` | `htmx:before:sse:message` | Set `detail.message.cancelled = true` to skip |
-| `htmx:sseMessage` | `htmx:after:sse:message` | |
+| `htmx:sseBeforeMessage` | `htmx:sse:before:message` | Set `detail.message.cancelled = true` to skip |
+| `htmx:sseMessage` | `htmx:sse:after:message` | |
 | `htmx:sseClose` | `htmx:sse:close` | `detail.reason` indicates why |
 
 ### Other Changes

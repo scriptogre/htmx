@@ -142,13 +142,13 @@
         }
 
         connection.cancelled = false;
-        if (!api.triggerHtmxEvent(element, 'htmx:before:sse:connection', {connection}) || connection.cancelled) {
+        if (!api.triggerHtmxEvent(element, 'htmx:sse:before:connection', {connection}) || connection.cancelled) {
             cleanup(element, 'cancelled');
             return;
         }
 
         connection.status = ctx.response.status;
-        api.triggerHtmxEvent(element, 'htmx:after:sse:connection', {connection});
+        api.triggerHtmxEvent(element, 'htmx:sse:after:connection', {connection});
 
         let currentResponse = ctx.response.raw;
 
@@ -181,7 +181,7 @@
                     }
 
                     connection.cancelled = false;
-                    if (!api.triggerHtmxEvent(element, 'htmx:before:sse:connection', {connection}) || connection.cancelled) break;
+                    if (!api.triggerHtmxEvent(element, 'htmx:sse:before:connection', {connection}) || connection.cancelled) break;
 
                     await new Promise(r => {
                         connection.delayCanceller = r;
@@ -219,7 +219,7 @@
                     }
 
                     connection.status = currentResponse.status;
-                    api.triggerHtmxEvent(element, 'htmx:after:sse:connection', {connection});
+                    api.triggerHtmxEvent(element, 'htmx:sse:after:connection', {connection});
                     connection.attempt = 0;
                 }
 
@@ -235,7 +235,7 @@
                         let detail = {
                             message: {data: msg.data, event: msg.event, id: msg.id, cancelled: false}
                         };
-                        if (!api.triggerHtmxEvent(element, 'htmx:before:sse:message', detail) || detail.message.cancelled) continue;
+                        if (!api.triggerHtmxEvent(element, 'htmx:sse:before:message', detail) || detail.message.cancelled) continue;
 
                         if (msg.id) {
                             connection.lastEventId = msg.id;
@@ -245,7 +245,7 @@
                         if (detail.message.event) {
                             htmx.trigger(element, detail.message.event, {data: detail.message.data, id: detail.message.id});
                             delete detail.message.cancelled;
-                            api.triggerHtmxEvent(element, 'htmx:after:sse:message', detail);
+                            api.triggerHtmxEvent(element, 'htmx:sse:after:message', detail);
 
                             // hx-sse:close="eventname" — close connection on matching event
                             let closeEvent = api.attributeValue(element, 'hx-sse:close');
@@ -261,7 +261,7 @@
                         let {content, target, ...options} = ctx.swap;
                         await htmx.swap(content, target, {...options, source: ctx.sourceElement});
                         delete detail.message.cancelled;
-                        api.triggerHtmxEvent(element, 'htmx:after:sse:message', detail);
+                        api.triggerHtmxEvent(element, 'htmx:sse:after:message', detail);
                     }
                 } catch (e) {
                     if (!connection.abortController?.signal?.aborted) {
