@@ -32,7 +32,7 @@ export interface HtmxConfig {
    * Default swap style when `hx-swap` is not specified.
    * @default "innerHTML"
    */
-  defaultSwap: string;
+  defaultSwap: string | HtmxSwapFields;
   /**
    * Scroll the focused element into view after each swap.
    * @default false
@@ -113,35 +113,38 @@ export interface HtmxConfig {
    * Whether an empty response body performs the main swap.
    * - `true` — swap (clears target)
    * - `false` — skip swap
-   * - `undefined` — swap unless response contained only `<hx-partial>` elements
    * Overridable per element via the `swapEmpty` modifier on `hx-swap`.
-   * @default undefined
+   * @default true
    */
-  defaultSwapEmpty?: boolean;
+  defaultSwapEmpty: boolean;
 }
 
-/** Context object passed to `htmx.swap()` */
-export interface HtmxSwapContext {
-  /** HTML string to swap into the DOM */
-  text: string;
-  /** Element that triggered the swap — used for history and event firing */
-  sourceElement?: Element;
-  /** Swap style (e.g. `'innerHTML'`, `'outerHTML'`). Defaults to `htmx.config.defaultSwap` */
-  swap?: string;
-  /** CSS selector to extract content from the response */
+export interface HtmxSwapFields {
+  /** Swap style (e.g. `'innerHTML'`, `'outerHTML'`). */
+  style?: string;
+  /** CSS selector to extract content from the response. */
   select?: string;
-  /** Selector for out-of-band swaps */
+  /** Selector for out-of-band swaps. */
   selectOOB?: string;
-  /** Target element to swap into. Defaults to `document.body` */
-  target?: Element;
-  /** Whether to use the View Transitions API for this swap */
+  /** Whether to use the View Transitions API. */
   transition?: boolean;
-  /** `hx-push-url` value — push a URL into history after the swap */
-  push?: string | boolean;
-  /** `hx-replace-url` value — replace the current history entry after the swap */
-  replace?: string | boolean;
-  /** URL fragment to scroll into view after the swap */
-  anchor?: string;
+  swapDelay?: string | number;
+  settleDelay?: string | number;
+  scroll?: 'top' | 'bottom';
+  scrollTarget?: string;
+  show?: 'top' | 'bottom' | 'none';
+  showTarget?: string;
+  ignoreTitle?: boolean;
+  focusScroll?: boolean;
+  swapEmpty?: boolean;
+  strip?: boolean;
+}
+
+export interface HtmxSwapOptions extends HtmxSwapFields {
+  /** Serialized or structured swap specification. */
+  swap?: string | HtmxSwapFields;
+  /** Element used for relative selectors and lifecycle events. */
+  source?: Element | string;
 }
 
 export interface QProxy {
@@ -616,7 +619,7 @@ export interface Htmx {
    * Perform an HTML content swap into the DOM.
    * Primarily used by extensions and advanced integrations — prefer `htmx.ajax()` for most use cases.
    */
-  swap(ctx: HtmxSwapContext): Promise<void>;
+  swap(content: string, target: Element | string, options?: string | HtmxSwapOptions): Promise<void>;
 }
 
 declare const htmx: Htmx;
