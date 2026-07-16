@@ -3,33 +3,32 @@ title: "htmx.swap()"
 description: "Perform an HTML content swap into the DOM"
 ---
 
-The `htmx.swap()` function performs swapping of HTML content into the DOM. This is primarily an internal method used by htmx and extension developers.
-
-For most use cases, prefer [`htmx.ajax()`](/reference/methods/htmx-ajax) which handles the complete request lifecycle.
+The `htmx.swap()` function swaps HTML content into the DOM. For most use cases, prefer [`htmx.ajax()`](/reference/methods/htmx-ajax), which handles the complete request lifecycle.
 
 ## Syntax
 
 ```javascript
-htmx.swap(ctx)
+htmx.swap(content, target, options)
 ```
 
 ## Parameters
 
-- `ctx` - A context object with the following properties:
-  - `text` (required) — the HTML content to swap as a string
-  - `target` — the target element to swap into (defaults to `document.body`)
-  - `swap` — swap style string (e.g. `'innerHTML'`, `'outerHTML'`)
-  - `select` — CSS selector to extract content from the response
-  - `selectOOB` — selector for out-of-band swaps
-  - `sourceElement` — the element that triggered the swap
-  - `transition` — boolean, whether to use view transitions
+- `content` - The HTML content to swap.
+- `target` - The target element or selector.
+- `options` - Optional swap fields:
+  - `source` - The source element or selector. Defaults to the resolved target.
+  - `style` - Swap style such as `innerHTML` or `outerHTML`.
+  - `select` - CSS selector used to select content.
+  - `selectOOB` - Selector for out-of-band content.
+  - `transition` - Whether to use view transitions.
+  - Any [`hx-swap` modifiers](/reference/attributes/hx-swap).
 
 ## Example
 
 ```javascript
-htmx.swap({
-  text: "<div>Swapped!</div>",
-  target: document.querySelector("#output"),
-  swap: 'innerHTML'
-});
+await htmx.swap(
+  '<div>Swapped!</div>',
+  '#output',
+  { style: 'innerHTML' }
+);
 ```
