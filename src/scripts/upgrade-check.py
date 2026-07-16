@@ -82,21 +82,21 @@ REMOVED_EVENTS = {
 }
 
 SSE_EVENT_RENAMES = {
-    "htmx:sseOpen": "htmx:after:sse:connection",
+    "htmx:sseOpen": "htmx:sse:after:connection",
     "htmx:sseError": "htmx:sse:error",
-    "htmx:sseBeforeMessage": "htmx:before:sse:message",
-    "htmx:sseMessage": "htmx:after:sse:message",
+    "htmx:sseBeforeMessage": "htmx:sse:before:message",
+    "htmx:sseMessage": "htmx:sse:after:message",
     "htmx:sseClose": "htmx:sse:close",
 }
 
 WS_EVENT_RENAMES = {
-    "htmx:wsOpen": "htmx:after:ws:connection",
+    "htmx:wsOpen": "htmx:ws:after:connection",
     "htmx:wsClose": "htmx:ws:close",
-    "htmx:wsConfigSend": "htmx:before:ws:request",
-    "htmx:wsBeforeSend": "htmx:before:ws:request",
-    "htmx:wsAfterSend": "htmx:after:ws:request",
-    "htmx:wsBeforeMessage": "htmx:before:ws:message",
-    "htmx:wsAfterMessage": "htmx:after:ws:message",
+    "htmx:wsConfigSend": "htmx:ws:before:message:outgoing",
+    "htmx:wsBeforeSend": "htmx:ws:before:message:outgoing",
+    "htmx:wsAfterSend": "htmx:ws:after:message:outgoing",
+    "htmx:wsBeforeMessage": "htmx:ws:before:message:incoming",
+    "htmx:wsAfterMessage": "htmx:ws:after:message:incoming",
 }
 
 # Extension attribute renames
