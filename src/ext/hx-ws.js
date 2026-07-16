@@ -101,7 +101,7 @@
             cancelled: false
         };
 
-        if (!api.triggerHtmxEvent(element, 'htmx:before:ws:connection', {connection}) || connection.cancelled) {
+        if (!api.triggerHtmxEvent(element, 'htmx:ws:before:connection', {connection}) || connection.cancelled) {
             api.triggerHtmxEvent(element, 'htmx:ws:close', {
                 connection, reason: 'cancelled', code: null
             });
@@ -186,7 +186,7 @@
             connection.socket.addEventListener('open', () => {
                 let elt = findConnectedElement(url);
                 if (elt) {
-                    api.triggerHtmxEvent(elt, 'htmx:after:ws:connection', {connection});
+                    api.triggerHtmxEvent(elt, 'htmx:ws:after:connection', {connection});
                 } else {
                     // Element was removed while connecting — orphaned socket
                     cleanupOrphanedConnection(url, connection);
@@ -196,7 +196,10 @@
             }, opts);
 
             connection.socket.addEventListener('message', (event) => {
-                handleMessage(connection, event);
+                handleMessage(connection, event).catch(error => {
+                    let elt = findConnectedElement(connection.url);
+                    if (elt) api.triggerHtmxEvent(elt, 'htmx:ws:error', { url: connection.url, error });
+                });
             }, opts);
 
             connection.socket.addEventListener('close', (event) => {
@@ -258,7 +261,7 @@
         let elt = findConnectedElement(url);
         if (elt) {
             connection.cancelled = false;
-            if (!api.triggerHtmxEvent(elt, 'htmx:before:ws:connection', {connection}) || connection.cancelled) {
+            if (!api.triggerHtmxEvent(elt, 'htmx:ws:before:connection', {connection}) || connection.cancelled) {
                 api.triggerHtmxEvent(elt, 'htmx:ws:close', {
                     connection, reason: 'cancelled', code: null
                 });
@@ -367,36 +370,50 @@
         let requestId = crypto.randomUUID();
         headers['HX-Request-ID'] = requestId;
 
-        // Build body from form data
+        // Build outgoing values from form data.
         let form = element.form || element.closest('form');
         let formData = api.collectFormData(element, form, event.submitter);
 
         // Preserve multi-value form fields (checkboxes, multi-selects)
-        let body = {};
+        let values = {};
         for (let [key, value] of formData) {
-            if (key in body) {
-                body[key] = [].concat(body[key], value);
+            if (key in values) {
+                values[key] = [].concat(values[key], value);
             } else {
-                body[key] = value;
+                values[key] = value;
             }
         }
 
         // Merge hx-vals after serialization to preserve JS types (numbers, booleans)
-        let valsResult = api.getAttributeObject(element, 'hx-vals', obj => Object.assign(body, obj));
-        if (valsResult) await valsResult;
+        let hxValsResult = api.getAttributeObject(element, 'hx-vals', obj => Object.assign(values, obj));
+        if (hxValsResult) await hxValsResult;
+        delete values.headers;
 
-        let detail = { headers, body };
-        if (!api.triggerHtmxEvent(element, 'htmx:before:ws:request', detail)) {
-            return;
-        }
+        let pendingWork = [];
+        let message = {
+            headers,
+            values,
+            data: undefined,
+            cancelled: false,
+            waitUntil(promise) {
+                pendingWork.push(Promise.resolve(promise));
+            }
+        };
+        let detail = { message };
+        let shouldSend = api.triggerHtmxEvent(element, 'htmx:ws:before:message:outgoing', detail);
 
         try {
-            connection.socket.send(JSON.stringify(detail));
+            await Promise.all(pendingWork);
+            if (!shouldSend || message.cancelled) return;
+
+            message.data ??= JSON.stringify({ ...message.values, headers: message.headers });
+            connection.socket.send(message.data);
 
             // [Correlation] Store pending request for response matching
             connection.pendingRequests.set(requestId, { element, timestamp: Date.now() });
 
-            api.triggerHtmxEvent(element, 'htmx:after:ws:request', detail);
+            delete message.cancelled;
+            api.triggerHtmxEvent(element, 'htmx:ws:after:message:outgoing', detail);
         } catch (error) {
             api.triggerHtmxEvent(element, 'htmx:ws:error', { url: normalizedUrl, error });
         }
@@ -406,78 +423,110 @@
     // MESSAGE RECEIVING & ROUTING
     // ========================================
     
-    function handleMessage(connection, event) {
+    async function handleMessage(connection, event) {
+        let data = event.data;
+        let textResult;
+        let jsonResult;
+        let arrayBufferResult;
+        let blobResult;
+        let pendingWork = [];
+        let message = {
+            data,
+            type: typeof data === 'string' ? 'text' : 'binary',
+            cancelled: false,
+            waitUntil(promise) {
+                pendingWork.push(Promise.resolve(promise));
+            },
+            text() {
+                return textResult ??= typeof data === 'string'
+                    ? Promise.resolve(data)
+                    : data instanceof Blob
+                        ? data.text()
+                        : Promise.resolve(new TextDecoder().decode(data));
+            },
+            json() {
+                return jsonResult ??= message.text().then(JSON.parse);
+            },
+            arrayBuffer() {
+                return arrayBufferResult ??= data instanceof ArrayBuffer
+                    ? Promise.resolve(data)
+                    : data instanceof Blob
+                        ? data.arrayBuffer()
+                        : Promise.resolve(new TextEncoder().encode(data).buffer);
+            },
+            blob() {
+                return blobResult ??= data instanceof Blob
+                    ? Promise.resolve(data)
+                    : Promise.resolve(new Blob([data]));
+            }
+        };
+
         let json = null;
-        try {
-            json = JSON.parse(event.data);
-        } catch (e) {
-            // Not JSON - will be treated as raw HTML below
+        if (message.type === 'text') {
+            try {
+                json = await message.json();
+            } catch (e) {
+                // Non-JSON text is treated as raw HTML.
+            }
         }
 
         // [Correlation] Cleanup expired pending requests on every message
         cleanupExpiredRequests(connection);
 
-        // [Correlation] Match response to originating element, or fall back to first subscriber
-        let connectionElement = null;
-        let requestId = json?.['HX-Request-ID'] || json?.request_id;
-        if (requestId && connection.pendingRequests.has(requestId)) {
-            connectionElement = connection.pendingRequests.get(requestId).element;
-            connection.pendingRequests.delete(requestId);
-            // If the correlated element has been removed from the DOM, fall back
-            if (!connectionElement.isConnected) {
-                connectionElement = findConnectedElement(connection.url);
-            }
-        } else {
-            connectionElement = findConnectedElement(connection.url);
-        }
+        let requestId = json?.headers?.['HX-Request-ID'];
+        let pending = connection.pendingRequests.get(requestId);
+        if (pending) connection.pendingRequests.delete(requestId);
 
-        if (!connectionElement) {
+        // Route associated incoming messages through their sender.
+        let element = pending?.element;
+        if (!element?.isConnected) element = findConnectedElement(connection.url);
+
+        if (!element) {
             // No element in DOM for this connection — orphan cleanup
             cleanupOrphanedConnection(connection.url, connection);
             return;
         }
 
-        let detail = {
-            message: { text: event.data, json, cancelled: false }
-        };
+        let detail = { message };
+        let shouldProcess = api.triggerHtmxEvent(element, 'htmx:ws:before:message:incoming', detail);
 
-        if (!api.triggerHtmxEvent(connectionElement, 'htmx:before:ws:message', detail) || detail.message.cancelled) {
-            return;
-        }
+        await Promise.all(pendingWork);
+        if (!shouldProcess || message.cancelled) return;
 
         // JSON with 'content' or 'payload' field: swap the HTML
         // Raw (non-JSON) string: swap the entire string as HTML
         // JSON without 'content'/'payload': data-only message, no swap (handle via events)
         let html;
-        if (detail.message.json) {
-            if (detail.message.json.content !== undefined) {
-                html = detail.message.json.content;
-            } else if (detail.message.json.payload !== undefined) {
-                html = detail.message.json.payload; // backwards compat
+        if (json) {
+            if (json.content !== undefined) {
+                html = json.content;
+            } else if (json.payload !== undefined) {
+                html = json.payload; // backwards compat
                 // Warn once per connection (not on every message)
                 if (!connection._payloadWarnFired) {
                     console.warn('htmx: [hx-ws] json.payload is deprecated; use json.content instead');
                     connection._payloadWarnFired = true;
                 }
             }
-        } else {
-            html = detail.message.text;
+        } else if (message.type === 'text') {
+            html = await message.text();
         }
         if (html != null) {
-            let target = detail.message.json?.target || api.attributeValue(connectionElement, 'hx-target');
-            let swap = detail.message.json?.swap || api.attributeValue(connectionElement, 'hx-swap');
+            let target = json?.target || api.attributeValue(element, 'hx-target');
+            let swap = json?.swap || api.attributeValue(element, 'hx-swap') || htmx.config.defaultSwap;
+            let options = {
+                swap,
+                select: json?.select ?? api.attributeValue(element, 'hx-select'),
+                selectOOB: api.attributeValue(element, 'hx-select-oob'),
+                source: element
+            };
+            if (!/(?:^|\s)swapEmpty(?::(?:true|false))?(?=\s|$)/.test(swap)) options.swapEmpty = false;
 
-            htmx.swap({
-                sourceElement: connectionElement,
-                target: target || connectionElement,
-                swap: swap || (target ? htmx.config.defaultSwap : 'none'),
-                text: html,
-                transition: false
-            });
+            htmx.swap(html, target || element, options);
         }
 
         delete detail.message.cancelled;
-        api.triggerHtmxEvent(connectionElement, 'htmx:after:ws:message', detail);
+        api.triggerHtmxEvent(element, 'htmx:ws:after:message:incoming', detail);
     }
     
     // ========================================
@@ -511,7 +560,7 @@
         let specString = api.attributeValue(element, 'hx-trigger');
         if (!specString) {
             specString = element.matches('form') ? 'submit' :
-                         element.matches('input:not([type=button]),select,textarea') ? 'change' :
+                         element.matches('input:not([type=button]):not([type=submit]),select,textarea') ? 'change' :
                          'click';
         }
 
