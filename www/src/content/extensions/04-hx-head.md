@@ -6,7 +6,7 @@ icon: "icon-[mdi--page-layout-header]"
 keywords: ["head", "styles", "scripts", "merge", "append"]
 ---
 
-The `head-support` extension adds support for [head tags](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/head) in responses to htmx requests.
+The `hx-head` extension adds support for [head tags](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/head) in responses to htmx requests.
 
 htmx began as a library focused on partial replacement of HTML within the `body` tag. The [`hx-boost`](/reference/attributes/hx-boost) attribute moved htmx closer to full HTML-document support, and support for extracting the `title` tag was eventually added, but full head tag support has never been a feature of the core library. This extension addresses that.
 
@@ -30,6 +30,8 @@ If the htmx request is from a **boosted element**, then the following merge algo
 - Elements that exist in the current head, but not in the new head will be removed from the head
 
 If the htmx request is from a **non-boosted element**, then all content will be _appended_ to the existing head element.
+
+Stylesheets and blocking scripts are awaited before the body swap. Deferred scripts are appended after the new body exists. With the [`history-cache`](/extensions/hx-history-cache) extension, deferred scripts run after cached form state and scroll positions are restored.
 
 If you wish to override this behavior in either case, you can place the `hx-head` attribute on the new `<head>` tag, with either of the following two values:
 
@@ -78,7 +80,7 @@ Then the following operations will occur:
 
 ## Events
 
-- `htmx:removingHeadElement` - triggered when a head element is about to be removed. The element is available in `event.detail.headElement`. Call `preventDefault()` to keep it.
-- `htmx:addingHeadElement` - triggered when a head element is about to be added. The element is available in `event.detail.headElement`. Call `preventDefault()` to skip it.
-- `htmx:afterHeadMerge` - triggered after a head tag merge has occurred, with `detail.added`, `detail.kept`, and `detail.removed` arrays.
-- `htmx:beforeHeadMerge` - triggered before a head merge occurs.
+- `htmx:before:head:remove` - triggered when a head element is about to be removed. The element is available in `event.detail.headElement`. Call `preventDefault()` to keep it.
+- `htmx:before:head:add` - triggered when a head element is about to be added. The element is available in `event.detail.headElement`. Call `preventDefault()` to skip it.
+- `htmx:after:head:merge` - triggered after a head tag merge has occurred, with `detail.added`, `detail.kept`, and `detail.removed` arrays.
+- `htmx:before:head:merge` - triggered before a head merge occurs.

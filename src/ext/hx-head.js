@@ -1,15 +1,12 @@
 //==========================================================
-// head-support.js
+// hx-head.js
 //
 // An extension to add head tag merging.
 //==========================================================
 (function () {
 
     let api
-
-    function log() {
-        //console.log(arguments)
-    }
+    const deferredHeadScripts = new WeakMap()
 
     // Appends a new head node, returning a promise for render-critical resources
     // (blocking scripts, stylesheets) or null for fire-and-forget resources.
@@ -114,7 +111,6 @@
                 // Push the remaining new head elements in the Map into the
                 // nodes to append to the head tag
                 nodesToAppend.push(...srcToNewHeadNodes.values())
-                log("to append: ", nodesToAppend)
 
                 // defer scripts need the swapped DOM to exist — split them out
                 for (const newNode of nodesToAppend) {
@@ -129,7 +125,6 @@
                             newNode._preloadHint = hint
                         }
                     } else {
-                        log("adding: ", newNode)
                         if (htmx.trigger(document.body, "htmx:before:head:add", {headElement: newNode}) !== false) {
                             await appendNode(newNode)
                             added.push(newNode)
@@ -170,24 +165,28 @@
                 let realText = ctx.response.raw.text.bind(ctx.response.raw)
                 ctx.response.raw.text = async () => {
                     let text = await realText()
-                    ctx._deferredHeadScripts = await mergeHead(text, defaultMergeStrategy)
+                    deferredHeadScripts.set(ctx, await mergeHead(text, defaultMergeStrategy))
                     return text
                 }
             }
         },
         htmx_after_swap: (elt, detail) => {
-            for (const node of detail.ctx._deferredHeadScripts || []) appendNode(node)
+            let deferred = deferredHeadScripts.get(detail.ctx) || []
+            deferredHeadScripts.delete(detail.ctx)
+            for (const node of deferred) appendNode(node)
         },
         htmx_history_cache_before_restore: (elt, detail) => {
             if (detail.head) {
-                // mergeHead awaits stylesheets/blocking scripts, returns deferred scripts.
-                // Set detail.ready so history-cache awaits before swapping body.
-                // Stash deferred scripts on detail — history-cache copies them onto the swap ctx
-                // so htmx_after_swap picks them up.
+                // Wait for blocking resources before restoring the body.
                 detail.ready = mergeHead(detail.head, 'merge').then(deferred => {
-                    detail._deferredHeadScripts = deferred;
+                    deferredHeadScripts.set(detail, deferred)
                 });
             }
+        },
+        htmx_history_cache_after_restore: (elt, detail) => {
+            let deferred = deferredHeadScripts.get(detail) || []
+            deferredHeadScripts.delete(detail)
+            for (const node of deferred) appendNode(node)
         }
     })
 
