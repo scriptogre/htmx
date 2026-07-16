@@ -18,7 +18,7 @@
         let sourceElt = document.querySelector(ctx.optimistic);
         if (!sourceElt) return;
 
-        let target = ctx.target;
+        let target = ctx.swap.target;
 
         if (typeof target === 'string') {
             target = document.querySelector(target);
@@ -49,7 +49,7 @@
             }
         }
 
-        let swapStyle = normalizeSwapStyle(ctx.swap);
+        let swapStyle = normalizeSwapStyle(ctx.swap.style);
         ctx.optHidden = [];
 
         if (swapStyle === 'innerHTML') {

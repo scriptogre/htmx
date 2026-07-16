@@ -163,7 +163,7 @@
         },
         htmx_before_response: (elt, detail) => {
             let ctx = detail.ctx
-            let target = ctx.target
+            let target = ctx.swap.target
             // TODO - is there a better way to handle this?  it used to be based on if the element was boosted
             let defaultMergeStrategy = target === document.body ? "merge" : "append";
             if (htmx.trigger(document.body, "htmx:before:head:merge", detail)) {
