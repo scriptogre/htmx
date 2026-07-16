@@ -52,11 +52,11 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('message 1');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'message 1');
 
         stream.send('message 2');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'message 2');
 
         stream.close();
@@ -72,7 +72,7 @@ describe('hx-sse SSE extension', function() {
         find('button').click();
         await htmx.timeout(1);
         stream.send('message');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assert.equal(messageSwap.content, 'message');
         assert.equal(messageSwap.target.id, 'target');
@@ -88,7 +88,7 @@ describe('hx-sse SSE extension', function() {
 
         let reconnectAttempts = 0;
 
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) {
                 reconnectAttempts++;
             }
@@ -98,16 +98,16 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('first');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'first');
 
         stream.close();
-        await waitForEvent('htmx:after:sse:connection');
+        await waitForEvent('htmx:sse:after:connection');
 
         assert.equal(reconnectAttempts, 1, 'Should attempt to reconnect');
 
         stream.send('second');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'second');
 
         stream.close();
@@ -119,7 +119,7 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/with-id" hx-config="sse.reconnect:true sse.reconnectDelay:50ms sse.reconnectMaxAttempts:2" hx-swap="innerHTML">Connect</button>');
 
         let lastEventIdSent = null;
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) {
                 lastEventIdSent = e.detail.connection.lastEventId;
             }
@@ -129,13 +129,13 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('first message', null, 'msg-123');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'first message');
 
         await new Promise(r => setTimeout(r, 50));
 
         stream.close();
-        await waitForEvent('htmx:after:sse:connection', 5000);
+        await waitForEvent('htmx:sse:after:connection', 5000);
 
         assert.equal(lastEventIdSent, 'msg-123', 'Should send last event ID on reconnect');
 
@@ -153,20 +153,20 @@ describe('hx-sse SSE extension', function() {
         let beforeMessageFired = false;
         let afterMessageFired = false;
 
-        onDoc('htmx:before:sse:connection', () => { beforeConnectFired = true; });
-        onDoc('htmx:before:sse:message', () => { beforeMessageFired = true; });
-        onDoc('htmx:after:sse:message', () => { afterMessageFired = true; });
+        onDoc('htmx:sse:before:connection', () => { beforeConnectFired = true; });
+        onDoc('htmx:sse:before:message', () => { beforeMessageFired = true; });
+        onDoc('htmx:sse:after:message', () => { afterMessageFired = true; });
 
         find('button').click();
         await htmx.timeout(1);
 
-        assert.isTrue(beforeConnectFired, 'before:sse:connect should fire');
+        assert.isTrue(beforeConnectFired, 'sse:before:connection should fire');
 
         stream.send('test');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
-        assert.isTrue(beforeMessageFired, 'before:sse:message should fire');
-        assert.isTrue(afterMessageFired, 'after:sse:message should fire');
+        assert.isTrue(beforeMessageFired, 'sse:before:message should fire');
+        assert.isTrue(afterMessageFired, 'sse:after:message should fire');
         assertTextContentIs('button', 'test');
 
         stream.close();
@@ -180,7 +180,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('message 1');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'message 1');
 
         let closeFired = false;
@@ -196,7 +196,7 @@ describe('hx-sse SSE extension', function() {
 
         // Verify no further messages are processed
         let messageAfterRemoval = false;
-        onDoc('htmx:after:sse:message', () => { messageAfterRemoval = true; });
+        onDoc('htmx:sse:after:message', () => { messageAfterRemoval = true; });
         stream.send('message 2');
         await htmx.timeout(50);
 
@@ -222,7 +222,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('SSE response');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('#sse', 'SSE response');
         stream.close();
@@ -237,7 +237,7 @@ describe('hx-sse SSE extension', function() {
 
         // Send HTML with id field (no event field, so it swaps)
         stream.send('<div id="msg1">message with id</div>', null, '42');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('#msg1', 'message with id');
         stream.close();
@@ -263,12 +263,12 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/max-attempts" hx-config="sse.reconnect:true sse.reconnectDelay:20ms sse.reconnectMaxAttempts:2" hx-swap="innerHTML">Connect</button>');
 
         let reconnectAttempts = 0;
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) reconnectAttempts++;
         });
 
         find('button').click();
-        await waitForEvent('htmx:before:sse:connection');
+        await waitForEvent('htmx:sse:before:connection');
 
         await new Promise(r => setTimeout(r, 150));
 
@@ -296,12 +296,12 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/max-delay" hx-config="sse.reconnect:true sse.reconnectDelay:20ms sse.reconnectMaxDelay:60ms sse.reconnectJitter:0" hx-swap="innerHTML">Connect</button>');
 
         let reconnectAttempts = [];
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) reconnectAttempts.push(e.detail.connection.attempt);
         });
 
         find('button').click();
-        await waitForEvent('htmx:before:sse:connection');
+        await waitForEvent('htmx:sse:before:connection');
 
         await new Promise(r => setTimeout(r, 350));
 
@@ -329,12 +329,12 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/jitter-test" hx-config="sse.reconnect:true, sse.reconnectDelay:100ms, sse.reconnectJitter:0.5, sse.reconnectMaxAttempts: 5" hx-swap="innerHTML">Connect</button>');
 
         let reconnectAttempts = [];
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) reconnectAttempts.push(e.detail.connection.attempt);
         });
 
         find('button').click();
-        await waitForEvent('htmx:before:sse:connection');
+        await waitForEvent('htmx:sse:before:connection');
 
         // Wait for multiple reconnects
         await new Promise(r => setTimeout(r, 800));
@@ -363,12 +363,12 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/no-jitter" hx-config="sse.reconnect:true, sse.reconnectDelay:100ms, sse.reconnectJitter:0, sse.reconnectMaxAttempts:3" hx-swap="innerHTML">Connect</button>');
 
         let reconnectAttempts = [];
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) reconnectAttempts.push(e.detail.connection.attempt);
         });
 
         find('button').click();
-        await waitForEvent('htmx:before:sse:connection');
+        await waitForEvent('htmx:sse:before:connection');
 
         await new Promise(r => setTimeout(r, 450));
 
@@ -381,14 +381,14 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/pause-test" hx-config="sse.reconnect:true sse.pauseOnBackground:true sse.reconnectDelay:50ms sse.reconnectJitter:0" hx-swap="innerHTML">Connect</button>');
 
         let connectionAttempts = 0;
-        onDoc('htmx:before:sse:connection', () => { connectionAttempts++; });
+        onDoc('htmx:sse:before:connection', () => { connectionAttempts++; });
 
         find('button').click();
-        await waitForEvent('htmx:after:sse:connection');
+        await waitForEvent('htmx:sse:after:connection');
         assert.equal(connectionAttempts, 1, 'Initial connection');
 
         stream.send('hello');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'hello');
 
         // Simulate tab going hidden
@@ -404,11 +404,11 @@ describe('hx-sse SSE extension', function() {
         Object.defineProperty(document, 'hidden', {value: false, configurable: true});
         document.dispatchEvent(new Event('visibilitychange'));
 
-        await waitForEvent('htmx:after:sse:connection', 3000);
+        await waitForEvent('htmx:sse:after:connection', 3000);
         assert.equal(connectionAttempts, 2, 'Should reconnect when tab becomes visible');
 
         stream.send('world');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'world');
 
         stream.close();
@@ -420,17 +420,17 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/pause-counter" hx-config="sse.reconnect:true sse.pauseOnBackground:true sse.reconnectDelay:50ms sse.reconnectJitter:0" hx-swap="innerHTML">Connect</button>');
 
         let attempts = [];
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) {
                 attempts.push(e.detail.connection.attempt);
             }
         });
 
         find('button').click();
-        await waitForEvent('htmx:after:sse:connection');
+        await waitForEvent('htmx:sse:after:connection');
 
         stream.send('msg1');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         // First pause/resume cycle
         Object.defineProperty(document, 'hidden', {value: true, configurable: true});
@@ -438,10 +438,10 @@ describe('hx-sse SSE extension', function() {
         await new Promise(r => setTimeout(r, 50));
         Object.defineProperty(document, 'hidden', {value: false, configurable: true});
         document.dispatchEvent(new Event('visibilitychange'));
-        await waitForEvent('htmx:after:sse:connection', 3000);
+        await waitForEvent('htmx:sse:after:connection', 3000);
 
         stream.send('msg2');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         // Second pause/resume cycle
         Object.defineProperty(document, 'hidden', {value: true, configurable: true});
@@ -449,7 +449,7 @@ describe('hx-sse SSE extension', function() {
         await new Promise(r => setTimeout(r, 50));
         Object.defineProperty(document, 'hidden', {value: false, configurable: true});
         document.dispatchEvent(new Event('visibilitychange'));
-        await waitForEvent('htmx:after:sse:connection', 3000);
+        await waitForEvent('htmx:sse:after:connection', 3000);
 
         // Both attempts should be 1 (not escalating across pause cycles)
         assert.equal(attempts.length, 2, 'Should have 2 reconnections');
@@ -520,12 +520,12 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('50%', 'progress');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assert.equal(find('button').getAttribute('data-progress'), '50%', 'hx-on should handle custom event');
 
         stream.send('100%', 'progress');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assert.equal(find('button').getAttribute('data-progress'), '100%', 'hx-on should handle multiple custom events');
 
@@ -547,13 +547,13 @@ describe('hx-sse SSE extension', function() {
 
         // Send a custom event (should NOT swap)
         stream.send('processing', 'status');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assert.isTrue(statusEventFired, 'Custom event should fire');
         assertTextContentIs('button', 'Connect', 'Content should NOT be swapped for custom events');
 
         // Send HTML content (no event field, so it swaps normally)
         stream.send('<div>Result</div>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'Result');
 
         stream.close();
@@ -576,7 +576,7 @@ describe('hx-sse SSE extension', function() {
 
         // Send event - should trigger event but NOT swap
         stream.send('notification data', 'notify');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assert.isTrue(notifyFired, 'Custom event should fire');
         assert.equal(notifyData, 'notification data', 'Event should have data');
@@ -593,11 +593,11 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('   \ttext-with-two-leading-spaces');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('#ws-btn', '   \ttext-with-two-leading-spaces');
 
         stream.send('NoTrim');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('#ws-btn', 'NoTrim');
 
         stream.close();
@@ -610,7 +610,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('connected!');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('div', 'connected!');
 
         stream.close();
@@ -623,16 +623,16 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('first');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('div', 'first');
 
         let reconnectFired = false;
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) reconnectFired = true;
         });
 
         stream.close();
-        await waitForEvent('htmx:after:sse:connection');
+        await waitForEvent('htmx:sse:after:connection');
 
         assert.isTrue(reconnectFired, 'connect should reconnect by default');
     });
@@ -651,7 +651,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(150);
 
         stream.send('delayed!');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('div', 'delayed!');
 
         stream.close();
@@ -669,7 +669,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('clicked!');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'clicked!');
 
         stream.close();
@@ -706,7 +706,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('targeted!');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('#output', 'targeted!');
 
         stream.close();
@@ -719,7 +719,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('<p>Ignored</p><p class="message">Selected</p>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('div', 'Selected');
         assert.isUndefined(find('div > p:not(.message)'));
@@ -734,7 +734,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('<p>Message</p><div id="status">Online</div>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('#stream', 'Message');
         assertTextContentIs('#status', 'Online');
@@ -749,9 +749,9 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('<span>1</span>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         stream.send('<span>2</span>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('div', 'start12');
 
@@ -766,7 +766,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('payload', 'update');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         await htmx.timeout(50);
 
         // Event dispatches on parent, bubbles UP — child doesn't see it
@@ -783,7 +783,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('payload', 'update');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         await forRequest();
 
         assertTextContentIs('#child', 'Updated!');
@@ -871,11 +871,11 @@ describe('hx-sse SSE extension', function() {
         assert.equal(errorStatus, 500, 'Error detail should include status code');
     });
 
-    it('htmx:before:sse:message cancellation prevents swap', async function() {
+    it('htmx:sse:before:message cancellation prevents swap', async function() {
         const stream = mockStreamResponse('/cancel-msg');
         createProcessedHTML('<button hx-get="/cancel-msg" hx-swap="innerHTML">Original</button>');
 
-        onDoc('htmx:before:sse:message', (e) => {
+        onDoc('htmx:sse:before:message', (e) => {
             if (e.detail.message.data === 'skip me') {
                 e.detail.message.cancelled = true;
             }
@@ -889,17 +889,17 @@ describe('hx-sse SSE extension', function() {
         assertTextContentIs('button', 'Original', 'Cancelled message should not swap');
 
         stream.send('keep me');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'keep me', 'Non-cancelled message should swap');
 
         stream.close();
     });
 
-    it('htmx:before:sse:message cancellation via preventDefault', async function() {
+    it('htmx:sse:before:message cancellation via preventDefault', async function() {
         const stream = mockStreamResponse('/cancel-prevent');
         createProcessedHTML('<button hx-get="/cancel-prevent" hx-swap="innerHTML">Original</button>');
 
-        onDoc('htmx:before:sse:message', (e) => {
+        onDoc('htmx:sse:before:message', (e) => {
             if (e.detail.message.data === 'blocked') {
                 e.preventDefault();
             }
@@ -913,7 +913,7 @@ describe('hx-sse SSE extension', function() {
         assertTextContentIs('button', 'Original', 'preventDefault should skip message');
 
         stream.send('allowed');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('button', 'allowed');
 
         stream.close();
@@ -926,7 +926,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('message 1');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('div', 'message 1');
 
         let closeFired = false;
@@ -945,7 +945,7 @@ describe('hx-sse SSE extension', function() {
 
         // Verify no reconnection occurs
         let reconnectFired = false;
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) reconnectFired = true;
         });
 
@@ -964,13 +964,13 @@ describe('hx-sse SSE extension', function() {
 
         // Send a different named event — should NOT close
         stream.send('status update', 'status');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assert.isFalse(closeFired, 'Should NOT close on non-matching event');
 
         // Regular messages should still swap
         stream.send('content');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('div', 'content');
 
         stream.close();
@@ -1040,13 +1040,13 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/notifications" hx-target="#output" hx-config="sse.reconnect:true sse.pauseOnBackground:true sse.reconnectDelay:50ms sse.reconnectJitter:0" hx-swap="beforeend">Connect</button><div id="output"></div>');
 
         find('button').click();
-        await waitForEvent('htmx:after:sse:connection');
+        await waitForEvent('htmx:sse:after:connection');
 
         // Server sends first 2 notifications
         controllers[0].enqueue(enc.encode('id: n-1\ndata: <p>Notification 1</p>\n\n'));
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         controllers[0].enqueue(enc.encode('id: n-2\ndata: <p>Notification 2</p>\n\n'));
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assert.include(find('#output').innerHTML, 'Notification 1');
         assert.include(find('#output').innerHTML, 'Notification 2');
@@ -1059,14 +1059,14 @@ describe('hx-sse SSE extension', function() {
         // Tab comes back — extension reconnects with Last-Event-ID: n-2
         Object.defineProperty(document, 'hidden', {value: false, configurable: true});
         document.dispatchEvent(new Event('visibilitychange'));
-        await waitForEvent('htmx:after:sse:connection', 3000);
+        await waitForEvent('htmx:sse:after:connection', 3000);
 
         // Verify Last-Event-ID header was sent
         const reconnectCall = fetchMock.getCalls()[fetchMock.getCalls().length - 1];
         assert.equal(reconnectCall.request.headers['Last-Event-ID'], 'n-2', 'Should send Last-Event-ID of last received message');
 
         // Server replayed n-3 on reconnect — verify it was swapped in
-        await waitForEvent('htmx:after:sse:message', 1000);
+        await waitForEvent('htmx:sse:after:message', 1000);
         assert.include(find('#output').innerHTML, 'Notification 3', 'Missed notification should be replayed on reconnect');
 
         controllers[controllers.length - 1].close();
@@ -1078,7 +1078,7 @@ describe('hx-sse SSE extension', function() {
         createProcessedHTML('<button hx-get="/retry-test" hx-config="sse.reconnect:true sse.reconnectDelay:50ms sse.reconnectMaxAttempts:2 sse.reconnectJitter:0" hx-swap="innerHTML">Go</button>');
 
         let reconnected = false;
-        onDoc('htmx:before:sse:connection', (e) => {
+        onDoc('htmx:sse:before:connection', (e) => {
             if (e.detail.connection.attempt > 0) reconnected = true;
         });
 
@@ -1087,10 +1087,10 @@ describe('hx-sse SSE extension', function() {
 
         // Send a message with retry field set to 200ms
         stream.sendRaw('retry: 200\ndata: hello\n\n');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         stream.close();
-        await waitForEvent('htmx:after:sse:connection', 5000);
+        await waitForEvent('htmx:sse:after:connection', 5000);
 
         // Server retry field should be respected (reconnection happens)
         assert.isTrue(reconnected, 'Should reconnect using server-provided retry delay');
@@ -1117,7 +1117,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('<div id="oob" hx-swap-oob="true">Updated</div>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('#target', 'Original');
         assertTextContentIs('#oob', 'Updated');
@@ -1132,7 +1132,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('<div id="oob" hx-swap-oob="true">Updated</div>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('#target', '');
         assertTextContentIs('#oob', 'Updated');
@@ -1147,7 +1147,7 @@ describe('hx-sse SSE extension', function() {
         await htmx.timeout(1);
 
         stream.send('<div>New Content</div><div id="oob" hx-swap-oob="true">Updated</div>');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
 
         assertTextContentIs('#oob', 'Updated');
         find('#target').innerText.trim().should.equal('New Content');
@@ -1168,7 +1168,7 @@ describe('hx-sse SSE extension', function() {
         console.warn = originalWarn;
 
         stream.send('legacy works');
-        await waitForEvent('htmx:after:sse:message');
+        await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('div', 'legacy works');
 
         assert.isTrue(warnCalled, 'Should emit deprecation warning');
