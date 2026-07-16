@@ -113,11 +113,10 @@ export interface HtmxConfig {
    * Whether an empty response body performs the main swap.
    * - `true` — swap (clears target)
    * - `false` — skip swap
-   * - `undefined` — swap unless response contained only `<hx-partial>` elements
    * Overridable per element via the `swapEmpty` modifier on `hx-swap`.
-   * @default undefined
+   * @default true
    */
-  defaultSwapEmpty?: boolean;
+  defaultSwapEmpty: boolean;
 }
 
 export interface HtmxSwapFields {
