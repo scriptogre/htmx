@@ -50,11 +50,11 @@ Replaces entire element.
 
 Replaces the text content of the element, without parsing the response as HTML.
 
+Useful when the response is plain text and you want to avoid any HTML injection.
+
 ```html
 <span hx-get="..." hx-swap="textContent">0</span>
 ```
-
-Useful for plain text responses without HTML injection.
 
 ### `beforebegin` / `before`
 
