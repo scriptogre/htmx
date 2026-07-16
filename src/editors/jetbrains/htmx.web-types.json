@@ -271,12 +271,12 @@
         {
           "name": "hx-ws:connect",
           "description": "Establishes a WebSocket connection to the specified URL. Requires the WebSocket extension.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#usage"
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#hx-wsconnect"
         },
         {
           "name": "hx-ws:send",
           "description": "Sends form data and `hx-vals` to a WebSocket when the element is triggered. Requires the WebSocket extension.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#sending-messages"
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#hx-wssend"
         },
         {
           "name": "hx-head",
@@ -536,12 +536,12 @@
           "doc-url": "https://four.htmx.org/reference/events/htmx-after-viewTransition"
         },
         {
-          "name": "before:sse:connection",
+          "name": "sse:before:connection",
           "description": "Fires before an SSE connection attempt. `detail.connection` can be modified; set `cancelled` or cancel the event to stop connecting.",
           "doc-url": "https://four.htmx.org/extensions/hx-sse#connection-lifecycle"
         },
         {
-          "name": "after:sse:connection",
+          "name": "sse:after:connection",
           "description": "Fires after a successful SSE connection or reconnection. `detail.connection` describes the connection.",
           "doc-url": "https://four.htmx.org/extensions/hx-sse#connection-lifecycle"
         },
@@ -556,54 +556,54 @@
           "doc-url": "https://four.htmx.org/extensions/hx-sse#connection-lifecycle"
         },
         {
-          "name": "before:sse:message",
+          "name": "sse:before:message",
           "description": "Fires before an SSE message is processed. `detail.message` contains `data`, `event`, `id`, and `cancelled`.",
           "doc-url": "https://four.htmx.org/extensions/hx-sse#message-events"
         },
         {
-          "name": "after:sse:message",
+          "name": "sse:after:message",
           "description": "Fires after an SSE message is processed. `detail.message` contains `data`, `event`, and `id`.",
           "doc-url": "https://four.htmx.org/extensions/hx-sse#message-events"
         },
         {
-          "name": "before:ws:connection",
+          "name": "ws:before:connection",
           "description": "Fires before a WebSocket connection attempt. `detail.connection` can be modified; set `cancelled` or cancel the event to stop connecting.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsbeforeconnection"
         },
         {
-          "name": "after:ws:connection",
+          "name": "ws:after:connection",
           "description": "Fires after a successful WebSocket connection. `detail.connection` describes the connection.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsafterconnection"
         },
         {
           "name": "ws:close",
           "description": "Fires when a WebSocket connection closes. `detail.connection`, `detail.reason`, and `detail.code` describe the close.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsclose"
         },
         {
           "name": "ws:error",
           "description": "Fires on WebSocket connection or send errors. `detail.url` and `detail.error` describe the failure.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwserror"
         },
         {
-          "name": "before:ws:request",
-          "description": "Fires before sending a WebSocket message. `detail.headers` and `detail.body` are modifiable. Cancel to skip sending.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#request-events"
+          "name": "ws:before:message:outgoing",
+          "description": "Fires before sending a WebSocket message. Modify `detail.message.headers` and `detail.message.values`, or replace the native payload through `detail.message.data`. `waitUntil()` delays sending.",
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsbeforemessageoutgoing"
         },
         {
-          "name": "after:ws:request",
-          "description": "Fires after a WebSocket message is sent. `detail.headers` and `detail.body` contain the sent payload.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#request-events"
+          "name": "ws:after:message:outgoing",
+          "description": "Fires after a WebSocket message is sent. `detail.message.data` is the value passed to `WebSocket.send()`.",
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsaftermessageoutgoing"
         },
         {
-          "name": "before:ws:message",
-          "description": "Fires before a WebSocket message is processed. `detail.message.text`, `detail.message.json`, and `detail.message.cancelled` are available.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#message-events"
+          "name": "ws:before:message:incoming",
+          "description": "Fires before an incoming WebSocket message is processed. `detail.message.data` preserves the native data; conversion methods decode it and `waitUntil()` delays processing. Associated messages fire from their sending element.",
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsbeforemessageincoming"
         },
         {
-          "name": "after:ws:message",
-          "description": "Fires after a WebSocket message is processed. `detail.message.text` and `detail.message.json` are available.",
-          "doc-url": "https://four.htmx.org/extensions/hx-ws#message-events"
+          "name": "ws:after:message:incoming",
+          "description": "Fires after an incoming WebSocket message is processed. `detail.message.data` preserves the native data; `text()`, `json()`, `blob()`, and `arrayBuffer()` convert it. Associated messages fire from their sending element.",
+          "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsaftermessageincoming"
         },
         {
           "name": "download:start",
@@ -621,22 +621,22 @@
           "doc-url": "https://four.htmx.org/extensions/hx-download#events"
         },
         {
-          "name": "before:head:merge",
+          "name": "head:before:merge",
           "description": "Fires before the hx-head extension processes response `<head>` content. `detail.ctx` is the request context.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
         {
-          "name": "before:head:add",
+          "name": "head:before:add",
           "description": "Fires before the hx-head extension adds a new head element. `detail.headElement` is the element. Cancel to skip it.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
         {
-          "name": "before:head:remove",
+          "name": "head:before:remove",
           "description": "Fires before the hx-head extension removes a head element. `detail.headElement` is the element. Cancel to keep it.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
         {
-          "name": "after:head:merge",
+          "name": "head:after:merge",
           "description": "Fires after the hx-head extension merges head content. `detail.added`, `detail.kept`, and `detail.removed` list affected elements.",
           "doc-url": "https://four.htmx.org/extensions/hx-head#events"
         },
