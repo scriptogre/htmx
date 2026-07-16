@@ -1304,7 +1304,9 @@ var htmx = (() => {
         //============================================================================================
 
         async swap(content, target, options = {}) {
-            let {source, ...swapOptions} = options;
+            if (typeof options === 'string') options = {swap: options};
+
+            let {source, swap, ...flatSwapOptions} = options;
             let sourceElement = typeof source === 'string' ? document.querySelector(source) : source;
             if (typeof source === 'string' && !sourceElement) {
                 throw new Error('Source not found');
@@ -1319,14 +1321,18 @@ var htmx = (() => {
             return this.__handleSwap({
                 sourceElement,
                 swap: {
-                    content,
-                    target: targetElement,
+                    content: undefined,
+                    target: undefined,
                     style: undefined,
                     select: undefined,
                     selectOOB: undefined,
                     transition: this.config.transitions,
                     ...this.__parseSwapSpec(this.config.defaultSwap),
-                    ...swapOptions
+                    ...this.__parseSwapSpec(swap),
+                    ...flatSwapOptions,
+                    // positional arguments win
+                    content,
+                    target: targetElement
                 }
             });
         }

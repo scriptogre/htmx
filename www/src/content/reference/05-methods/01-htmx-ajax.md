@@ -1,53 +1,250 @@
 ---
 title: "htmx.ajax()"
-description: "Issues an htmx-style ajax request"
+description: "Issues an htmx request"
 ---
 
-The `htmx.ajax()` function issues an AJAX request with htmx semantics. It returns a `Promise` that resolves after the response content has been inserted into the DOM, allowing you to chain callbacks.
+The `htmx.ajax()` function runs the request, response, action, and swap lifecycle.
 
 ## Syntax
 
 ```javascript
-htmx.ajax(method, url, element)   // swap target is a DOM element
-htmx.ajax(method, url, selector)  // swap target is a CSS selector string
-htmx.ajax(method, url, context)   // full context object
+htmx.ajax(method, url)
+htmx.ajax(method, url, target)
+htmx.ajax(method, url, options)
+```
+
+```javascript
+// Target selector
+await htmx.ajax('GET', '/messages', '#messages')
+
+// Target element
+await htmx.ajax(
+  'GET',
+  '/messages',
+  document.querySelector('#messages')
+)
+
+// Options
+await htmx.ajax(
+  'POST',
+  '/messages',
+  {
+    target: '#messages',
+    swap: 'beforeend',
+    values: {
+      body: 'Hello'
+    }
+  }
+)
 ```
 
 ## Parameters
 
-- `method` - HTTP method (GET, POST, PUT, PATCH, DELETE)
-- `url` - URL to request
-- `element` - A DOM element to use as the swap target
-- `selector` - A CSS selector string identifying the swap target
-- `context` - A configuration object with the following fields:
-  - `source` - the source element of the request
-  - `event` - an event that triggered the request
-  - `handler` - a callback that will handle the response HTML
-  - `target` - the target to swap the response into
-  - `swap` - how the response will be swapped in relative to the target
-  - `values` - values to submit with the request
-  - `headers` - headers to submit with the request
-  - `select` - allows you to select the content you want swapped from a response
-  - `selectOOB` - allows you to select content for out-of-band swaps from a response
+### `method`
+
+The HTTP method.
+
+```javascript
+await htmx.ajax('GET', '/messages')
+await htmx.ajax('POST', '/messages')
+await htmx.ajax('DELETE', '/messages/42')
+await htmx.ajax('QUERY', '/messages/search')
+```
+
+### `url`
+
+The request URL.
+
+```javascript
+await htmx.ajax('GET', '/messages?limit=10')
+```
+
+### `target`
+
+Pass an element or selector as the third argument.
+
+```javascript
+await htmx.ajax('GET', '/messages', '#messages')
+
+await htmx.ajax(
+  'GET',
+  '/messages',
+  document.querySelector('#messages')
+)
+```
+
+### `options`
+
+Use an object to configure the request and swap.
+
+```javascript
+await htmx.ajax(
+  'POST',
+  '/messages',
+  {
+    source: '#new-message',
+    target: '#messages',
+    swap: 'beforeend',
+    headers: {
+      'X-Requested-By': 'compose-form'
+    },
+    values: {
+      body: 'Hello'
+    }
+  }
+)
+```
+
+## Swap
+
+Pass `swap` as an [`hx-swap`](/reference/attributes/hx-swap) specification.
+
+```javascript
+await htmx.ajax(
+  'GET',
+  '/messages',
+  {
+    target: '#messages',
+    swap: 'innerHTML transition:true'
+  }
+)
+```
+
+Or pass canonical swap fields.
+
+```javascript
+await htmx.ajax(
+  'GET',
+  '/messages',
+  {
+    target: '#messages',
+    swap: {
+      style: 'innerHTML',
+      transition: true
+    }
+  }
+)
+```
+
+Supported fields include:
+
+- `style`
+- [`select`](/reference/attributes/hx-select)
+- [`selectOOB`](/reference/attributes/hx-select-oob)
+- `transition`
+- `swapDelay`
+- `settleDelay`
+- Other [`hx-swap` modifiers](/reference/attributes/hx-swap)
+
+## Source
+
+Pass `source` as an element or selector.
+
+```javascript
+let form = document.querySelector('#new-message')
+
+await htmx.ajax(
+  'POST',
+  '/messages',
+  {
+    source: form,
+    target: '#messages',
+    swap: 'beforeend'
+  }
+)
+```
+
+The source provides inherited attributes, form values, relative selector context, and the element used for lifecycle events.
+
+## Values
+
+Pass request values with `values`.
+
+```javascript
+await htmx.ajax(
+  'POST',
+  '/messages',
+  {
+    values: {
+      body: 'Hello',
+      draft: false
+    }
+  }
+)
+```
+
+Source form values are collected automatically.
+
+```javascript
+await htmx.ajax(
+  'POST',
+  '/messages',
+  {
+    source: '#new-message'
+  }
+)
+```
+
+Explicit values override collected form values.
+
+```javascript
+await htmx.ajax(
+  'POST',
+  '/messages',
+  {
+    source: '#new-message',
+    values: {
+      draft: false
+    }
+  }
+)
+```
+
+## Headers
+
+Pass request headers with `headers`.
+
+```javascript
+await htmx.ajax(
+  'GET',
+  '/messages',
+  {
+    headers: {
+      'X-Request-Source': 'inbox'
+    }
+  }
+)
+```
+
+## Event
+
+Pass the triggering event when calling `htmx.ajax()` from an event handler.
+
+```javascript
+button.addEventListener('click', event => {
+  htmx.ajax(
+    'POST',
+    '/messages',
+    {
+      source: button,
+      event
+    }
+  )
+})
+```
 
 ## Return Value
 
-Returns a `Promise` that resolves after the content has been inserted into the DOM.
-
-## Examples
+Returns a `Promise` that resolves after the request lifecycle finishes.
 
 ```javascript
-// Swap target as a CSS selector
-htmx.ajax('GET', '/example', '#result')
-
-// Full context object
-htmx.ajax('GET', '/example', {
-  target: '#result',
-  swap: 'innerHTML'
-})
-
-// Promise-based callback after insertion
-htmx.ajax('GET', '/example', '#result').then(() => {
-  console.log('Content inserted successfully!');
-})
+await htmx.ajax('GET', '/messages', '#messages')
+console.log('Request complete')
 ```
+
+## See Also
+
+- [`htmx.swap()`](/reference/methods/htmx-swap)
+- [`hx-swap`](/reference/attributes/hx-swap)
+- [`hx-target`](/reference/attributes/hx-target)
+- [`hx-select`](/reference/attributes/hx-select)
