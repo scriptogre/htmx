@@ -538,32 +538,32 @@
         {
           "name": "sse:before:connection",
           "description": "Fires before an SSE connection attempt. `detail.connection` can be modified; set `cancelled` or cancel the event to stop connecting.",
-          "doc-url": "https://four.htmx.org/extensions/hx-sse#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-sse#htmxssebeforeconnection"
         },
         {
           "name": "sse:after:connection",
           "description": "Fires after a successful SSE connection or reconnection. `detail.connection` describes the connection.",
-          "doc-url": "https://four.htmx.org/extensions/hx-sse#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-sse#htmxsseafterconnection"
         },
         {
           "name": "sse:close",
           "description": "Fires when an SSE connection closes. `detail.connection` and `detail.reason` describe the close.",
-          "doc-url": "https://four.htmx.org/extensions/hx-sse#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-sse#htmxsseclose"
         },
         {
           "name": "sse:error",
           "description": "Fires when an SSE stream error occurs. `detail.error`, `detail.url`, and sometimes `detail.status` describe the failure.",
-          "doc-url": "https://four.htmx.org/extensions/hx-sse#connection-lifecycle"
+          "doc-url": "https://four.htmx.org/extensions/hx-sse#htmxsseerror"
         },
         {
           "name": "sse:before:message",
           "description": "Fires before an SSE message is processed. `detail.message` contains `data`, `event`, `id`, and `cancelled`.",
-          "doc-url": "https://four.htmx.org/extensions/hx-sse#message-events"
+          "doc-url": "https://four.htmx.org/extensions/hx-sse#htmxssebeforemessage"
         },
         {
           "name": "sse:after:message",
           "description": "Fires after an SSE message is processed. `detail.message` contains `data`, `event`, and `id`.",
-          "doc-url": "https://four.htmx.org/extensions/hx-sse#message-events"
+          "doc-url": "https://four.htmx.org/extensions/hx-sse#htmxsseaftermessage"
         },
         {
           "name": "ws:before:connection",
