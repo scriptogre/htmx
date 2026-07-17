@@ -95,7 +95,7 @@ Hook names use underscores (not colons). All hooks receive `(elt, detail)` unles
 | `htmx_after_response` | `htmx:after:response` | After body consumption, before response processing |
 | `htmx_response_error` | `htmx:response:error` | On HTTP status 400 or higher |
 | `htmx_error` | `htmx:error` | On an exception |
-| `htmx_done` | `htmx:done` | When the request → response → swap pipeline ends |
+| `htmx_done` | `htmx:done` | When an issuing pipeline completes, fails, or is cancelled |
 
 ### Swap
 
@@ -156,17 +156,28 @@ let api;
 init: (internalAPI) => { api = internalAPI; },
 ```
 
-**Available methods:**
+**Available API:**
 
-| Method | Description |
-|--------|-------------|
-| `api.attributeValue(elt, name, defaultVal, returnElt)` | Get attribute value with inheritance support |
-| `api.parseTriggerSpecs(spec)` | Parse trigger spec string into array of spec objects |
+<!-- check_extension_api:start -->
+| Property | Description |
+|----------|-------------|
+| `api.HCON` | Parse and merge HCON values |
+| `api.attributeValue(elt, name, defaultVal, returnElt)` | Get an attribute value with inheritance support |
+| `api.parseTriggerSpecs(spec)` | Parse a trigger specification |
 | `api.determineMethodAndAction(elt, evt)` | Get `{method, action}` for an element |
-| `api.createRequestContext(elt, evt)` | Create a full request context object |
-| `api.resolveTarget(elt, target)` | Resolve a target selector or element from its source element |
-| `api.collectFormData(elt, form, submitter)` | Collect form data as FormData |
-| `api.handleHxVals(elt, body)` | Process `hx-vals` attribute into body |
+| `api.createRequestContext(elt, evt, overrides)` | Create a request context |
+| `api.resolveTarget(elt, target)` | Resolve a target from its source element |
+| `api.collectFormData(elt, form, submitter, validate, isGet)` | Collect form data |
+| `api.getAttributeObject(elt, name, callback, scope)` | Read an object-valued attribute |
+| `api.insertContent(task, cssTransition)` | Insert a swap task's content |
+| `api.morph(oldNode, fragment, innerHTML)` | Morph existing content |
+| `api.isSoftMatch(oldNode, newNode)` | Test whether two nodes can be morphed |
+| `api.initSecurity(ttPolicy, syncFn, asyncFn)` | Configure Trusted Types and script constructors |
+| `api.onTrigger(elt, spec, handler)` | Attach a parsed trigger handler |
+| `api.htmxProp(elt)` | Get an element's internal htmx state |
+| `api.triggerHtmxEvent(elt, name, detail, bubbles)` | Dispatch an htmx event |
+| `api.executeJavaScript(thisArg, values, code, expression, isAsync)` | Execute JavaScript through htmx security policy |
+<!-- check_extension_api:end -->
 
 ## Request Context (`detail.ctx`)
 
@@ -194,7 +205,7 @@ The context object available via `detail.ctx` in hook callbacks:
         action,         // Request URL
         method,         // HTTP method (GET, POST, etc.)
         headers,        // Request headers object
-        body,           // Request body (FormData)
+        body,           // FormData during htmx_config_request; final BodyInit later
         validate,       // Whether to validate form
         abort,          // Function to abort request
         signal,         // AbortSignal
@@ -331,7 +342,7 @@ Key patterns:
 | `onEvent(name, evt)` | Specific hooks (`htmx_before_request`, etc.) | Use underscored hook names |
 | `transformResponse(text, xhr, elt)` | `htmx_after_response` | Modify `detail.ctx.swap.content` |
 | `handleSwap(style, target, fragment)` | `handle_swap(style, target, fragment, swapSpec)` | Extra `swapSpec` param, return truthy |
-| `encodeParameters(xhr, params, elt)` | `htmx_config_request` | Modify `detail.ctx.request.body` and `.headers` |
+| `encodeParameters(xhr, params, elt)` | `htmx_before_request` | Modify the final `detail.ctx.request.body` and `.headers` |
 | `getSelectors()` | `htmx_after_init` | Check `api.attributeValue(elt, "attr")` instead |
 | `isInlineSwap(swapStyle)` | Not needed | Move logic into `handle_swap` |
 

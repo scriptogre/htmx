@@ -11,6 +11,11 @@ See the [request → response → swap lifecycle](/reference/events).
 
 After the pipeline ends and before the next queued request starts.
 
+It does not fire when processing stops before the request issues:
+
+- validation failure
+- cancelled [`htmx:config:request`](/reference/events/htmx-config-request)
+
 ## Event Detail
 
 - `ctx` - Request context object
@@ -23,4 +28,4 @@ htmx.on('htmx:done', (evt) => {
 });
 ```
 
-Use this event for work that must run after every outcome.
+Useful for cleanup operations started after the request begins issuing.

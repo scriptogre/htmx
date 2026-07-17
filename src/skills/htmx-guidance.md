@@ -216,7 +216,7 @@ htmx 4 naming convention: `htmx:phase:action`
 - `htmx:after:response` -- after the body is stored in `ctx.swap.content`
 - `htmx:response:error` -- after an HTTP response with status 400 or higher
 - `htmx:error` -- on network, request, response, or swap exceptions
-- `htmx:done` -- when the request → response → swap pipeline ends
+- `htmx:done` -- when an issuing pipeline completes, fails, or is cancelled
 
 **Swap:**
 
@@ -417,7 +417,7 @@ htmx.config.morphSkipChildren = 'lit-component, .sortable';
 | `hx-confirm`     | Show confirmation dialog. Supports `js:` prefix for async confirmation    |
 | `hx-sync`        | Synchronize requests between elements                                     |
 | `hx-boost`       | Progressive enhancement for links and forms                               |
-| `hx-config`      | Per-element fetch config as JSON (`timeout`, `credentials`, `mode`, etc.) |
+| `hx-config`      | Per-element Fetch config (`timeout`, `credentials`, `cache`, etc.). Cannot override `mode` |
 | `hx-preserve`    | Keep element unchanged across swaps                                       |
 | `hx-ignore`      | Disable htmx processing for element and children                          |
 | `hx-disable`     | Disable specified elements during requests                                |
