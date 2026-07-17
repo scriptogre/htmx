@@ -578,7 +578,7 @@ These attributes changed:
 |----------|----------|---------------|
 | [`sse-connect`](https://htmx.org/extensions/sse/#connecting-to-an-sse-server) | [`hx-sse:connect`](#hx-sseconnect) | Works with a warning |
 | [`sse-swap`](https://htmx.org/extensions/sse/#receiving-named-events) | Unnamed messages swap automatically | Removed; warns |
-| [`sse-close`](https://htmx.org/extensions/sse/) | [`hx-sse:close`](#hx-sseclose) | Removed |
+| [`sse-close`](https://htmx.org/extensions/sse/) | [`hx-sse:close`](#hx-sseclose) | Works with a warning |
 
 #### Events
 
