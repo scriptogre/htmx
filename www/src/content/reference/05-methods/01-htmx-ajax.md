@@ -5,6 +5,10 @@ description: "Issues an htmx request"
 
 The `htmx.ajax()` function runs the request, response, action, and swap lifecycle.
 
+It returns a `Promise` that resolves after response content is inserted into the DOM.
+
+Use it to chain callbacks after the swap.
+
 ## Syntax
 
 ```javascript
