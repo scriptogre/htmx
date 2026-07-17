@@ -282,7 +282,7 @@ Core events follow `htmx:<timing>:<noun>[:<type>]`. Most error events are consol
 |-----------------------------|-----------------------------------------------------------------------------------|---------|-------------------------------------|
 | `htmx:afterOnLoad`          | [`htmx:after:init`](/reference/events/htmx-after-init)                            | renamed | —                                   |
 | `htmx:afterProcessNode`     | [`htmx:after:init`](/reference/events/htmx-after-init)                            | renamed | —                                   |
-| `htmx:afterRequest`         | [`htmx:after:request`](/reference/events/htmx-after-request)                      | renamed | —                                   |
+| `htmx:afterRequest`         | [`htmx:after:response`](/reference/events/htmx-after-response)                    | renamed | Response body is available.          |
 | `htmx:afterSettle`          | [`htmx:after:settle`](/reference/events/htmx-after-settle)                        | renamed | —                                   |
 | `htmx:afterSwap`            | [`htmx:after:swap`](/reference/events/htmx-after-swap)                            | renamed | —                                   |
 | `htmx:beforeCleanupElement` | [`htmx:before:cleanup`](/reference/events/htmx-before-cleanup)                    | renamed | —                                   |
@@ -308,7 +308,7 @@ Core events follow `htmx:<timing>:<noun>[:<type>]`. Most error events are consol
 | `htmx:validation:failed`    | —                                                                                 | removed | Use native browser form validation.  |
 | `htmx:validation:halted`    | —                                                                                 | removed | Use native browser form validation.  |
 | `htmx:xhr:loadstart`        | —                                                                                 | removed | htmx uses `fetch()` now.             |
-| `htmx:xhr:loadend`          | [`htmx:finally:request`](/reference/events/htmx-finally-request)                  | removed | htmx uses `fetch()` now.             |
+| `htmx:xhr:loadend`          | [`htmx:done`](/reference/events/htmx-done)                                        | removed | htmx uses `fetch()` now.             |
 | `htmx:xhr:progress`         | —                                                                                 | removed | htmx uses `fetch()` now.             |
 | `htmx:xhr:abort`            | [`htmx:error`](/reference/events/htmx-error)                                      | removed | htmx uses `fetch()` now.             |
 
@@ -528,12 +528,14 @@ This restores the htmx 2.x convention: if you want an internal failure path to s
 | [`htmx:after:cleanup`](/reference/events/htmx-after-cleanup)                 | After element cleanup                             |
 | [`htmx:after:history:update`](/reference/events/htmx-after-history-update)   | After history update                              |
 | [`htmx:after:process`](/reference/events/htmx-after-process)                 | After element processing                          |
+| [`htmx:after:request`](/reference/events/htmx-after-request)                 | Immediately after fetch resolves                  |
 | [`htmx:before:response`](/reference/events/htmx-before-response)             | Before response body is read (cancellable)        |
+| [`htmx:after:response`](/reference/events/htmx-after-response)               | After response body is read                       |
+| [`htmx:done`](/reference/events/htmx-done)                                   | When the request → response → swap pipeline ends  |
 | [`htmx:before:settle`](/reference/events/htmx-before-settle)                 | Before settle phase                               |
 | [`htmx:after:settle`](/reference/events/htmx-after-settle)                   | After settle phase                                |
 | [`htmx:before:viewTransition`](/reference/events/htmx-before-viewTransition) | Before a view transition starts (cancellable)     |
 | [`htmx:after:viewTransition`](/reference/events/htmx-after-viewTransition)   | After a view transition completes                 |
-| [`htmx:finally:request`](/reference/events/htmx-finally-request)             | Always fires after a request (success or failure) |
 
 #### Config keys
 
@@ -648,7 +650,7 @@ Instead of a single `onEvent` callback that switches on event names, each event 
 |---|---|
 | `htmx:configRequest` | `htmx_config_request` |
 | `htmx:beforeRequest` | `htmx_before_request` |
-| `htmx:afterRequest` | `htmx_after_request` |
+| `htmx:afterRequest` | `htmx_after_response` |
 | `htmx:beforeSwap` | `htmx_before_swap` |
 | `htmx:afterSwap` | `htmx_after_swap` |
 
@@ -677,7 +679,7 @@ All hooks receive `detail.ctx` with full request/response context:
 - `detail.ctx.request.body` (FormData in `htmx_config_request`)
 - `detail.ctx.request.headers` ([Web API Headers](https://developer.mozilla.org/en-US/docs/Web/API/Headers) object)
 - `detail.ctx.response.status`
-- `detail.ctx.swap.content` (response body, modifiable in `htmx_after_request`)
+- `detail.ctx.swap.content` (response body, modifiable in `htmx_after_response`)
 - `detail.ctx.swap.target` (selector or explicit element input)
 - `detail.ctx.swap.style`
 
@@ -756,7 +758,7 @@ htmx_before_swap: (elt, detail) => {
 
 ##### `transformResponse`
 
-Removed. Modify `detail.ctx.swap.content` in `htmx_after_request`:
+Removed. Modify `detail.ctx.swap.content` in `htmx_after_response`:
 
 ```javascript
 // htmx 2.x
@@ -771,7 +773,7 @@ transformResponse: function(text, xhr, elt) {
 }
 
 // htmx 4
-htmx_after_request: (elt, detail) => {
+htmx_after_response: (elt, detail) => {
     var tpl = elt.closest('[mustache-template]');
     if (tpl) {
         var data = JSON.parse(detail.ctx.swap.content);
@@ -781,7 +783,7 @@ htmx_after_request: (elt, detail) => {
 }
 ```
 
-Event flow: response received, `ctx.swap.content` set, `htmx:after:request` fires, content consumed into a fragment, `htmx:before:swap`.
+Event flow: response received, `htmx:after:request` fires, the body is read into `ctx.swap.content`, `htmx:after:response` fires, then htmx builds the fragment before `htmx:before:swap`.
 
 ##### `encodeParameters`
 
@@ -859,7 +861,7 @@ Return truthy if handled, falsy otherwise. Can return an array of elements for s
 |-----------------------------------------|---------------------------------------------------------------|
 | `getSelectors()`                        | `htmx_after_init` hook                                        |
 | `onEvent(name, evt)`                    | Individual `htmx_*` hooks                                     |
-| `transformResponse(text, xhr, elt)`     | `htmx_after_request` hook (modify `detail.ctx.swap.content`)     |
+| `transformResponse(text, xhr, elt)`     | `htmx_after_response` hook (modify `detail.ctx.swap.content`)    |
 | `encodeParameters(xhr, params, elt)`    | `htmx_config_request` hook (modify `detail.ctx.request.body`) |
 | `isInlineSwap(swapStyle)`               | `handle_swap` or name swap style with "outer" prefix          |
 | `handleSwap(style, target, frag, info)` | `handle_swap(style, target, frag, spec)`                      |
@@ -868,7 +870,7 @@ Return truthy if handled, falsy otherwise. Can return an array of elements for s
 
 1. Rename `defineExtension` to `registerExtension`
 2. Replace `onEvent` with individual `htmx_*` hooks
-3. Replace `transformResponse` with `htmx_after_request`
+3. Replace `transformResponse` with `htmx_after_response`
 4. Replace `encodeParameters` with `htmx_config_request`
 5. Merge `isInlineSwap` and `handleSwap` into `handle_swap`
 6. Replace `getSelectors` with `htmx_after_init`
@@ -1444,6 +1446,9 @@ document, matched with a [`hx-select`](/reference/attributes/hx-select) tag can 
 
 Htmx will then swap the returned HTML into the document at the target specified and with the swap strategy specified.
 
+
+See the [event lifecycle](/reference/events) for the complete request → response → swap order.
+
 Sometimes you might want to do nothing in the swap, but still perhaps trigger a client side
 event ([see below](#response-headers)).
 
@@ -1674,7 +1679,7 @@ event:
 
 ```html
 <button hx-post="/example"
-        hx-on:htmx:after:request="find('closest form').reset()">
+        hx-on:htmx:done="find('closest form').reset()">
     Post Me!
 </button>
 ```
@@ -2811,10 +2816,12 @@ Extensions hook into htmx lifecycle events. Event names use underscores instead 
 |-----------|----------------|------------|-------------|
 | `htmx_config_request` | [`htmx:config:request`](/reference/events/htmx-config-request) | `(elt, detail)` | Configure request before sending |
 | `htmx_before_request` | [`htmx:before:request`](/reference/events/htmx-before-request) | `(elt, detail)` | Before request is sent |
-| `htmx_before_response` | `htmx:before:response` | `(elt, detail)` | After fetch, before body consumed |
-| `htmx_after_request` | [`htmx:after:request`](/reference/events/htmx-after-request) | `(elt, detail)` | After request completes |
-| `htmx_finally_request` | [`htmx:finally:request`](/reference/events/htmx-finally-request) | `(elt, detail)` | Always called after request |
-| `htmx_error` | [`htmx:error`](/reference/events/htmx-error) | `(elt, detail)` | On request error |
+| `htmx_after_request` | [`htmx:after:request`](/reference/events/htmx-after-request) | `(elt, detail)` | After fetch resolves |
+| `htmx_before_response` | [`htmx:before:response`](/reference/events/htmx-before-response) | `(elt, detail)` | Before body consumption |
+| `htmx_after_response` | [`htmx:after:response`](/reference/events/htmx-after-response) | `(elt, detail)` | After body consumption |
+| `htmx_response_error` | [`htmx:response:error`](/reference/events/htmx-response-error) | `(elt, detail)` | On HTTP status 400 or higher |
+| `htmx_error` | [`htmx:error`](/reference/events/htmx-error) | `(elt, detail)` | On an exception |
+| `htmx_done` | [`htmx:done`](/reference/events/htmx-done) | `(elt, detail)` | When the pipeline ends |
 
 ##### Swap Events
 

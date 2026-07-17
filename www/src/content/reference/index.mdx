@@ -17,6 +17,13 @@ export const ATTRIBUTE_GROUPS = [
     { label: 'Advanced', titles: ['hx-indicator', 'hx-status', 'hx-sync', 'hx-validate', 'hx-disable', 'hx-ignore', 'hx-preserve', 'hx-action', 'hx-method', 'hx-config'] },
 ];
 export const REQUEST_HEADERS = ['HX-Request', 'HX-Request-Type', 'HX-Current-URL', 'HX-Source', 'HX-Target', 'HX-Boosted', 'HX-History-Restore-Request', 'Last-Event-ID'];
+export const EVENT_GROUPS = [
+    { label: 'Request Lifecycle', titles: ['htmx:config:request', 'htmx:confirm', 'htmx:before:request', 'htmx:after:request', 'htmx:before:response', 'htmx:after:response', 'htmx:response:error', 'htmx:before:swap', 'htmx:before:settle', 'htmx:after:settle', 'htmx:after:swap', 'htmx:finally:swap', 'htmx:done', 'htmx:error', 'htmx:abort'] },
+    { label: 'Elements', titles: ['htmx:before:init', 'htmx:after:init', 'htmx:before:process', 'htmx:after:process', 'htmx:process:{type}', 'htmx:after:implicitInheritance', 'htmx:before:cleanup', 'htmx:after:cleanup', 'load'] },
+    { label: 'History', titles: ['htmx:before:history:update', 'htmx:after:history:update', 'htmx:after:history:push', 'htmx:after:history:replace', 'htmx:before:history:restore'] },
+    { label: 'View Transitions', titles: ['htmx:before:viewTransition', 'htmx:after:viewTransition'] },
+    { label: 'Triggers', titles: ['intersect', 'every'] },
+];
 
 export const groups = folder.folders.map(sub => {
     const items = sub.files.map(f => ({
@@ -39,6 +46,13 @@ export const groups = folder.folders.map(sub => {
             { label: 'Request', items: request },
             { label: 'Response', items: response },
         ]};
+    }
+    if (sub.slug === 'events') {
+        const subgroups = EVENT_GROUPS.map(g => ({
+            label: g.label,
+            items: g.titles.map(t => items.find(i => i.title === t)).filter(Boolean),
+        }));
+        return { slug: sub.slug, label: sub.frontmatter.title, subgroups };
     }
     return { slug: sub.slug, label: sub.frontmatter.title, subgroups: [{ label: null, items }] };
 });
@@ -80,6 +94,7 @@ export const groups = folder.folders.map(sub => {
         {sg.items.map(item => (
             <tr class="stretch-link">
                 <td>
+                    <span hidden>{group.label} {sg.label}</span>
                     <a href={item.url}><code set:html={item.title} /></a>
                     {item.description && <span class="block sm:hidden text-[0.8125em] text-neutral-650 dark:text-neutral-350 mt-0.5 pl-[6px]">{item.description}</span>}
                 </td>

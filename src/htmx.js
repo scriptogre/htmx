@@ -634,15 +634,16 @@ var htmx = (() => {
                     status: response.status,
                     headers: response.headers,
                 }
-                this.__extractHxHeaders(ctx);
+                this.__trigger(elt, "htmx:after:request", {ctx});
                 if (!this.__trigger(elt, "htmx:before:response", {ctx})) return;
                 ctx.swap.content = await response.text();
-                if (!this.__trigger(elt, "htmx:after:request", {ctx})) return;
+                this.__trigger(elt, "htmx:after:response", {ctx});
 
                 if (ctx.response.status >= 400) {
                     this.__trigger(elt, "htmx:response:error", {ctx})
                 }
 
+                this.__extractHxHeaders(ctx);
                 if(this.__handleHeadersAndMaybeReturnEarly(ctx)){
                     ctx.keepIndicators = true;
                     return
@@ -677,13 +678,13 @@ var htmx = (() => {
                 this.__trigger(elt, "htmx:error", {ctx, error})
             } finally {
                 clearTimeout(ctx.requestTimeout);
-                this.__trigger(elt, "htmx:finally:request", {ctx})
                 if (!ctx.keepIndicators) {
                     this.__hideIndicators(indicators);
                     this.__enableElements(disableElements);
                 }
 
                 requestQueue.finish()
+                this.__trigger(elt, "htmx:done", {ctx})
                 if (requestQueue.more()) {
                     // intentionally not awaited — __issueRequest has its own try/catch
                     this.__issueRequest(requestQueue.next())

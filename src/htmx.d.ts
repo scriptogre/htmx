@@ -295,7 +295,7 @@ export interface HtmxRequestCtx {
   swap: HtmxSwap;
   /** Fetch request options — modify here in htmx:config:request */
   request: HtmxRequestOptions;
-  /** Response object, available after htmx:after:request */
+  /** Response object, available during and after htmx:after:request */
   response: HtmxResponse;
 }
 
@@ -322,16 +322,16 @@ export interface HtmxEventMap {
   'htmx:before:request': { ctx: HtmxRequestCtx };
 
   /**
-   * Fires after the fetch resolves and the response is received, before swapping.
-   * `ctx.response` is available with status and headers.
+   * Fires immediately after `fetch()` resolves.
+   * `ctx.response` is available, but the body has not been consumed.
    */
   'htmx:after:request': { ctx: HtmxRequestCtx };
 
   /**
-   * Fires at the end of the request lifecycle whether successful or failed.
-   * Equivalent to a `finally` block — always runs.
+   * Fires when the request → response → swap pipeline ends.
+   * Always fires after success, cancellation, or failure.
    */
-  'htmx:finally:request': { ctx: HtmxRequestCtx };
+  'htmx:done': { ctx: HtmxRequestCtx };
 
   /**
    * Fires after the network response arrives but before htmx reads the response body.
@@ -339,6 +339,12 @@ export interface HtmxEventMap {
    * Cancel to skip body consumption and the swap entirely.
    */
   'htmx:before:response': { ctx: HtmxRequestCtx };
+
+  /**
+   * Fires after the response body is stored in `ctx.swap.content`.
+   * Response headers and status have not been processed yet.
+   */
+  'htmx:after:response': { ctx: HtmxRequestCtx };
 
   /**
    * Fires after response content is parsed but before it is inserted into the DOM.

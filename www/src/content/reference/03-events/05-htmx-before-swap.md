@@ -5,6 +5,8 @@ description: "Before content is swapped into DOM"
 
 The `htmx:before:swap` event fires after response content is parsed but before it's inserted or swapped into the DOM.
 
+See the [request → response → swap lifecycle](/reference/events).
+
 ## When It Fires
 
 After the response is received and parsed, but before any DOM modifications occur.

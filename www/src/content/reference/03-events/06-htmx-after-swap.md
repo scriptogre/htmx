@@ -5,6 +5,8 @@ description: "After content is swapped into DOM"
 
 The `htmx:after:swap` event fires after new content has been swapped into the DOM.
 
+See the [request → response → swap lifecycle](/reference/events).
+
 ## When It Fires
 
 Immediately after the DOM swap operation completes, before elements are processed.

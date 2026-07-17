@@ -34,9 +34,12 @@ Extensions are global -- they apply page-wide, activated by custom attributes wh
         },
 
         htmx_after_request: (elt, detail) => {
-            // After request completes
-            // detail.ctx.swap.content is populated from the response body
-            // detail.ctx.response has status, headers
+            // Fetch resolved; response body is unconsumed
+            // detail.ctx.response has status and headers
+        },
+
+        htmx_after_response: (elt, detail) => {
+            // Response body is available in detail.ctx.swap.content
         },
 
         htmx_before_swap: (elt, detail) => {
@@ -86,11 +89,13 @@ Hook names use underscores (not colons). All hooks receive `(elt, detail)` unles
 | Hook | Event | Description |
 |------|-------|-------------|
 | `htmx_config_request` | `htmx:config:request` | Configure request (modify headers, body, URL) |
-| `htmx_before_request` | `htmx:before:request` | Before request is sent |
-| `htmx_before_response` | `htmx:before:response` | After fetch response, before body consumed |
-| `htmx_after_request` | `htmx:after:request` | After request completes |
-| `htmx_finally_request` | `htmx:finally:request` | Always fires after request (like `finally`) |
-| `htmx_error` | `htmx:error` | On any error |
+| `htmx_before_request` | `htmx:before:request` | Before fetch; return `false` to cancel |
+| `htmx_after_request` | `htmx:after:request` | After fetch resolves, before body consumption |
+| `htmx_before_response` | `htmx:before:response` | Before body consumption; return `false` to cancel |
+| `htmx_after_response` | `htmx:after:response` | After body consumption, before response processing |
+| `htmx_response_error` | `htmx:response:error` | On HTTP status 400 or higher |
+| `htmx_error` | `htmx:error` | On an exception |
+| `htmx_done` | `htmx:done` | When the request → response → swap pipeline ends |
 
 ### Swap
 
@@ -207,7 +212,7 @@ The context object available via `detail.ctx` in hook callbacks:
 
 **Modifying the request:** Change `detail.ctx.request` properties in `htmx_config_request` or `htmx_before_request`.
 
-**Modifying the response:** Change `detail.ctx.swap.content` in `htmx_after_request` (before swap).
+**Modifying the response:** Change `detail.ctx.swap.content` in `htmx_after_response`.
 
 **Overriding fetch:** Set `detail.ctx.fetch` to a function returning a Response or Promise<Response>.
 
@@ -324,7 +329,7 @@ Key patterns:
 |-----------|---------|-------|
 | `htmx.defineExtension()` | `htmx.registerExtension()` | Different function name |
 | `onEvent(name, evt)` | Specific hooks (`htmx_before_request`, etc.) | Use underscored hook names |
-| `transformResponse(text, xhr, elt)` | `htmx_after_request` | Modify `detail.ctx.swap.content` |
+| `transformResponse(text, xhr, elt)` | `htmx_after_response` | Modify `detail.ctx.swap.content` |
 | `handleSwap(style, target, fragment)` | `handle_swap(style, target, fragment, swapSpec)` | Extra `swapSpec` param, return truthy |
 | `encodeParameters(xhr, params, elt)` | `htmx_config_request` | Modify `detail.ctx.request.body` and `.headers` |
 | `getSelectors()` | `htmx_after_init` | Check `api.attributeValue(elt, "attr")` instead |

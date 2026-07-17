@@ -7,7 +7,7 @@ The `htmx:response:error` event fires when the server responds with an HTTP erro
 
 ## When It Fires
 
-After [`htmx:after:request`](/reference/events/htmx-after-request) and before the swap phase, when `response.status >= 400`.
+After [`htmx:after:response`](/reference/events/htmx-after-response) and before HX response headers, status rules, or swaps are processed, when `response.status >= 400`.
 
 This event does **not** fire for network errors or timeouts — use [`htmx:error`](/reference/events/htmx-error) for those.
 

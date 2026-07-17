@@ -211,10 +211,12 @@ htmx 4 naming convention: `htmx:phase:action`
 
 - `htmx:config:request` -- configure request (modify headers, body, URL). Cancel with `evt.preventDefault()`
 - `htmx:before:request` -- just before fetch. Cancel with `evt.preventDefault()`
-- `htmx:before:response` -- after fetch response received, before body consumed
-- `htmx:after:request` -- after request completes
-- `htmx:finally:request` -- always fires (like `finally` block)
-- `htmx:error` -- on any error (network, response, swap)
+- `htmx:after:request` -- immediately after fetch resolves; the body is unconsumed
+- `htmx:before:response` -- before body consumption. Cancel to skip response and swap processing
+- `htmx:after:response` -- after the body is stored in `ctx.swap.content`
+- `htmx:response:error` -- after an HTTP response with status 400 or higher
+- `htmx:error` -- on network, request, response, or swap exceptions
+- `htmx:done` -- when the request → response → swap pipeline ends
 
 **Swap:**
 

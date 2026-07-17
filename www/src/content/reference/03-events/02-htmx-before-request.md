@@ -5,6 +5,8 @@ description: "Immediately before fetch is called"
 
 The `htmx:before:request` event fires immediately before the `fetch()` call is made.
 
+See the [request → response → swap lifecycle](/reference/events).
+
 ## When It Fires
 
 Right before the network request is sent, after all configuration and validation.
