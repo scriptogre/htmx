@@ -1175,4 +1175,24 @@ describe('hx-sse SSE extension', function() {
 
         stream.close();
     });
+
+    it('supports legacy sse-close attribute with deprecation warning', async function() {
+        let warnings = [];
+        let originalWarn = console.warn;
+        console.warn = warning => warnings.push(warning);
+
+        const stream = mockStreamResponse('/legacy-close');
+        createProcessedHTML('<div hx-sse:connect="/legacy-close" sse-close="done">Waiting</div>');
+        await htmx.timeout(1);
+
+        console.warn = originalWarn;
+
+        let closeReason;
+        onDoc('htmx:sse:close', event => closeReason = event.detail.reason);
+        stream.send('Complete', 'done');
+        await waitForEvent('htmx:sse:close');
+
+        assert.equal(closeReason, 'message');
+        assert.isTrue(warnings.some(warning => warning.includes('sse-close')));
+    });
 });

@@ -327,6 +327,15 @@
                 element.setAttribute(attr, url);
             }
         }
+        if (element.hasAttribute('sse-close')) {
+            console.warn('htmx: [hx-sse] legacy attribute sse-close is deprecated; use hx-sse:close instead');
+
+            let eventName = element.getAttribute('sse-close');
+            let attr = (htmx.config.prefix || 'hx-') + 'sse' + (htmx.config.metaCharacter || ':') + 'close';
+            if (!element.hasAttribute(attr)) {
+                element.setAttribute(attr, eventName);
+            }
+        }
         if (element.hasAttribute('sse-swap')) {
             console.warn('htmx: [hx-sse] sse-swap is removed in htmx 4. Unnamed SSE messages are swapped automatically. Named events are dispatched as DOM events.');
         }
