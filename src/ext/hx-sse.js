@@ -6,21 +6,20 @@
     // HELPERS
     // ========================================
 
-    function getConfig(ctx) {
-        let isConnect = api.attributeValue(ctx.sourceElement, 'hx-sse:connect') != null;
-        let defaults = {
-            reconnect: isConnect,
+    function getConfig(element) {
+        let hasHxSseConnect = api.attributeValue(element, 'hx-sse:connect') != null;
+        let hxConfig = api.HCON.parse(api.attributeValue(element, 'hx-config')).sse || {};
+
+        return {
+            reconnect: hasHxSseConnect, // hx-sse:connect reconnects by default
             reconnectDelay: 500,
             reconnectMaxDelay: 60000,
             reconnectMaxAttempts: Infinity,
             reconnectJitter: 0.3,
-            pauseOnBackground: isConnect
+            pauseOnBackground: hasHxSseConnect, // hx-sse:connect pauses in background by default
+            ...htmx.config.sse, // global defaults
+            ...hxConfig // hx-config overrides
         };
-        let global = htmx.config.sse || {};
-        // hx-config="sse.reconnect:true sse.reconnectDelay:50ms" is parsed by
-        // core's __mergeConfig into ctx.request.sse during createRequestContext
-        let perElement = ctx.request.sse || {};
-        return {...defaults, ...global, ...perElement};
     }
 
     // ========================================
@@ -101,7 +100,7 @@
     // with the saved request context (no full pipeline re-run).
     async function handleSSEResponse(ctx) {
         let element = ctx.sourceElement;
-        let config = getConfig(ctx);
+        let config = getConfig(ctx.sourceElement);
         let reconnectRequested = false;
 
         let connection = {
@@ -289,8 +288,8 @@
         if (!connectUrl) return;
         if (element._htmx?.sse) return; // already set up
 
-        let specString = api.attributeValue(element, 'hx-trigger') || 'load';
-        api.onTrigger(element, specString, () => {
+        let hxTrigger = api.attributeValue(element, 'hx-trigger') || 'load';
+        api.onTrigger(element, hxTrigger, () => {
             if (element._htmx?.sse) return; // prevent duplicate connections
             htmx.ajax('GET', connectUrl, {source: element});
         });
