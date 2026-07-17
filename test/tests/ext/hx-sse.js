@@ -1155,14 +1155,14 @@ describe('hx-sse SSE extension', function() {
         stream.close();
     });
 
-    it('supports legacy sse-connect attribute with deprecation warning', async function() {
-        let warnCalled = false;
+    it('supports legacy sse-connect attribute and warns once', async function() {
+        let warnings = [];
         let originalWarn = console.warn;
-        console.warn = () => { warnCalled = true; };
+        console.warn = warning => warnings.push(warning);
 
         const stream = mockStreamResponse('/legacy-test');
         createProcessedHTML('<div sse-connect="/legacy-test" hx-swap="innerHTML">Waiting</div>');
-
+        htmx.process(find('div'));
         await htmx.timeout(1);
 
         console.warn = originalWarn;
@@ -1171,18 +1171,19 @@ describe('hx-sse SSE extension', function() {
         await waitForEvent('htmx:sse:after:message');
         assertTextContentIs('div', 'legacy works');
 
-        assert.isTrue(warnCalled, 'Should emit deprecation warning');
+        assert.equal(warnings.filter(warning => warning.includes('sse-connect')).length, 1);
 
         stream.close();
     });
 
-    it('supports legacy sse-close attribute with deprecation warning', async function() {
+    it('supports legacy sse-close attribute and warns once', async function() {
         let warnings = [];
         let originalWarn = console.warn;
         console.warn = warning => warnings.push(warning);
 
         const stream = mockStreamResponse('/legacy-close');
         createProcessedHTML('<div hx-sse:connect="/legacy-close" sse-close="done">Waiting</div>');
+        htmx.process(find('div'));
         await htmx.timeout(1);
 
         console.warn = originalWarn;
@@ -1193,6 +1194,19 @@ describe('hx-sse SSE extension', function() {
         await waitForEvent('htmx:sse:close');
 
         assert.equal(closeReason, 'message');
-        assert.isTrue(warnings.some(warning => warning.includes('sse-close')));
+        assert.equal(warnings.filter(warning => warning.includes('sse-close')).length, 1);
+    });
+
+    it('warns once for removed sse-swap attribute', function() {
+        let warnings = [];
+        let originalWarn = console.warn;
+        console.warn = warning => warnings.push(warning);
+
+        createProcessedHTML('<div sse-swap="message"></div>');
+        htmx.process(find('div'));
+
+        console.warn = originalWarn;
+
+        assert.equal(warnings.filter(warning => warning.includes('sse-swap')).length, 1);
     });
 });

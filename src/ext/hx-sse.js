@@ -1,5 +1,6 @@
 (() => {
     let api;
+    let warnedLegacyAttributes = new Set();
 
     // ========================================
     // HELPERS
@@ -314,34 +315,6 @@
     }
 
     // ========================================
-    // BACKWARD COMPATIBILITY
-    // ========================================
-
-    function checkLegacyAttributes(element) {
-        if (element.hasAttribute('sse-connect')) {
-            console.warn('htmx: [hx-sse] legacy attribute sse-connect is deprecated; use hx-sse:connect instead');
-
-            let url = element.getAttribute('sse-connect');
-            let attr = (htmx.config.prefix || 'hx-') + 'sse' + (htmx.config.metaCharacter || ':') + 'connect';
-            if (!element.hasAttribute(attr)) {
-                element.setAttribute(attr, url);
-            }
-        }
-        if (element.hasAttribute('sse-close')) {
-            console.warn('htmx: [hx-sse] legacy attribute sse-close is deprecated; use hx-sse:close instead');
-
-            let eventName = element.getAttribute('sse-close');
-            let attr = (htmx.config.prefix || 'hx-') + 'sse' + (htmx.config.metaCharacter || ':') + 'close';
-            if (!element.hasAttribute(attr)) {
-                element.setAttribute(attr, eventName);
-            }
-        }
-        if (element.hasAttribute('sse-swap')) {
-            console.warn('htmx: [hx-sse] sse-swap is removed in htmx 4. Unnamed SSE messages are swapped automatically. Named events are dispatched as DOM events.');
-        }
-    }
-
-    // ========================================
     // EXTENSION REGISTRATION
     // ========================================
 
@@ -369,16 +342,32 @@
         },
 
         htmx_after_process: (element) => {
-            checkLegacyAttributes(element);
-            processElement(element);
             let mc = htmx.config.metaCharacter || ':';
             let sseAttr = CSS.escape('hx-sse' + mc + 'connect');
-            let sseSelector = `[${sseAttr}]`;
-            if (htmx.config.prefix) sseSelector += `,[${CSS.escape(htmx.config.prefix + 'sse' + mc + 'connect')}]`;
-            element.querySelectorAll(`${sseSelector},[sse-connect]`).forEach((el) => {
-                checkLegacyAttributes(el);
+            let selector = `[${sseAttr}],[sse-connect],[sse-close],[sse-swap]`;
+            if (htmx.config.prefix) selector += `,[${CSS.escape(htmx.config.prefix + 'sse' + mc + 'connect')}]`;
+
+            for (let el of [element, ...element.querySelectorAll(selector)]) {
+                for (let name of ['connect', 'close']) {
+                    let legacyAttr = `sse-${name}`;
+                    if (!el.hasAttribute(legacyAttr)) continue;
+
+                    if (!warnedLegacyAttributes.has(legacyAttr)) {
+                        console.warn(`htmx: [hx-sse] legacy attribute ${legacyAttr} is deprecated; use hx-sse:${name} instead`);
+                        warnedLegacyAttributes.add(legacyAttr);
+                    }
+
+                    let attr = (htmx.config.prefix || 'hx-') + 'sse' + mc + name;
+                    if (!el.hasAttribute(attr)) el.setAttribute(attr, el.getAttribute(legacyAttr));
+                }
+
+                if (el.hasAttribute('sse-swap') && !warnedLegacyAttributes.has('sse-swap')) {
+                    console.warn('htmx: [hx-sse] sse-swap is removed in htmx 4. Unnamed SSE messages are swapped automatically. Named events are dispatched as DOM events.');
+                    warnedLegacyAttributes.add('sse-swap');
+                }
+
                 processElement(el);
-            });
+            }
         },
 
         htmx_before_cleanup: (element) => {
