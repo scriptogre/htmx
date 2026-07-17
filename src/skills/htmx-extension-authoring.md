@@ -159,6 +159,7 @@ init: (internalAPI) => { api = internalAPI; },
 | `api.parseTriggerSpecs(spec)` | Parse trigger spec string into array of spec objects |
 | `api.determineMethodAndAction(elt, evt)` | Get `{method, action}` for an element |
 | `api.createRequestContext(elt, evt)` | Create a full request context object |
+| `api.resolveTarget(elt, target)` | Resolve a target selector or element from its source element |
 | `api.collectFormData(elt, form, submitter)` | Collect form data as FormData |
 | `api.handleHxVals(elt, body)` | Process `hx-vals` attribute into body |
 
@@ -173,7 +174,7 @@ The context object available via `detail.ctx` in hook callbacks:
     status,             // Request status string
     swap: {
         content,        // HTML content to swap
-        target,         // Target element
+        target,         // Target selector or element
         style,          // Swap style (e.g. innerHTML)
         select,         // hx-select value
         selectOOB,      // hx-select-oob value

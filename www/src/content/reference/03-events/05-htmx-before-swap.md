@@ -12,7 +12,7 @@ After the response is received and parsed, but before any DOM modifications occu
 ## Event Detail
 
 - `ctx` - Request context including parsed response
-- `tasks` - Array of swap tasks to be performed
+- `tasks` - Array of swap tasks to be performed. Each task has its resolved target `Element`.
 
 ## Example
 

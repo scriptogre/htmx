@@ -16,7 +16,8 @@
             if (question == null) return;
             let answer = (window.htmxPrompt || window.prompt)(question);
             if (answer === null) return false;
-            if (!htmx.trigger(ctx.sourceElement, 'htmx:prompt', { prompt: answer, target: ctx.swap.target })) return false;
+            let target = api.resolveTarget(ctx.sourceElement, ctx.swap.target);
+            if (!htmx.trigger(ctx.sourceElement, 'htmx:prompt', { prompt: answer, target })) return false;
             ctx.request.headers['HX-Prompt'] = encodeURI(answer);
         }
     });

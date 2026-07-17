@@ -18,11 +18,7 @@
         let sourceElt = document.querySelector(ctx.optimistic);
         if (!sourceElt) return;
 
-        let target = ctx.swap.target;
-
-        if (typeof target === 'string') {
-            target = document.querySelector(target);
-        }
+        let target = api.resolveTarget(ctx.sourceElement, ctx.swap.target);
         if (!target) return;
 
         // Create optimistic div with reset styling

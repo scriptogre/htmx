@@ -17,9 +17,9 @@ Immediately after the DOM swap operation completes, before elements are processe
 
 ```javascript
 htmx.on('htmx:after:swap', (evt) => {
-  console.log('Content swapped into:', evt.detail.ctx.swap.target);
+  console.log('Target input:', evt.detail.ctx.swap.target);
   // Initialize widgets, scroll to position, etc.
 });
 ```
 
-The new content is in the DOM but may not be fully processed by htmx yet.
+`ctx.swap.target` retains its selector or explicit `Element` input. The new content is in the DOM but may not be fully processed by htmx yet.

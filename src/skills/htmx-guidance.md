@@ -240,7 +240,7 @@ Events expose `detail.ctx` with the full request context:
 document.body.addEventListener('htmx:config:request', (evt) => {
     let ctx = evt.detail.ctx;
     // ctx.sourceElement  -- element that triggered request
-    // ctx.swap.target    -- swap target element
+    // ctx.swap.target    -- target selector or element
     // ctx.swap.style     -- hx-swap style
     // ctx.swap.content   -- response content
     // ctx.request.action -- URL

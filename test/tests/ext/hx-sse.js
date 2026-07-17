@@ -75,10 +75,31 @@ describe('hx-sse SSE extension', function() {
         await waitForEvent('htmx:sse:after:message');
 
         assert.equal(messageSwap.content, 'message');
-        assert.equal(messageSwap.target.id, 'target');
+        assert.equal(messageSwap.target, '#target');
         assert.equal(messageSwap.style, 'innerHTML');
         assert.isFalse(messageSwap.transition);
         assert.isFalse(messageSwap.swapEmpty);
+        stream.close();
+    });
+
+    it('resolves the current target for each message', async function() {
+        const stream = mockStreamResponse('/current-target');
+        createProcessedHTML('<div id="target">Old</div><button hx-get="/current-target" hx-target="#target" hx-swap="outerHTML">Stream</button>');
+        let originalTarget = find('#target');
+
+        find('button').click();
+        await htmx.timeout(1);
+        stream.send('<div id="target">First</div>');
+        await waitForEvent('htmx:sse:after:message');
+        let firstTarget = find('#target');
+
+        stream.send('<div id="target">Second</div>');
+        await waitForEvent('htmx:sse:after:message');
+        let secondTarget = find('#target');
+
+        assert.notEqual(firstTarget, originalTarget);
+        assert.notEqual(secondTarget, firstTarget);
+        assert.equal(secondTarget.textContent, 'Second');
         stream.close();
     });
 

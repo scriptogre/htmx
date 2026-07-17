@@ -122,8 +122,8 @@ export interface HtmxConfig {
 export interface HtmxSwap {
   /** HTML content to swap. */
   content?: string;
-  /** Element where content will be swapped. */
-  target?: Element;
+  /** Target selector or element. */
+  target?: string | Element;
   /** Swap style (e.g. `'innerHTML'`, `'outerHTML'`). */
   style?: string;
   /** CSS selector to extract content from the response. */

@@ -26,9 +26,10 @@ describe('ajax() unit Tests', function() {
         mockResponse('GET', '/test', 'foo!');
         createProcessedHTML('<button id="source"></button><div id="target"></div>');
         const source = document.querySelector('#source');
-        let request;
+        let request, targetInput;
         source.addEventListener('htmx:config:request', (event) => {
             request = event.detail.ctx.request;
+            targetInput = event.detail.ctx.swap.target;
         });
 
         await htmx.ajax('GET', '/test', {
@@ -37,6 +38,7 @@ describe('ajax() unit Tests', function() {
             swap: 'innerHTML'
         });
 
+        assert.equal(targetInput, '#target');
         assert.equal(request.headers['HX-Source'], 'button#source');
         assert.equal(request.headers['HX-Target'], 'div#target');
     });
@@ -57,6 +59,25 @@ describe('ajax() unit Tests', function() {
         });
 
         assert.equal(request.headers['HX-Request-Type'], 'full');
+    });
+
+    it('ajax resolves relative targets from an explicit source', async function() {
+        mockResponse('GET', '/test', 'foo!');
+        const container = createProcessedHTML('<div id="result" class="result"><button id="source"></button></div>');
+        const source = container.querySelector('#source');
+        let targetInput, targetHeader;
+        source.addEventListener('htmx:config:request', event => targetHeader = event.detail.ctx.request.headers['HX-Target']);
+        source.addEventListener('htmx:before:swap', event => targetInput = event.detail.ctx.swap.target);
+
+        await htmx.ajax('GET', '/test', {
+            source,
+            target: 'closest .result',
+            swap: 'innerHTML'
+        });
+
+        assert.equal(targetInput, 'closest .result');
+        assert.equal(targetHeader, 'div#result');
+        assert.equal(container.textContent, 'foo!');
     });
 
     it('ajax rejects when target selector invalid', async function() {
@@ -130,6 +151,7 @@ describe('ajax() unit Tests', function() {
         });
 
         assert.equal(div.innerText, 'Selected');
+        assert.equal(finalSwap.target, '#target');
         assert.equal(finalSwap.style, 'innerHTML');
         assert.isFalse(finalSwap.transition);
         assert.equal(finalSwap.select, '#selected');

@@ -678,7 +678,7 @@ All hooks receive `detail.ctx` with full request/response context:
 - `detail.ctx.request.headers` ([Web API Headers](https://developer.mozilla.org/en-US/docs/Web/API/Headers) object)
 - `detail.ctx.response.status`
 - `detail.ctx.swap.content` (response body, modifiable in `htmx_after_request`)
-- `detail.ctx.swap.target`
+- `detail.ctx.swap.target` (selector or explicit element input)
 - `detail.ctx.swap.style`
 
 ##### OOB swap stripping
@@ -746,8 +746,9 @@ onEvent: function(name, evt) {
 htmx_before_swap: (elt, detail) => {
     if (detail.ctx.response.status !== 200) {
         var target = getRespCodeTarget(elt, detail.ctx.response.status);
-        if (target) {
-            detail.ctx.swap.target = target;
+        var mainTask = detail.tasks.find(task => task.type === 'main');
+        if (target && mainTask) {
+            mainTask.target = target;
         }
     }
 }
@@ -2876,6 +2877,7 @@ Available internal API methods:
 - `parseTriggerSpecs(spec)` - Parse trigger specification string
 - `determineMethodAndAction(elt, evt)` - Get HTTP method and URL
 - `createRequestContext(elt, evt)` - Create request context object
+- `resolveTarget(elt, target)` - Resolve a target selector or element
 - `collectFormData(elt, form, submitter)` - Collect form data
 - `handleHxVals(elt, body)` - Process [`hx-vals`](/reference/attributes/hx-vals) attribute
 
@@ -2890,7 +2892,7 @@ The `detail.ctx` object contains request and response information:
     status,             // Request status
     swap: {
         content,        // HTML content to swap
-        target,         // Target element
+        target,         // Target selector or element
         style,          // Swap style (e.g. innerHTML)
         select,         // hx-select value
         selectOOB,      // hx-select-oob value
@@ -2923,7 +2925,7 @@ The `detail.ctx` object contains request and response information:
 | Field | Type | Description |
 |---|---|---|
 | `content` | `string` | HTML content to swap. |
-| [`target`](/reference/attributes/hx-swap#target) | `Element` | Element where content will be swapped. |
+| [`target`](/reference/attributes/hx-swap#target) | `string \| Element \| undefined` | Target selector or explicit element. Relative selectors resolve from `sourceElement`. |
 | [`style`](/reference/attributes/hx-swap#swap-methods) | `string` | Swap style, such as `innerHTML` or `outerHTML`. |
 | [`select`](/reference/attributes/hx-select) | `string` | CSS selector used to extract content from the response. |
 | [`selectOOB`](/reference/attributes/hx-select-oob) | `string` | Selector for out-of-band swaps. |
@@ -2939,7 +2941,7 @@ The `detail.ctx` object contains request and response information:
 | [`swapEmpty`](/reference/attributes/hx-swap#swapempty) | `boolean` | Whether empty content performs the main swap. |
 | [`strip`](/reference/attributes/hx-swap#strip) | `boolean` | Whether to strip the response wrapper. |
 
-Fields may be absent when they do not apply or before their lifecycle value is available. Swap behavior fields correspond to the [`hx-swap`](/reference/attributes/hx-swap) modifiers.
+Fields may be absent when they do not apply or before their lifecycle value is available. `target` preserves its selector or explicit element input and remains `undefined` when omitted. Swap tasks resolve selectors when they need an element. Swap behavior fields correspond to the [`hx-swap`](/reference/attributes/hx-swap) modifiers.
 
 #### Custom Swap Strategies
 

@@ -23,7 +23,7 @@ describe('__createRequestContext unit tests', function() {
             'settleDelay'
         ])
         assert.equal(ctx.swap.content, 'Initial content')
-        assert.equal(ctx.swap.target?.id, 'target')
+        assert.equal(ctx.swap.target, '#target')
         assert.equal(ctx.swap.style, 'outerHTML')
         assert.equal(ctx.swap.select, '#selected')
         assert.equal(ctx.swap.selectOOB, '#oob')
@@ -33,6 +33,24 @@ describe('__createRequestContext unit tests', function() {
             pushUrl: '/pushed',
             replaceUrl: '/replaced'
         })
+    })
+
+    it('preserves an omitted target while deriving headers from the source', function() {
+        let source = createProcessedHTML('<button id="source" hx-get="/test"></button>')
+        let ctx = htmx.__createRequestContext(source, new Event('click'))
+
+        assert.isUndefined(ctx.swap.target)
+        assert.equal(ctx.request.headers['HX-Target'], 'button#source')
+        assert.equal(ctx.request.headers['HX-Request-Type'], 'partial')
+    })
+
+    it('preserves an omitted boosted target while deriving body headers', function() {
+        let source = createProcessedHTML('<a id="source" href="/test" hx-boost="true">Go</a>')
+        let ctx = htmx.__createRequestContext(source, new Event('click'))
+
+        assert.isUndefined(ctx.swap.target)
+        assert.equal(ctx.request.headers['HX-Target'], 'body')
+        assert.equal(ctx.request.headers['HX-Request-Type'], 'full')
     })
 
     // Modifier-only hx-swap currently treats the full default string as its style.
@@ -87,10 +105,9 @@ describe('__createRequestContext unit tests', function() {
     it('applies canonical overrides during construction', function() {
         createProcessedHTML('<div id="attribute-target"></div><div id="override-target"></div><button hx-get="/test" hx-target="#attribute-target"></button>')
         let source = find('button')
-        let target = find('#override-target')
         let ctx = htmx.__createRequestContext(source, new Event('click'), {
             swap: {
-                target,
+                target: '#override-target',
                 select: '#selection'
             },
             actions: {
@@ -98,7 +115,7 @@ describe('__createRequestContext unit tests', function() {
             }
         })
 
-        assert.equal(ctx.swap.target?.id, 'override-target')
+        assert.equal(ctx.swap.target, '#override-target')
         assert.equal(ctx.actions.pushUrl, '/override')
         assert.equal(ctx.request.headers['HX-Target'], 'div#override-target')
         assert.equal(ctx.request.headers['HX-Request-Type'], 'full')

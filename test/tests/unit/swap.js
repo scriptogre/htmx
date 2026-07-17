@@ -40,11 +40,16 @@ describe('swap() unit tests', function() {
     // The third argument accepts the same serialized form as hx-swap.
     it('accepts a serialized swap specification', async function () {
         createProcessedHTML('<div id="target">Old</div>')
-        let finalSwap
-        find('#target').addEventListener('htmx:before:swap', event => finalSwap = event.detail.ctx.swap)
+        let finalSwap, taskTarget
+        find('#target').addEventListener('htmx:before:swap', event => {
+            finalSwap = event.detail.ctx.swap
+            taskTarget = event.detail.tasks.find(task => task.type === 'main').target
+        })
 
         await htmx.swap('New', '#target', 'innerHTML transition:true')
 
+        assert.equal(taskTarget, find('#target'))
+        assert.equal(finalSwap.target, '#target')
         assert.equal(finalSwap.style, 'innerHTML')
         assert.isTrue(finalSwap.transition)
     })
@@ -65,6 +70,7 @@ describe('swap() unit tests', function() {
             source: '#source'
         })
 
+        assert.equal(finalSwap.target, '#target')
         assert.equal(finalSwap.style, 'innerHTML')
         assert.isFalse(finalSwap.transition)
         assert.equal(eventSource, find('#source'))
@@ -754,6 +760,36 @@ describe('swap() unit tests', function() {
         target.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}))
         await forRequest()
         target.textContent.should.equal('response')
+    })
+
+    it('resolves a selector when the main swap task is created', async function () {
+        mockResponse('GET', '/test', 'New')
+        createProcessedHTML('<div id="target">Old</div><button hx-get="/test" hx-target="#target"></button>')
+        let button = find('button')
+        let originalTarget = find('#target')
+        let replacementTarget = document.createElement('div')
+        replacementTarget.id = 'target'
+        replacementTarget.textContent = 'Replacement'
+
+        button.addEventListener('htmx:after:request', () => originalTarget.replaceWith(replacementTarget))
+        button.click()
+        await forRequest()
+
+        assert.equal(replacementTarget.textContent, 'New')
+        assert.equal(originalTarget.textContent, 'Old')
+    })
+
+    it('uses target input changed before main task creation', async function () {
+        mockResponse('GET', '/test', 'New')
+        createProcessedHTML('<div id="first">First</div><div id="second">Second</div><button hx-get="/test" hx-target="#first"></button>')
+        let button = find('button')
+        button.addEventListener('htmx:after:request', event => event.detail.ctx.swap.target = '#second')
+
+        button.click()
+        await forRequest()
+
+        assert.equal(find('#first').textContent, 'First')
+        assert.equal(find('#second').textContent, 'New')
     })
 
     // HX-Reswap replaces request swap modifiers without dropping independent selection state.

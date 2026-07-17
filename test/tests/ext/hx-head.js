@@ -90,6 +90,34 @@ describe('hx-head extension', function() {
         assert.isNull(document.head.querySelector('meta[name="hx-head-test-stale"]'), 'stale element should be removed under merge');
     });
 
+    it('uses merge strategy when a selector targets body', async function() {
+        let existing = document.createElement('meta');
+        existing.setAttribute('name', 'hx-head-test-merge');
+        existing.setAttribute('content', 'remove');
+        addToHead(existing);
+
+        let removalAttempted = false;
+        let preserveHead = event => {
+            if (event.detail.headElement === existing) removalAttempted = true;
+            event.preventDefault();
+        };
+        document.body.addEventListener('htmx:head:before:remove', preserveHead);
+
+        try {
+            mockResponse('GET', '/page', headResponse('<meta name="hx-head-test-new" content="added">', '<div>content</div>'));
+            let button = createProcessedHTML('<button hx-get="/page" hx-target="body" hx-swap="none">click</button>');
+
+            button.click();
+            await afterMerge();
+
+            let added = document.head.querySelector('meta[name="hx-head-test-new"]');
+            if (added) addedHeadElts.push(added);
+            assert.isTrue(removalAttempted);
+        } finally {
+            document.body.removeEventListener('htmx:head:before:remove', preserveHead);
+        }
+    });
+
     it('does not remove head elements under append strategy', async function() {
         let existing = document.createElement('meta');
         existing.setAttribute('name', 'hx-head-test-keep');

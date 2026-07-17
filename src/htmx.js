@@ -171,6 +171,7 @@ var htmx = (() => {
                 parseTriggerSpecs: this.__parseTriggerSpecs.bind(this),
                 determineMethodAndAction: this.__determineMethodAndAction.bind(this),
                 createRequestContext: this.__createRequestContext.bind(this),
+                resolveTarget: this.__resolveTarget.bind(this),
                 collectFormData: this.__collectFormData.bind(this),
                 getAttributeObject: this.__getAttributeObject.bind(this),
                 insertContent: this.__insertContent.bind(this),
@@ -463,10 +464,10 @@ var htmx = (() => {
             let {request: requestOverrides, ...contextOverrides} = overrides;
             HCON.merge(contextOverrides, ctx);
 
-            ctx.swap.target = this.__resolveTarget(sourceElement, ctx.swap.target);
-            ctx.request.headers["HX-Request-Type"] = (ctx.swap.target === document.body || ctx.swap.select) ? "full" : "partial";
-            if (ctx.swap.target) {
-                ctx.request.headers["HX-Target"] = this.__buildIdentifier(ctx.swap.target);
+            let target = this.__resolveTarget(sourceElement, ctx.swap.target);
+            ctx.request.headers["HX-Request-Type"] = (target === document.body || ctx.swap.select) ? "full" : "partial";
+            if (target) {
+                ctx.request.headers["HX-Target"] = this.__buildIdentifier(target);
             }
 
             // Apply hx-config overrides
@@ -1333,7 +1334,7 @@ var htmx = (() => {
                     ...flatSwapOptions,
                     // positional arguments win
                     content,
-                    target: targetElement
+                    target
                 }
             });
         }
@@ -1683,11 +1684,11 @@ var htmx = (() => {
                 return Promise.reject(new Error('Source not found'));
             }
 
-            let targetElement = target
-                ? this.__resolveTarget(document.body, target)
+            let targetElement = target != null
+                ? this.__resolveTarget(sourceElement || document.body, target)
                 : null;
 
-            if (target && !targetElement) {
+            if (target != null && !targetElement) {
                 return Promise.reject(new Error('Target not found'));
             }
 
@@ -1696,7 +1697,7 @@ var htmx = (() => {
             let ctx = this.__createRequestContext(sourceElement, event || {}, {
                 ...contextOverrides,
                 swap: {
-                    ...(targetElement && {target: targetElement}),
+                    ...(target != null && {target}),
                     ...(select !== undefined && {select}),
                     ...(selectOOB !== undefined && {selectOOB}),
                     ...(transition !== undefined && {transition}),

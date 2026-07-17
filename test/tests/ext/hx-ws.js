@@ -686,7 +686,7 @@ describe('hx-ws WebSocket extension', function() {
             await htmx.timeout(30);
 
             assert.equal(eventSource, button);
-            assert.equal(finalSwap.target, result);
+            assert.equal(finalSwap.target, 'closest .result');
             assert.equal(finalSwap.style, 'beforeend');
             assert.equal(finalSwap.swapDelay, '10ms');
             assert.equal(finalSwap.settleDelay, 0);
