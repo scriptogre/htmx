@@ -21,7 +21,7 @@ If you used the WebSocket extension in [htmx 2.0](https://htmx.org/extensions/ws
 
 ### Swap One Target
 
-Open a WebSocket connection:
+Open a [persistent](#wsreconnect) WebSocket connection:
 
 ```html
 <div hx-ws:connect="/chat">
@@ -29,7 +29,7 @@ Open a WebSocket connection:
 </div>
 ```
 
-The server sends over `/chat`:
+The browser receives this WebSocket message:
 
 ```html
 <p>New message</p>

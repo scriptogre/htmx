@@ -21,27 +21,36 @@ If you used the SSE extension in [htmx 2.0](https://htmx.org/extensions/sse/), s
 
 ### Stream One Target
 
-Open a persistent SSE connection:
+Start a stream with a normal htmx request:
 
 ```html
-<div hx-sse:connect="/chat">
-  ...
-</div>
+<button hx-get="/ping">
+  Ping
+</button>
 ```
 
-The server responds with `Content-Type: text/event-stream`, then sends:
+The server responds with [`text/event-stream`](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events):
 
-```text
-data: <p>New message</p>
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+data: P
+
+data: Po
+
+data: Pon
+
+data: Pong
 
 ```
 
-The blank line ends the SSE message. htmx swaps its `data` into the connection element:
+Each message replaces the content as it arrives:
 
 ```html
-<div hx-sse:connect="/chat">
-  <p>New message</p> <!-- Swapped in -->
-</div>
+<button hx-get="/ping">
+  Pong
+</button>
 ```
 
 htmx applied its normal swap rules using the defaults:
@@ -49,34 +58,37 @@ htmx applied its normal swap rules using the defaults:
 - [`hx-target="this"`](/reference/attributes/hx-target#this)
 - [`hx-swap="innerHTML"`](/reference/attributes/hx-swap#innerhtml) (from [`htmx.config.defaultSwap`](/reference/config/htmx-config-defaultSwap))
 
-Set [`hx-target`](/reference/attributes/hx-target) and [`hx-swap`](/reference/attributes/hx-swap) to change them:
+Because it behaves like normal swaps, you can set [`hx-target`](/reference/attributes/hx-target) and [`hx-swap`](/reference/attributes/hx-swap) (including [modifiers](/reference/attributes/hx-swap#modifiers)):
 
 ```html
-<div hx-sse:connect="/chat"
-     hx-target="#messages"
-     hx-swap="beforeend">
+<button hx-post="/generate"
+        hx-target="next output"
+        hx-swap="beforeend">
+  Generate
+</button>
 
-  <div id="messages">
-    <p>Old message</p>
-  </div>
-
-</div>
+<!-- LLM tokens stream here -->
+<output></output>
 ```
 
-The server sends:
+Each message contains one text chunk:
 
-```text
-data: <p>New message</p>
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+data: Hello
+
+data: , world
+
+data: !
 
 ```
 
-The result is:
+[`hx-swap="beforeend"`](/reference/attributes/hx-swap#beforeend) accumulates them in `<output>`:
 
 ```html
-<div id="messages">
-  <p>Old message</p>
-  <p>New message</p> <!-- Appended -->
-</div>
+<output>Hello, world!</output>
 ```
 
 You can also use:
@@ -84,26 +96,36 @@ You can also use:
 - [`hx-select`](/reference/attributes/hx-select) to select content for the swap
 - [`hx-select-oob`](/reference/attributes/hx-select-oob) to select more elements to swap
 
-### Stream Multiple Targets
+Use [attribute inheritance](/docs#attribute-inheritance) to share these settings with descendants.
 
-Start with the page elements to update:
+### Stream Live Updates
+
+Use `hx-sse:connect` to update several parts of the page over one [persistent](#ssereconnect) connection:
 
 ```html
 <div hx-sse:connect="/events"></div>
 
-<div id="feed">
-  <p>Old</p>
-</div>
+<div id="feed"></div>
 <div id="status">Offline</div>
 ```
 
-The server sends an [`hx-swap-oob`](/reference/attributes/hx-swap-oob) element and an [`<hx-partial>`](/reference/tags/hx-partial):
+With default config, `hx-sse:connect` behaves like:
 
-```text
+```html
+<div hx-get="/events"
+     hx-trigger="load"
+     hx-config="sse.reconnect:true sse.pauseOnBackground:true">
+</div>
+```
+
+The server sends two extra swaps using [`hx-swap-oob`](/reference/attributes/hx-swap-oob) and [`<hx-partial>`](/reference/tags/hx-partial):
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 data: <div id="status" hx-swap-oob="true">Online</div>
-data: <hx-partial hx-target="#feed" hx-swap="beforeend">
-data:   <p>New</p>
-data: </hx-partial>
+data: <hx-partial hx-target="#feed"><p>New</p></hx-partial>
 
 ```
 
@@ -113,7 +135,6 @@ The page becomes:
 <div hx-sse:connect="/events"></div>
 
 <div id="feed">
-  <p>Old</p>
   <p>New</p>
 </div>
 <div id="status">Online</div>
@@ -131,13 +152,16 @@ By default, [`swapEmpty:false`](/reference/attributes/hx-swap#swapempty) leaves 
 
 The server can mix extra swaps with ordinary HTML:
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 data: <p>New event</p>
 data: <hx-partial hx-target="#status">Busy</hx-partial>
 
 ```
 
-The paragraph uses the connection's target and swap. The partial updates `#status`.
+The paragraph follows `hx-target` and `hx-swap` on the `hx-sse:connect` element. The partial updates `#status`.
 
 To disable the connection's swap, set `hx-swap="none"`:
 
@@ -147,43 +171,14 @@ To disable the connection's swap, set `hx-swap="none"`:
 
 Partials and OOB swaps still run.
 
-### Stream a Normal Request
-
-Any htmx request can receive an SSE stream:
-
-```html
-<form hx-post="/generate"
-      hx-target="#output"
-      hx-swap="beforeend">
-  <input name="prompt">
-  <button>Generate</button>
-</form>
-
-<div id="output"></div>
-```
-
-The server returns:
-
-```http
-Content-Type: text/event-stream
-```
-
-Then streams messages:
-
-```text
-data: <span>Hello</span>
-
-data: <span> world</span>
-
-```
-
-Normal requests keep their method, values, headers, target, and swap. Unlike [`hx-sse:connect`](#hx-sseconnect), they do not reconnect or pause on background tabs by default.
-
-### Handle Named Events
+### Send Named Events
 
 An SSE `event` field dispatches a DOM event instead of swapping its data:
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 event: progress
 data: 50
 id: task-5
@@ -225,7 +220,10 @@ Close a connection when a specific named event arrives:
 
 The server sends:
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 event: done
 data: Complete
 
@@ -233,7 +231,7 @@ data: Complete
 
 The `done` DOM event and [`htmx:sse:after:message`](#htmxsseaftermessage) fire before [`htmx:sse:close`](#htmxsseclose).
 
-### Choose a Trigger
+### Use Custom Trigger
 
 Use [`hx-trigger`](/reference/attributes/hx-trigger) to connect later than `load`:
 
@@ -251,7 +249,10 @@ All [`hx-trigger` modifiers](/reference/attributes/hx-trigger#event-modifiers) a
 
 Give each message an ID so the server can replay missed messages:
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 id: event-42
 data: <p>New message</p>
 
@@ -282,9 +283,22 @@ Override them for one request with [`hx-config`](/reference/attributes/hx-config
 </div>
 ```
 
-Config is fixed when stream handling begins.
+[`htmx.config.sse`](#config) and [`hx-config`](/reference/attributes/hx-config) are read when stream handling begins.
 
 ## Attributes
+
+### `hx-get`/`hx-post`/`hx-put`/...
+
+The `hx-sse` extension enhances:
+
+- [`hx-get`](/reference/attributes/hx-get)
+- [`hx-post`](/reference/attributes/hx-post)
+- [`hx-put`](/reference/attributes/hx-put)
+- [`hx-patch`](/reference/attributes/hx-patch)
+- [`hx-delete`](/reference/attributes/hx-delete)
+- [`hx-action`](/reference/attributes/hx-action) with [`hx-method`](/reference/attributes/hx-method)
+
+When a response uses `Content-Type: text/event-stream`, htmx streams its messages instead of reading one HTML response.
 
 ### `hx-sse:connect`
 
@@ -314,7 +328,10 @@ Closes the connection after a matching named event:
 <div hx-sse:connect="/events" hx-sse:close="done"></div>
 ```
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 event: done
 data: Complete
 
@@ -433,7 +450,7 @@ document.addEventListener('htmx:sse:error', event => {
 
 ## Config
 
-Set global defaults with an `htmx-config` meta tag.
+Set global defaults with an [`htmx-config`](/reference/config/htmx-config) meta tag.
 
 ### `sse.reconnect`
 
@@ -457,7 +474,10 @@ Defaults to `500` milliseconds. Each failed attempt doubles the delay, and value
 
 The server can replace this value for the stream:
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 retry: 2000
 data: Reconnect after two seconds
 
@@ -541,14 +561,20 @@ htmx 4 uses a normal htmx request and swaps unnamed messages automatically:
 <div hx-sse:connect="/chat"></div>
 ```
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 data: <p>New message</p>
 
 ```
 
 Named messages now dispatch DOM events instead of selecting a swap target:
 
-```text
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
 event: progress
 data: 50
 
@@ -592,7 +618,7 @@ These events changed:
 | [`htmx:sseMessage`](https://htmx.org/extensions/sse/#htmxssemessage) | [`htmx:sse:after:message`](#htmxsseaftermessage) |
 | [`htmx:sseClose`](https://htmx.org/extensions/sse/#htmxsseclose) | [`htmx:sse:close`](#htmxsseclose) |
 
-htmx 4 uses `fetch()` and `ReadableStream` instead of `EventSource`. SSE responses can therefore use any htmx HTTP method, request values, and headers.
+htmx 4 uses [`fetch()`](https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch) and [`ReadableStream`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream) instead of [`EventSource`](https://developer.mozilla.org/en-US/docs/Web/API/EventSource). SSE responses can therefore use any htmx HTTP method, request values, and headers.
 
 ### htmx 4.0 Alpha
 
