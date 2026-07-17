@@ -1,6 +1,6 @@
 ---
 title: "htmx:before:response"
-description: "Fires after `fetch()`, before `response.text()`"
+description: "Fires before `response.text()`"
 ---
 
 The `htmx:before:response` event fires after a fetch response arrives but before htmx reads the response body.

@@ -1,6 +1,6 @@
 ---
 title: "htmx:after:request"
-description: "Immediately after fetch resolves"
+description: "Fires after `fetch()` resolves"
 ---
 
 The `htmx:after:request` event fires immediately after `fetch()` resolves and `ctx.response` is populated.

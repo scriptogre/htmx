@@ -1,6 +1,6 @@
 ---
 title: "htmx:error"
-description: "Fires after request or swap exception"
+description: "Fires when htmx catches an exception"
 ---
 
 The `htmx:error` event fires when an exception occurs during the request or swap process.

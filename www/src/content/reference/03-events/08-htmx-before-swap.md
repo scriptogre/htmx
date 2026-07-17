@@ -1,6 +1,6 @@
 ---
 title: "htmx:before:swap"
-description: "Fires before DOM update"
+description: "Fires before content enters the DOM"
 ---
 
 The `htmx:before:swap` event fires after response content is parsed but before it's inserted or swapped into the DOM.

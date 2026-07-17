@@ -1,6 +1,6 @@
 ---
 title: "htmx:before:settle"
-description: "Fires after DOM insertion, before settle tasks"
+description: "Fires before settle tasks"
 ---
 
 The `htmx:before:settle` event fires after new content is inserted into the DOM but before CSS transitions are applied.

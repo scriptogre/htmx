@@ -1,6 +1,6 @@
 ---
 title: "htmx:after:response"
-description: "After the response body is read"
+description: "Fires after `response.text()`"
 ---
 
 The `htmx:after:response` event fires after htmx reads the response body into `ctx.swap.content`, before it processes HX response headers, status rules, or swaps.

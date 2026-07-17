@@ -1,6 +1,6 @@
 ---
 title: "htmx:response:error"
-description: "Fires for HTTP status 400 or higher"
+description: "Fires when `response.status` is `400` or higher"
 ---
 
 The `htmx:response:error` event fires when the server responds with an HTTP error status code (400 or higher).

@@ -1,6 +1,6 @@
 ---
 title: "htmx:after:swap"
-description: "Fires after DOM update"
+description: "Fires after content enters the DOM"
 ---
 
 The `htmx:after:swap` event fires after new content has been swapped into the DOM.

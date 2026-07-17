@@ -1,6 +1,6 @@
 ---
 title: "htmx:finally:swap"
-description: "At the end of swap lifecycle"
+description: "Fires after a swap ends, even on error"
 ---
 
 The `htmx:finally:swap` event fires at the very end of the swap cycle, whether successful or failed.

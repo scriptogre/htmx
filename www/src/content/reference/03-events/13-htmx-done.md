@@ -1,6 +1,6 @@
 ---
 title: "htmx:done"
-description: "When the request → response → swap pipeline ends"
+description: "Fires after lifecycle ends, including failures"
 ---
 
 The `htmx:done` event fires when the request → response → swap pipeline ends, whether it completes, is cancelled, or fails.
