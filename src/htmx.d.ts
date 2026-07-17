@@ -32,7 +32,7 @@ export interface HtmxConfig {
    * Default swap style when `hx-swap` is not specified.
    * @default "innerHTML"
    */
-  defaultSwap: string | HtmxSwapFields;
+  defaultSwap: string | HtmxSwap;
   /**
    * Scroll the focused element into view after each swap.
    * @default false
@@ -119,7 +119,11 @@ export interface HtmxConfig {
   defaultSwapEmpty: boolean;
 }
 
-export interface HtmxSwapFields {
+export interface HtmxSwap {
+  /** HTML content to swap. */
+  content?: string;
+  /** Element where content will be swapped. */
+  target?: Element;
   /** Swap style (e.g. `'innerHTML'`, `'outerHTML'`). */
   style?: string;
   /** CSS selector to extract content from the response. */
@@ -140,9 +144,9 @@ export interface HtmxSwapFields {
   strip?: boolean;
 }
 
-export interface HtmxSwapOptions extends HtmxSwapFields {
+export interface HtmxSwapOptions extends HtmxSwap {
   /** Serialized or structured swap specification. */
-  swap?: string | HtmxSwapFields;
+  swap?: string | HtmxSwap;
   /** Element used for relative selectors and lifecycle events. */
   source?: Element | string;
 }
@@ -287,26 +291,12 @@ export interface HtmxRequestCtx {
   sourceElement: Element;
   /** Event that triggered the request */
   sourceEvent: Event | null;
-  /** Target element where the response will be swapped */
-  target: Element;
-  /** hx-select value */
-  select: string;
-  /** hx-select-oob value */
-  selectOOB: string;
-  /** hx-swap value */
-  swap: string;
-  /** hx-push-url value */
-  push: string | boolean;
-  /** hx-replace-url value */
-  replace: string | boolean;
-  /** Whether to use view transitions */
-  transition: boolean;
+  /** Swap fields */
+  swap: HtmxSwap;
   /** Fetch request options — modify here in htmx:config:request */
   request: HtmxRequestOptions;
   /** Response object, available after htmx:after:request */
   response: HtmxResponse;
-  /** Response body text, available after htmx:after:request */
-  text: string;
 }
 
 /** History detail shared by htmx:before:history:update and htmx:after:history:update */

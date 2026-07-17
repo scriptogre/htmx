@@ -276,7 +276,7 @@ Do the `hx-disable` rename **before** upgrading. In htmx 2, `hx-disable` meant "
 
 #### Events
 
-All events follow a new pattern: `htmx:phase:action[:sub-action]`. Most error events are consolidated to [`htmx:error`](/reference/events/htmx-error). HTTP error responses use [`htmx:response:error`](/reference/events/htmx-response-error).
+Core events follow `htmx:<timing>:<noun>[:<type>]`. Most error events are consolidated to [`htmx:error`](/reference/events/htmx-error). HTTP error responses use [`htmx:response:error`](/reference/events/htmx-response-error).
 
 | htmx 2.x                    | htmx 4.x                                                                          | Type    | Notes                               |
 |-----------------------------|-----------------------------------------------------------------------------------|---------|-------------------------------------|
@@ -521,10 +521,6 @@ Internally-dispatched events route to the console as follows:
 
 This restores the htmx 2.x convention: if you want an internal failure path to show up in the console, fire an event with `detail.error` (or `detail.warn`); no per-site `console.error` needed.
 
-#### Request context
-
-All events provide a consistent `ctx` object with request/response information.
-
 #### Events
 
 | Event                                                                        | Fires                                             |
@@ -657,6 +653,8 @@ Instead of a single `onEvent` callback that switches on event names, each event 
 | `htmx:afterSwap` | `htmx_after_swap` |
 
 All hooks receive `(elt, detail)`. Return `false` to cancel.
+
+Extension event names use `htmx:<extension>:<timing>:<noun>:<type>`. Examples include `htmx:ws:before:message:incoming`, `htmx:sse:before:message`, `htmx:head:after:merge`, and `htmx:ws:error`. Hook names replace the colons with underscores.
 
 ##### `handle_swap` is special
 
@@ -2883,15 +2881,24 @@ Available internal API methods:
 
 #### Request Context
 
-The `detail.ctx` object contains request information:
+The `detail.ctx` object contains request and response information:
 
 ```javascript
 {
     sourceElement,      // Element triggering request
     sourceEvent,        // Event that triggered request
-    status,            // Request status
-    target,            // Target element for swap
-    swap,              // Swap strategy
+    status,             // Request status
+    swap: {
+        content,        // HTML content to swap
+        target,         // Target element
+        style,          // Swap style (e.g. innerHTML)
+        select,         // hx-select value
+        selectOOB,      // hx-select-oob value
+        transition,     // Whether to use view transitions
+        swapDelay,
+        settleDelay,
+        ...modifiers,
+    },
     request: {
         action,        // Request URL
         method,        // HTTP method
@@ -2906,10 +2913,33 @@ The `detail.ctx` object contains request information:
         status,        // HTTP status code
         headers        // Response headers: https://developer.mozilla.org/en-US/docs/Web/API/Headers
     },
-    text,              // Response text (after request)
-    hx                 // HX-* response headers (parsed)
 }
 ```
+
+#### Swap
+
+`ctx.swap` describes the content swap. Structured swaps use the same fields.
+
+| Field | Type | Description |
+|---|---|---|
+| `content` | `string` | HTML content to swap. |
+| [`target`](/reference/attributes/hx-swap#target) | `Element` | Element where content will be swapped. |
+| [`style`](/reference/attributes/hx-swap#swap-methods) | `string` | Swap style, such as `innerHTML` or `outerHTML`. |
+| [`select`](/reference/attributes/hx-select) | `string` | CSS selector used to extract content from the response. |
+| [`selectOOB`](/reference/attributes/hx-select-oob) | `string` | Selector for out-of-band swaps. |
+| [`transition`](/reference/attributes/hx-swap#transition) | `boolean` | Whether to use the View Transitions API. |
+| [`swapDelay`](/reference/attributes/hx-swap#swap) | `string \| number` | Delay before the swap. |
+| [`settleDelay`](/reference/attributes/hx-swap#settle) | `string \| number` | Delay before settling. |
+| [`scroll`](/reference/attributes/hx-swap#scroll) | `"top" \| "bottom"` | Scroll position after the swap. |
+| [`scrollTarget`](/reference/attributes/hx-swap#scroll) | `string` | Target for scrolling. |
+| [`show`](/reference/attributes/hx-swap#show) | `"top" \| "bottom" \| "none"` | Position at which to show an element. |
+| [`showTarget`](/reference/attributes/hx-swap#show) | `string` | Target to show. |
+| [`ignoreTitle`](/reference/attributes/hx-swap#ignoretitle) | `boolean` | Whether to ignore a response title. |
+| [`focusScroll`](/reference/attributes/hx-swap#focusscroll) | `boolean` | Whether to scroll a focused element into view. |
+| [`swapEmpty`](/reference/attributes/hx-swap#swapempty) | `boolean` | Whether empty content performs the main swap. |
+| [`strip`](/reference/attributes/hx-swap#strip) | `boolean` | Whether to strip the response wrapper. |
+
+Fields may be absent when they do not apply or before their lifecycle value is available. Swap behavior fields correspond to the [`hx-swap`](/reference/attributes/hx-swap) modifiers.
 
 #### Custom Swap Strategies
 

@@ -89,17 +89,7 @@ await htmx.swap('Done', '#status', {
 
 Flat swap fields override fields from `swap`.
 
-Supported fields:
-
-- `swap` - Serialized or structured swap input
-- `style`
-- [`select`](/reference/attributes/hx-select)
-- [`selectOOB`](/reference/attributes/hx-select-oob)
-- `transition`
-- `swapDelay`
-- `settleDelay`
-- Other [`hx-swap` modifiers](/reference/attributes/hx-swap)
-- `source`
+See the full list of [swap fields](/docs#swap). `swap` accepts serialized or structured swap input, and `source` sets the element used for relative selectors and lifecycle events.
 
 ## Source
 

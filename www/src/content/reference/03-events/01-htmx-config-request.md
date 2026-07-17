@@ -11,35 +11,9 @@ After htmx has constructed the request context but before [`htmx:confirm`](/refe
 
 ## Event Detail
 
-The event provides a `ctx` object with the following structure:
+`event.detail.ctx` contains the [request context](/docs#request-context). During this event, `ctx.request.body` is a `FormData` object and `ctx.response` is not yet available.
 
-```javascript
-{
-    sourceElement,  // Element that triggered the request
-    sourceEvent,    // Event that triggered it
-    target,         // Where the response will go
-    select,         // hx-select value
-    selectOOB,      // hx-select-oob value
-    swap,           // hx-swap value
-    push,           // hx-push-url value
-    replace,        // hx-replace-url value
-    transition,     // Whether to use view transitions
-    request: {
-        validate,     // Whether to validate the form
-        action,       // Request URL
-        method,       // HTTP method
-        headers,      // Request headers object
-        body,         // Request body (FormData)
-        credentials,  // Fetch credentials mode
-        mode,         // Fetch mode
-        cache,        // Fetch cache mode
-        timeout,      // Timeout in milliseconds
-        // ... any other fetch options
-    }
-}
-```
-
-You can modify any property to change the request.
+Modify `ctx.request` to configure the request before it is sent.
 
 Call `evt.preventDefault()` to cancel the request.
 

@@ -110,7 +110,7 @@ await htmx.ajax(
 )
 ```
 
-Or pass canonical swap fields.
+Or pass structured [swap fields](/docs#swap).
 
 ```javascript
 await htmx.ajax(

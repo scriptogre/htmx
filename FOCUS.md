@@ -37,6 +37,8 @@ ctx.push
 ctx.replace
 ```
 
+Before this work is complete, publish one durable lifecycle context contract across core behavior, central docs, extension-authoring guidance, `dist/htmx.d.ts`, event detail types, and relevant event reference pages. Cover `ctx` plus its `request`, `response`, `swap`, and `actions` namespaces, including lifecycle availability and mutable fields.
+
 ### Request state
 
 `ctx.request` owns all request state:
@@ -274,54 +276,6 @@ Each event reuses the connection context, replaces `ctx.swap.content`, and execu
 ### Multipart
 
 Each part gets its own canonical context derived from the envelope defaults. Do not spread one mutable envelope context into every part.
-
-## Extension event names
-
-Extension events keep the extension namespace immediately after `htmx`:
-
-```text
-htmx:<extension>:<timing>:<noun>:<type>
-```
-
-Use only the segments that carry information:
-
-```text
-htmx:ws:before:message:incoming
-htmx:ws:after:message:outgoing
-htmx:sse:before:message
-htmx:head:after:merge
-htmx:ws:error
-htmx:sse:close
-```
-
-WebSocket message events use `incoming` for server-to-client messages and `outgoing` for client-to-server messages. Do not call outgoing messages requests.
-
-## WebSocket message API
-
-Incoming messages preserve the native value and provide cached conversions:
-
-```js
-message.data
-message.type
-message.text()
-message.json()
-message.blob()
-message.arrayBuffer()
-```
-
-`message.type` distinguishes text from binary without changing the underlying value. Only text messages enter the built-in HTML/JSON swap path.
-
-Outgoing messages keep metadata, logical values, and encoded data distinct:
-
-```js
-message.headers
-message.values
-message.data
-```
-
-The default encoder serializes `{...values, headers}` as JSON. A protocol extension may replace `message.data` with any value accepted by `WebSocket.send()`.
-
-Both incoming and outgoing before-events provide `message.waitUntil(promise)`. Processing waits for registered work before checking `message.cancelled` and continuing.
 
 ## Validation
 

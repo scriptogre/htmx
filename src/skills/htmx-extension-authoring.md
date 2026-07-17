@@ -35,7 +35,7 @@ Extensions are global -- they apply page-wide, activated by custom attributes wh
 
         htmx_after_request: (elt, detail) => {
             // After request completes
-            // detail.ctx.swap.content has response text
+            // detail.ctx.swap.content is populated from the response body
             // detail.ctx.response has status, headers
         },
 
@@ -126,6 +126,10 @@ Hook names use underscores (not colons). All hooks receive `(elt, detail)` unles
 |------|-------|
 | `htmx_after_implicitInheritance` | `htmx:after:implicitInheritance` |
 
+## Extension Event Names
+
+Extension event names use `htmx:<extension>:<timing>:<noun>:<type>`. Examples include `htmx:ws:before:message:incoming`, `htmx:sse:before:message`, `htmx:head:after:merge`, and `htmx:ws:error`. Hook names replace the colons with underscores.
+
 ## Cancelling Events
 
 Return `false` or set `detail.cancelled = true`:
@@ -168,9 +172,9 @@ The context object available via `detail.ctx` in hook callbacks:
     sourceEvent,        // The triggering DOM event
     status,             // Request status string
     swap: {
-        content,        // Response text (after request)
+        content,        // HTML content to swap
         target,         // Target element
-        style,          // Swap strategy
+        style,          // Swap style (e.g. innerHTML)
         select,         // hx-select value
         selectOOB,      // hx-select-oob value
         transition,     // Whether view transitions are enabled
@@ -197,7 +201,6 @@ The context object available via `detail.ctx` in hook callbacks:
         status,         // HTTP status code
         headers,        // Response headers
     },
-    hx,                 // Parsed HX-* response headers
 }
 ```
 
