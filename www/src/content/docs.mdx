@@ -357,7 +357,7 @@ All events follow a new pattern: `htmx:phase:action[:sub-action]`. Most error ev
 | `HX-Trigger-Name` | [`HX-Source`](/reference/headers/HX-Source)             | removed         | —                                                     |
 | `HX-Prompt`       | [`hx-prompt` extension](/extensions/hx-prompt)          | restored by ext | Load the extension.                                   |
 | —                 | [`HX-Request-Type`](/reference/headers/HX-Request-Type) | new             | `"full"` or `"partial"`.                          |
-| —                 | `Accept`                                                | new             | Core requests send `text/html`; [`hx-sse`](/extensions/hx-sse#request-headers) adds `text/event-stream`. |
+| —                 | `Accept`                                                | new             | Core requests send `text/html`; [`hx-sse`](/extensions/hx-sse#accept) adds `text/event-stream`. |
 
 #### Response headers
 
@@ -564,9 +564,9 @@ htmx 4 ships with 9 core extensions. The SSE and WebSocket extensions have been 
 | [`htmx-2-compat`](/extensions/htmx-2-compat)         | Restores implicit inheritance, old event names, and previous error-swapping defaults |
 | [`optimistic`](/extensions/hx-optimistic)               | Shows expected content from a template before the server responds                    |
 | [`preload`](/extensions/hx-preload)                     | Triggers requests early (on mouseover/mousedown) for near-instant page loads ([upgrade guide](/extensions/hx-preload#upgrading-from-htmx-2x)) |
-| [`sse`](/extensions/hx-sse)                             | Server-Sent Events streaming support ([upgrade guide](/extensions/hx-sse#upgrading-from-htmx-2x)) |
+| [`sse`](/extensions/hx-sse)                             | Server-Sent Events streaming support ([upgrade guide](/extensions/hx-sse#migration)) |
 | [`upsert`](/extensions/hx-upsert)                       | Updates existing elements by ID and inserts new ones, preserving unmatched elements  |
-| [`ws`](/extensions/hx-ws)                               | Bi-directional WebSocket communication ([upgrade guide](/extensions/hx-ws#upgrading-from-htmx-2x)) |
+| [`ws`](/extensions/hx-ws)                               | Bi-directional WebSocket communication ([upgrade guide](/extensions/hx-ws#migration)) |
 
 ### Checklist
 
