@@ -15,29 +15,19 @@
     // ========================================
     
     function getConfig(element) {
-        const defaults = {
+        let hxConfig = api.HCON.parse(api.attributeValue(element, 'hx-config')).ws || {};
+
+        return {
             reconnect: true,
             reconnectDelay: 500,
             reconnectMaxDelay: 60000,
             reconnectMaxAttempts: Infinity,
             reconnectJitter: 0.3,
             pauseOnBackground: true,
-            pendingRequestTTL: 30000
+            pendingRequestTTL: 30000,
+            ...htmx.config.ws, // global defaults
+            ...hxConfig // hx-config overrides
         };
-        let global = htmx.config.ws || {};
-        let perElement = {};
-        if (element) {
-            let ctx = api.createRequestContext(element, new CustomEvent('_'));
-            perElement = ctx.request.ws || {};
-        }
-        let merged = { ...defaults, ...global, ...perElement };
-
-        // Backwards compat: boolean reconnectJitter (old API used true/false)
-        if (typeof merged.reconnectJitter === 'boolean') {
-            merged.reconnectJitter = merged.reconnectJitter ? 0.3 : 0;
-        }
-
-        return merged;
     }
     
     // ========================================

@@ -819,6 +819,7 @@ Early htmx 4 builds used different names:
 | Early htmx 4 | Current | Compatibility |
 |--------------|---------|---------------|
 | `htmx.config.websockets` | [`htmx.config.ws`](#config) | Removed |
+| `ws.reconnectJitter:true/false` | [`ws.reconnectJitter:0.3/0`](#wsreconnectjitter) | Removed |
 | `payload` | [`content`](#override-an-incoming-swap) | Works with a warning |
 
 ## Notes

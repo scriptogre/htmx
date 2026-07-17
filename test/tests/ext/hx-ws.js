@@ -2229,53 +2229,7 @@ describe('hx-ws WebSocket extension', function() {
     });
 
     // ========================================
-    // 14. RECONNECT JITTER BOOLEAN COMPAT (POLISH)
-    // ========================================
-
-    describe('reconnectJitter Boolean Compatibility', function() {
-
-        it('treats reconnectJitter: true as 0.3 (default jitter)', async function() {
-            htmx.config.ws = {
-                reconnect: true,
-                reconnectDelay: 50,
-                reconnectJitter: true
-            };
-
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test"></div>
-            `);
-            await htmx.timeout(50);
-
-            // Should reconnect without breaking (true * delay would give NaN-like behavior)
-            let ws = mockWebSocketInstances[0];
-            ws.close();
-            await htmx.timeout(150);
-
-            assert.isTrue(mockWebSocketInstances.length > 1, 'Should reconnect with boolean jitter=true');
-        });
-
-        it('treats reconnectJitter: false as 0 (no jitter)', async function() {
-            htmx.config.ws = {
-                reconnect: true,
-                reconnectDelay: 50,
-                reconnectJitter: false
-            };
-
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test"></div>
-            `);
-            await htmx.timeout(50);
-
-            let ws = mockWebSocketInstances[0];
-            ws.close();
-            await htmx.timeout(100);
-
-            assert.isTrue(mockWebSocketInstances.length > 1, 'Should reconnect with boolean jitter=false');
-        });
-    });
-
-    // ========================================
-    // 15. ADDITIONAL FINDINGS — DEEP REVIEW
+    // 14. ADDITIONAL FINDINGS — DEEP REVIEW
     // ========================================
 
     describe('Deep Review Fixes', function() {
