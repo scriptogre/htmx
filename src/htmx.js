@@ -183,6 +183,7 @@ var htmx = (() => {
                     if (asyncFn) this.#AsyncFunction = asyncFn;
                 },
                 onTrigger: this.__onTrigger.bind(this),
+                runActions: this.__runActions.bind(this),
                 htmxProp: this.__htmxProp.bind(this),
                 triggerHtmxEvent: this.__trigger.bind(this),
                 executeJavaScript: this.__executeJavaScript.bind(this)
@@ -657,7 +658,9 @@ var htmx = (() => {
                     this.__trigger(elt, "htmx:response:error", {ctx})
                 }
 
-                if (this.__handleHeadersAndMaybeReturnEarly(ctx)) {
+                // History actions wait for status rules; the rest run now.
+                let {pushUrl, replaceUrl, ...actions} = ctx.actions;
+                if (Object.keys(actions).length && this.__runActions(actions, ctx.sourceElement)) {
                     ctx.keepIndicators = true;
                     return
                 }
@@ -702,22 +705,38 @@ var htmx = (() => {
             return actions;
         }
 
-        // Handle response actions that abort normal swap processing.
-        // Returns true if the response was fully handled.
-        __handleHeadersAndMaybeReturnEarly(ctx) {
-            let {trigger, refresh, redirect, location: goTo} = ctx.actions;
-            if (trigger) {
-                this.__handleTriggerHeader(trigger, ctx.sourceElement);
+        // Run a set of server actions, whole or subset. Timing comes from the call site.
+        // Fires htmx:before:actions and htmx:after:actions around execution.
+        // Unknown actions are left for extensions to handle in those events.
+        // Returns true when a terminal action (refresh, redirect, location) ran.
+        __runActions(actions, element) {
+            let detail = {actions};
+            if (!this.__trigger(element, "htmx:before:actions", detail)) return false;
+            let {trigger, pushUrl, replaceUrl, refresh, redirect, location: goTo} = detail.actions;
+
+            if (trigger) this.__handleTriggerHeader(trigger, element);
+
+            if (pushUrl === 'false') pushUrl = null;
+            if (replaceUrl === 'false') replaceUrl = null;
+            if (pushUrl != null || replaceUrl != null) {
+                let type = pushUrl != null ? 'push' : 'replace';
+                let path = pushUrl ?? replaceUrl;
+                if (path === 'true') path = location.pathname + location.search;
+                let historyDetail = {history: {type, path}, sourceElement: element};
+                if (this.__trigger(document, "htmx:before:history:update", historyDetail)) {
+                    path = historyDetail.history.path;
+                    if (type === 'push') this.__pushUrlIntoHistory(path);
+                    else this.__replaceUrlInHistory(path);
+                    this.__trigger(document, "htmx:after:history:update", historyDetail);
+                }
             }
+
+            let terminal = true;
             if (refresh === 'true') {
                 location.reload();
-                return true
-            }
-            if (redirect) {
+            } else if (redirect) {
                 location.href = redirect;
-                return true
-            }
-            if (goTo) {
+            } else if (goTo) {
                 let path = goTo, opts = {};
                 if (path[0] === '{' || /[\s,]/.test(path)) {
                     opts = HCON.parse(path);
@@ -726,8 +745,12 @@ var htmx = (() => {
                 }
                 opts.push ??= 'true';
                 this.ajax('GET', path, opts);
-                return true
+            } else {
+                terminal = false;
             }
+
+            this.__trigger(element, "htmx:after:actions", detail);
+            return terminal;
         }
 
         __initTimeout(ctx) {
@@ -1674,8 +1697,15 @@ var htmx = (() => {
                 transition,
                 headers,
                 request,
+                push,
+                replace,
                 ...contextOverrides
             } = options;
+
+            // push and replace are shorthands for the pushUrl and replaceUrl actions
+            if (push !== undefined || replace !== undefined) {
+                contextOverrides.actions = {pushUrl: push, replaceUrl: replace, ...contextOverrides.actions};
+            }
 
             let sourceElement = typeof source === 'string'
                 ? document.querySelector(source)
@@ -1785,7 +1815,7 @@ var htmx = (() => {
 
             let path = push || replace;
             // if the path is simply "true" normalize to the current path
-            if (path === 'true') {
+            if (path === 'true' || path === true) {
                 let finalUrl = response?.raw?.url || ctx.request.action;
                 let url = new URL(finalUrl, location.href);
                 path = url.pathname + url.search + (ctx.request.anchor ? '#' + ctx.request.anchor : '');
@@ -1798,19 +1828,7 @@ var htmx = (() => {
         __handleHistoryUpdate(ctx) {
             let action = this.__resolveHistoryAction(ctx);
             if (!action) return;
-
-            let historyDetail = {
-                history: action,
-                sourceElement: ctx.sourceElement,
-                response: ctx.response
-            };
-            if (!this.__trigger(document, "htmx:before:history:update", historyDetail)) return;
-            if (action.type === 'push') {
-                this.__pushUrlIntoHistory(action.path);
-            } else {
-                this.__replaceUrlInHistory(action.path);
-            }
-            this.__trigger(document, "htmx:after:history:update", historyDetail);
+            this.__runActions({[action.type + 'Url']: action.path}, ctx.sourceElement);
         }
 
         // hx-on:<event> binds to <event> directly

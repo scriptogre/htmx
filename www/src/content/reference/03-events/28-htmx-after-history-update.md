@@ -13,7 +13,6 @@ After `history.pushState()` or `history.replaceState()` completes.
 
 - `history` - Object with `type` ("push" or "replace") and `path`
 - `sourceElement` - Element that triggered the navigation
-- `response` - Response object
 
 ## Example
 

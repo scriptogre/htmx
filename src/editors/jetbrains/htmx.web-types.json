@@ -471,6 +471,16 @@
           "doc-url": "https://four.htmx.org/reference/events/htmx-response-error"
         },
         {
+          "name": "before:actions",
+          "description": "Fires before a set of server actions executes. `detail.actions` holds the actions; cancel to skip execution.",
+          "doc-url": "https://four.htmx.org/reference/events/htmx-before-actions"
+        },
+        {
+          "name": "after:actions",
+          "description": "Fires after a set of server actions executed. `detail.actions` holds the actions.",
+          "doc-url": "https://four.htmx.org/reference/events/htmx-after-actions"
+        },
+        {
           "name": "done",
           "description": "Fires when the request → response → swap pipeline ends, whether it completes, is cancelled, or fails. `detail.ctx` is the request context.",
           "doc-url": "https://four.htmx.org/reference/events/htmx-done"
