@@ -87,58 +87,46 @@ var htmx = (() => {
         },
     };
 
-    class ReqQ {
-        #c = null
-        #q = []
+    class RequestQueue {
+        #current = null   // {strategy, abort}
+        #queue = []       // start callbacks for waiting requests
 
-        issue(ctx, queueStrategy) {
-            ctx.queueStrategy = queueStrategy
-            if (!this.#c) {
-                this.#c = ctx
-                return true
-            } else {
-                // Replace strategy OR current is abortable: abort current and issue new
-                if (queueStrategy === "replace" || (queueStrategy !== "abort" && this.#c.queueStrategy === "abort")) {
-                    this.#q.forEach(value => value.status = "dropped");
-                    this.#q = []
-                    this.#c.request?.abort?.();
-                    this.#c = ctx
-                    return true
-                } else if (queueStrategy === "queue all") {
-                    this.#q.push(ctx)
-                    ctx.status = "queued";
-                } else if (queueStrategy === "drop") {
-                    // ignore the request
-                    ctx.status = "dropped";
-                } else if (queueStrategy === "queue last") {
-                    this.#q.forEach(value => value.status = "dropped");
-                    this.#q = [ctx]
-                    ctx.status = "queued";
-                } else if (this.#q.length === 0 && queueStrategy !== "abort") {
-                    // default queue first
-                    this.#q.push(ctx)
-                    ctx.status = "queued";
-                } else {
-                    ctx.status = "dropped";
-                }
-                return false
+        // Returns "run", "queued", or "dropped".
+        issue(strategy, abort, start) {
+            if (!this.#current) {
+                this.#current = {strategy, abort}
+                return "run"
             }
+            // Replace strategy OR current is abortable: abort current and run new
+            if (strategy === "replace" || (strategy !== "abort" && this.#current.strategy === "abort")) {
+                this.#queue = []
+                this.#current.abort?.()
+                this.#current = {strategy, abort}
+                return "run"
+            }
+            if (strategy === "queue all") {
+                this.#queue.push(start)
+            } else if (strategy === "queue last") {
+                this.#queue = [start]
+            } else if (strategy !== "abort" && strategy !== "drop" && this.#queue.length === 0) {
+                // default queue first
+                this.#queue.push(start)
+            } else {
+                return "dropped"
+            }
+            return "queued"
         }
 
         finish() {
-            this.#c = null
+            this.#current = null
         }
 
-        next() {
-            return this.#q.shift()
+        startNext() {
+            this.#queue.shift()?.()
         }
 
         abort() {
-            this.#c?.request?.abort?.()
-        }
-
-        more() {
-            return this.#q?.length
+            this.#current?.abort?.()
         }
     }
 
@@ -421,7 +409,6 @@ var htmx = (() => {
             let ctx = {
                 sourceElement,
                 sourceEvent,
-                status: "created",
                 confirm: hxConfirm,
                 request: {
                     validate: hxValidate === "true",
@@ -601,9 +588,7 @@ var htmx = (() => {
             let syncStrategy = this.__determineSyncStrategy(elt);
             let requestQueue = this.__getRequestQueue(elt);
 
-            if (!requestQueue.issue(ctx, syncStrategy)) return
-
-            ctx.status = "issuing"
+            if (requestQueue.issue(syncStrategy, () => ctx.request?.abort?.(), () => this.__issueRequest(ctx)) !== "run") return
 
             let indicators = [];
             let disableElements = [];
@@ -666,16 +651,11 @@ var htmx = (() => {
                     return
                 }
 
-                if (ctx.status === "issuing") {
-                    ctx.status = "response received";
-                    this.__handleStatusCodes(ctx);
-                    this.__handleHistoryUpdate(ctx);
-                    await this.__handleSwap(ctx);
-                    ctx.status = "swapped";
-                }
+                this.__handleStatusCodes(ctx);
+                this.__handleHistoryUpdate(ctx);
+                await this.__handleSwap(ctx);
 
             } catch (error) {
-                ctx.status = "error: " + error;
                 this.__trigger(elt, "htmx:error", {ctx, error})
             } finally {
                 clearTimeout(ctx.requestTimeout);
@@ -686,10 +666,8 @@ var htmx = (() => {
 
                 requestQueue.finish()
                 this.__trigger(elt, "htmx:done", {ctx})
-                if (requestQueue.more()) {
-                    // intentionally not awaited — __issueRequest has its own try/catch
-                    this.__issueRequest(requestQueue.next())
-                }
+                // start callbacks are intentionally not awaited; __issueRequest has its own try/catch
+                requestQueue.startNext()
             }
         }
 
@@ -779,7 +757,7 @@ var htmx = (() => {
                     : (/^(drop|abort|replace|queue)/.test(syncValue) ? null : syncValue);
                 if (selector) syncElt = this.__findOrWarn(elt, selector, "hx-sync") || elt;
             }
-            return this.__htmxState(syncElt).rq ||= new ReqQ()
+            return this.__htmxState(syncElt).rq ||= new RequestQueue()
         }
 
         __isModifierKeyClick(evt) {
