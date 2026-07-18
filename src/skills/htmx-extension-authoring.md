@@ -190,7 +190,6 @@ The context object available via `detail.ctx` in hook callbacks:
 {
     sourceElement,      // Element that triggered the request
     sourceEvent,        // The triggering DOM event
-    status,             // Request status string
     swap: {
         content,        // HTML content to swap
         target,         // Target selector or element
