@@ -1595,47 +1595,65 @@ var htmx = (() => {
         // History Support
         //============================================================================================
 
+        #scrollHistory = {};
+        #historyPath = location.pathname + location.search;
+
         __initHistoryHandling() {
             if (!this.config.history) return;
             if (!history.state) {
                 history.replaceState({htmx: true}, '', location.href);
             }
             window.addEventListener('popstate', (event) => {
-                if (event.state && event.state.htmx) {
+                let path = location.pathname + location.search;
+                if (path === this.#historyPath) return;
+                this.#scrollHistory[this.#historyPath] = [scrollX, scrollY];
+                this.#historyPath = path;
+                if (event.state?.htmx) {
                     this.#historyAbort?.abort();
-                    this.__restoreHistory();
+                    this.__restoreHistory(null, this.#scrollHistory[path]);
                 }
             });
         }
 
         __pushUrlIntoHistory(path) {
             if (!this.config.history) return;
+            if (!history.state) history.replaceState({htmx: true}, '', location.href);
+            this.#scrollHistory[this.#historyPath] = [scrollX, scrollY];
             history.pushState({htmx: true}, '', path);
+            this.#historyPath = location.pathname + location.search;
             this.__trigger(document, "htmx:after:history:push", {path});
         }
 
         __replaceUrlInHistory(path) {
             if (!this.config.history) return;
             history.replaceState({htmx: true}, '', path);
+            this.#historyPath = location.pathname + location.search;
             this.__trigger(document, "htmx:after:history:replace", {path});
         }
 
-        __restoreHistory(path) {
+        __restoreHistory(path, scroll) {
             path = path || location.pathname + location.search;
             let historyElt = document.querySelector(this.__prefixSelector('[hx-history-elt]')) || document.body;
             if (this.__trigger(document, "htmx:before:history:restore", {path, cacheMiss: true})) {
                 if (this.config.history === "reload") {
                     location.reload();
                 } else {
-                    this.#historyAbort = new AbortController();
-                    this.ajax('GET', path, {
+                    history.scrollRestoration = scroll ? 'manual' : 'auto';
+                    let abort = this.#historyAbort = new AbortController();
+                    if (scroll) document.addEventListener('htmx:before:settle',
+                        () => scrollTo(...scroll), {once: true, signal: abort.signal});
+                    return this.ajax('GET', path, {
                         target: historyElt,
-                        swap: 'outerSync',
+                        swap: 'outerSync show:none',
                         select: historyElt !== document.body ? this.__prefixSelector('[hx-history-elt]') : undefined,
                         request: {
                             headers: {'HX-History-Restore-Request': 'true'},
-                            signal: this.#historyAbort.signal
+                            signal: abort.signal
                         }
+                    }).then(async () => {
+                        await new Promise(requestAnimationFrame);
+                        await new Promise(requestAnimationFrame);
+                        if (!abort.signal.aborted) history.scrollRestoration = 'auto';
                     });
                 }
             }
