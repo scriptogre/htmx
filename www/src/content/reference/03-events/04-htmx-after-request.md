@@ -3,13 +3,13 @@ title: "htmx:after:request"
 description: "Fires after `fetch()` resolves"
 ---
 
-The `htmx:after:request` event fires immediately after `fetch()` resolves and `ctx.response` is populated.
+The `htmx:after:request` event fires immediately after `fetch()` resolves and `ctx.response` is populated. Response headers have not been decoded into `ctx.actions` or `ctx.swap` yet.
 
 See the [request → response → swap lifecycle](/reference/events).
 
 ## When It Fires
 
-Before [`htmx:before:response`](/reference/events/htmx-before-response) and before htmx reads the response body.
+Before response headers are decoded, [`htmx:before:response`](/reference/events/htmx-before-response) fires, and htmx reads the response body.
 
 Cancelling this event has no effect.
 

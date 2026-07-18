@@ -1,4 +1,4 @@
-describe('__handleHxHeadersAndMaybeReturnEarly unit tests', function() {
+describe('__handleHeadersAndMaybeReturnEarly unit tests', function() {
 
     beforeEach(function() {
         setupTest();
@@ -8,7 +8,7 @@ describe('__handleHxHeadersAndMaybeReturnEarly unit tests', function() {
         cleanupTest();
     });
 
-    it('handles hx-trigger header', function () {
+    it('handles the trigger action', function () {
         let triggerFired = false
         let listener = () => { triggerFired = true }
 
@@ -16,7 +16,7 @@ describe('__handleHxHeadersAndMaybeReturnEarly unit tests', function() {
         container.addEventListener('myEvent', listener)
 
         let ctx = {
-            hx: {
+            actions: {
                 trigger: 'myEvent'
             },
             sourceElement: container
@@ -28,9 +28,9 @@ describe('__handleHxHeadersAndMaybeReturnEarly unit tests', function() {
         assert.isTrue(triggerFired)
     })
 
-    it('returns false when no headers to handle', function () {
+    it('returns false when there are no actions to handle', function () {
         let ctx = {
-            hx: {},
+            actions: {},
             sourceElement: createProcessedHTML('<div></div>')
         }
 
@@ -39,11 +39,11 @@ describe('__handleHxHeadersAndMaybeReturnEarly unit tests', function() {
         assert.isNotOk(result)
     })
 
-    it('returns false when only hx-trigger is present', function () {
+    it('returns false when only trigger is present', function () {
         let container = createProcessedHTML('<div></div>')
 
         let ctx = {
-            hx: {
+            actions: {
                 trigger: 'someEvent'
             },
             sourceElement: container

@@ -9,7 +9,16 @@ See the [request → response → swap lifecycle](/reference/events).
 
 ## When It Fires
 
-After [`htmx:after:request`](/reference/events/htmx-after-request), before the body is consumed or any swap begins.
+After [`htmx:after:request`](/reference/events/htmx-after-request), before response body is read (using [`response.text()`](https://developer.mozilla.org/en-US/docs/Web/API/Response/text)), htmx decodes response headers:
+
+- Swap directives update `ctx.swap`:
+  [`HX-Retarget`](/reference/headers/HX-Retarget),
+  [`HX-Reswap`](/reference/headers/HX-Reswap),
+  [`HX-Reselect`](/reference/headers/HX-Reselect).
+- Other `HX-*` headers become actions in `ctx.actions`:
+  [`HX-Trigger`](/reference/headers/HX-Trigger),
+  [`HX-Push-Url`](/reference/headers/HX-Push-Url),
+  [`HX-Replace-Url`](/reference/headers/HX-Replace-Url).
 
 Call `preventDefault()` to skip body consumption and all later response and swap processing.
 
