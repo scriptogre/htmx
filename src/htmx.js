@@ -634,6 +634,20 @@ var htmx = (() => {
                     status: response.status,
                     headers: response.headers,
                 }
+                // Swap directives update ctx.swap; the rest are actions.
+                let {retarget, reswap, reselect, ...headerActions} = this.__extractResponseActions(ctx.response);
+                ctx.actions = {...ctx.actions, ...headerActions};
+                if (retarget) ctx.swap.target = retarget;
+                if (reselect) ctx.swap.select = reselect;
+                if (reswap) {
+                    let {content, target, select, selectOOB} = ctx.swap;
+                    ctx.swap = {
+                        content, target, select, selectOOB,
+                        transition: this.config.transitions,
+                        ...this.__parseSwapSpec(this.config.defaultSwap),
+                        ...this.__parseSwapSpec(reswap)
+                    };
+                }
                 this.__trigger(elt, "htmx:after:request", {ctx});
                 if (!this.__trigger(elt, "htmx:before:response", {ctx})) return;
                 ctx.swap.content = await response.text();
@@ -643,29 +657,12 @@ var htmx = (() => {
                     this.__trigger(elt, "htmx:response:error", {ctx})
                 }
 
-                this.__extractHxHeaders(ctx);
-                if(this.__handleHeadersAndMaybeReturnEarly(ctx)){
+                if (this.__handleHeadersAndMaybeReturnEarly(ctx)) {
                     ctx.keepIndicators = true;
                     return
                 }
 
                 if (ctx.status === "issuing") {
-                    if (ctx.hx.retarget) ctx.swap.target = ctx.hx.retarget; // HX-Retarget
-                    if (ctx.hx.reswap) {
-                        ctx.swap = {
-                            content: ctx.swap.content,
-                            target: ctx.swap.target,
-                            style: undefined, // default or HX-Reswap
-                            select: ctx.swap.select,
-                            selectOOB: ctx.swap.selectOOB,
-                            transition: this.config.transitions,
-                            // default
-                            ...this.__parseSwapSpec(this.config.defaultSwap),
-                            // HX-Reswap
-                            ...this.__parseSwapSpec(ctx.hx.reswap)
-                        };
-                    }
-                    if (ctx.hx.reselect) ctx.swap.select = ctx.hx.reselect; // HX-Reselect
                     ctx.status = "response received";
                     this.__handleStatusCodes(ctx);
                     this.__handleHistoryUpdate(ctx);
@@ -692,33 +689,36 @@ var htmx = (() => {
             }
         }
 
-        // Extract HX-* response headers into ctx.hx
-        // Maps: HX-Trigger → ctx.hx.trigger, HX-Push-Url → ctx.hx.pushurl, etc.
-        __extractHxHeaders(ctx) {
-            ctx.hx = {}
-            for (let [k, v] of ctx.response.raw.headers) {
-                if (k.toLowerCase().startsWith('hx-')) {
-                    ctx.hx[k.slice(3).toLowerCase().replace(/-/g, '')] = v
+        // Decode all HX-* response headers into a single object.
+        // HX-Push-Url → pushUrl, HX-Reswap → reswap, HX-Toast → toast.
+        __extractResponseActions(response) {
+            let actions = {};
+            for (let [name, value] of response.headers) {
+                name = name.toLowerCase();
+                if (name.startsWith('hx-')) {
+                    actions[name.slice(3).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
                 }
             }
+            return actions;
         }
 
-        // Handle response headers that abort normal swap processing.
-        // Returns true if the response was fully handled by a header.
+        // Handle response actions that abort normal swap processing.
+        // Returns true if the response was fully handled.
         __handleHeadersAndMaybeReturnEarly(ctx) {
-            if (ctx.hx.trigger) { // HX-Trigger
-                this.__handleTriggerHeader(ctx.hx.trigger, ctx.sourceElement);
+            let {trigger, refresh, redirect, location: goTo} = ctx.actions;
+            if (trigger) {
+                this.__handleTriggerHeader(trigger, ctx.sourceElement);
             }
-            if (ctx.hx.refresh === 'true') { // HX-Refresh
+            if (refresh === 'true') {
                 location.reload();
                 return true
             }
-            if (ctx.hx.redirect) { // HX-Redirect
-                location.href = ctx.hx.redirect;
+            if (redirect) {
+                location.href = redirect;
                 return true
             }
-            if (ctx.hx.location) { // HX-Location
-                let path = ctx.hx.location, opts = {};
+            if (goTo) {
+                let path = goTo, opts = {};
                 if (path[0] === '{' || /[\s,]/.test(path)) {
                     opts = HCON.parse(path);
                     path = opts.path;
@@ -1769,14 +1769,8 @@ var htmx = (() => {
         }
 
         __resolveHistoryAction(ctx) {
-            let {sourceElement, hx, response} = ctx;
+            let {sourceElement, response} = ctx;
             let {pushUrl: push, replaceUrl: replace} = ctx.actions;
-
-            // allow response headers to override history action
-            if (hx?.pushurl || hx?.replaceurl) { // HX-Push-Url, HX-Replace-Url
-                push = hx.pushurl;
-                replace = hx.replaceurl;
-            }
 
             // if this is a boosted element, default to pushing
             if (push == null && replace == null && this.__isBoosted(sourceElement)) {
@@ -2375,7 +2369,10 @@ var htmx = (() => {
                         ...this.__parseSwapSpec(swap),
                         ...swapOverrides
                     }, ctx.swap);
-                    if (push !== undefined || replace !== undefined) {
+                    // HX-Push-Url / HX-Replace-Url headers outrank hx-status config
+                    if ((push !== undefined || replace !== undefined)
+                        && ctx.response.headers?.get('HX-Push-Url') == null
+                        && ctx.response.headers?.get('HX-Replace-Url') == null) {
                         ctx.actions.pushUrl = push;
                         ctx.actions.replaceUrl = replace;
                     }
