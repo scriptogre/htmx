@@ -744,7 +744,7 @@ var htmx = (() => {
                     path = opts.path;
                     delete opts.path;
                 }
-                opts.push ??= 'true';
+                if (opts.replace == null) opts.push ??= 'true';
                 this.ajax('GET', path, opts);
             } else {
                 terminal = false;
