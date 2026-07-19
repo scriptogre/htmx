@@ -215,8 +215,8 @@ htmx 4 naming convention: `htmx:phase:action`
 - `htmx:before:response` -- before body consumption. Cancel to skip response and swap processing
 - `htmx:after:response` -- after the body is stored in `ctx.swap.content`
 - `htmx:response:error` -- after an HTTP response with status 400 or higher
-- `htmx:before:actions` -- before server actions run; `detail.actions` holds them. Cancel to skip
-- `htmx:after:actions` -- after server actions run
+- `htmx:before:actions` -- before actions run; `detail.actions` holds them. Cancel to skip
+- `htmx:after:actions` -- after actions run
 - `htmx:error` -- on network, request, response, or swap exceptions
 - `htmx:done` -- when an issuing pipeline completes, fails, or is cancelled
 

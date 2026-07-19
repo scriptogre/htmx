@@ -35,8 +35,8 @@ describe('__runActions unit tests', function() {
     it('fires htmx:before:actions and htmx:after:actions', function () {
         let events = []
         let container = createProcessedHTML('<div></div>')
-        container.addEventListener('htmx:before:actions', e => events.push(['before', e.detail.actions]))
-        container.addEventListener('htmx:after:actions', e => events.push(['after', e.detail.actions]))
+        container.addEventListener('htmx:before:actions', e => events.push(['before', e.detail.actions, e.detail.ctx]))
+        container.addEventListener('htmx:after:actions', e => events.push(['after', e.detail.actions, e.detail.ctx]))
 
         htmx.__runActions({trigger: 'someEvent'}, container)
 
@@ -44,6 +44,8 @@ describe('__runActions unit tests', function() {
         assert.equal(events[0][0], 'before')
         assert.equal(events[0][1].trigger, 'someEvent')
         assert.equal(events[1][0], 'after')
+        assert.isUndefined(events[0][2])
+        assert.isUndefined(events[1][2])
     })
 
     it('cancelling htmx:before:actions skips execution and htmx:after:actions', function () {
@@ -126,6 +128,27 @@ describe('__runActions unit tests', function() {
         assert.equal(window.location.href, originalUrl)
     })
 
+    it('does not run history events when history is disabled', function () {
+        let events = 0
+        let container = createProcessedHTML('<div></div>')
+        let onBefore = () => events++
+        let onAfter = () => events++
+        let originalHistory = htmx.config.history
+        htmx.config.history = false
+        document.addEventListener('htmx:before:history:update', onBefore)
+        document.addEventListener('htmx:after:history:update', onAfter)
+
+        try {
+            htmx.__runActions({pushUrl: '/disabled-history'}, container)
+        } finally {
+            htmx.config.history = originalHistory
+            document.removeEventListener('htmx:before:history:update', onBefore)
+            document.removeEventListener('htmx:after:history:update', onAfter)
+        }
+
+        assert.equal(events, 0)
+    })
+
     it('ajax push option normalizes to the pushUrl action', async function () {
         mockResponse('GET', '/test', 'Done')
         createProcessedHTML('<div id="ajax-target"></div>')
@@ -145,16 +168,21 @@ describe('__runActions unit tests', function() {
         assert.include(window.location.href, '/from-header')
     })
 
-    it('custom HX headers reach htmx:before:actions during requests', async function () {
+    it('custom HX headers and ctx reach htmx:before:actions during requests', async function () {
         let toast = null
+        let actionCtx
         mockResponse('GET', '/test', 'Done', {headers: {'HX-Toast': 'Saved!'}})
         let div = createProcessedHTML('<div hx-get="/test"></div>')
-        div.addEventListener('htmx:before:actions', e => { toast = e.detail.actions.toast })
+        div.addEventListener('htmx:before:actions', e => {
+            toast = e.detail.actions.toast
+            actionCtx = e.detail.ctx
+        })
 
         div.click()
         await forRequest()
 
         assert.equal(toast, 'Saved!')
+        assert.equal(actionCtx.sourceElement, div)
         assert.equal(div.textContent, 'Done')
     })
 

@@ -94,8 +94,8 @@ Hook names use underscores (not colons). All hooks receive `(elt, detail)` unles
 | `htmx_before_response` | `htmx:before:response` | Before body consumption; return `false` to cancel |
 | `htmx_after_response` | `htmx:after:response` | After body consumption, before response processing |
 | `htmx_response_error` | `htmx:response:error` | On HTTP status 400 or higher |
-| `htmx_before_actions` | `htmx:before:actions` | Before server actions run; `detail.actions` holds them; return `false` to skip |
-| `htmx_after_actions` | `htmx:after:actions` | After server actions run |
+| `htmx_before_actions` | `htmx:before:actions` | Before actions run; `detail.actions` holds them; return `false` to skip |
+| `htmx_after_actions` | `htmx:after:actions` | After actions run |
 | `htmx_error` | `htmx:error` | On an exception |
 | `htmx_done` | `htmx:done` | When an issuing pipeline completes, fails, or is cancelled |
 
@@ -176,11 +176,19 @@ init: (internalAPI) => { api = internalAPI; },
 | `api.isSoftMatch(oldNode, newNode)` | Test whether two nodes can be morphed |
 | `api.initSecurity(ttPolicy, syncFn, asyncFn)` | Configure Trusted Types and script constructors |
 | `api.onTrigger(elt, spec, handler)` | Attach a parsed trigger handler |
-| `api.runActions(actions, element)` | Run server actions, firing `htmx:before:actions` and `htmx:after:actions` |
+| `api.runActions(actions, element, detail?)` | Run actions, firing `htmx:before:actions` and `htmx:after:actions` |
 | `api.htmxProp(elt)` | Get an element's internal htmx state |
 | `api.triggerHtmxEvent(elt, name, detail, bubbles)` | Dispatch an htmx event |
 | `api.executeJavaScript(thisArg, values, code, expression, isAsync)` | Execute JavaScript through htmx security policy |
 <!-- check_extension_api:end -->
+
+Pass custom event detail as the third argument:
+
+```javascript
+api.runActions(actions, element, {message});
+```
+
+Both action events receive `event.detail.message`.
 
 ## Request Context (`detail.ctx`)
 
@@ -199,7 +207,7 @@ The context object available via `detail.ctx` in hook callbacks:
         transition,     // Whether view transitions are enabled
         ...modifiers,
     },
-    actions: {          // Server actions; HX-* response headers override attribute values
+    actions: {          // Actions; HX-* response headers override attribute values
         pushUrl,        // hx-push-url / HX-Push-Url
         replaceUrl,     // hx-replace-url / HX-Replace-Url
         trigger,        // HX-Trigger
@@ -234,7 +242,7 @@ The context object available via `detail.ctx` in hook callbacks:
 
 **Overriding fetch:** Set `detail.ctx.fetch` to a function returning a Response or Promise<Response>.
 
-**Handling custom actions:** Unknown `HX-*` response headers become entries in `detail.ctx.actions` (`HX-Toast` → `toast`). Core ignores them; consume them in `htmx_before_actions` via `detail.actions`. Run a set of actions yourself with `api.runActions(actions, element)`.
+**Handling custom actions:** Unknown `HX-*` response headers become entries in `detail.ctx.actions` (`HX-Toast` → `toast`). Core ignores them; consume them in `htmx_before_actions` via `detail.actions`.
 
 ## Custom Swap Strategies
 

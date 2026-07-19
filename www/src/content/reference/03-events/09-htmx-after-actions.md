@@ -1,17 +1,20 @@
 ---
 title: "htmx:after:actions"
-description: "Fires after server actions run"
+description: "Fires after actions run"
 ---
 
-The `htmx:after:actions` event fires after htmx runs a set of server actions.
+The `htmx:after:actions` event fires after htmx runs actions.
 
 ## When It Fires
 
-After each `runActions()` call executes. It does not fire when [`htmx:before:actions`](/reference/events/htmx-before-actions) is cancelled.
+After `runActions()` processes a non-empty action set. It does not fire when [`htmx:before:actions`](/reference/events/htmx-before-actions) is cancelled.
 
 ## Event Detail
 
-- `actions` - Actions that ran, e.g. `{trigger: "myEvent"}`
+- `actions` - Actions after any `htmx:before:actions` changes, e.g. `{trigger: "myEvent"}`
+- `ctx` - HTTP request context, e.g. `ctx.response.status`
+
+See the [canonical action formats](/reference/events/htmx-before-actions#actions).
 
 ## Example
 

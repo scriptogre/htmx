@@ -1,20 +1,53 @@
 ---
 title: "htmx:before:actions"
-description: "Fires before server actions run"
+description: "Fires before actions run"
 ---
 
-The `htmx:before:actions` event fires before htmx runs a set of server actions, such as `HX-Trigger` or `HX-Push-Url`.
+The `htmx:before:actions` event fires before htmx runs actions such as `HX-Trigger` or `HX-Push-Url`.
 
 ## When It Fires
 
-Before each `runActions()` call executes. Core runs actions twice per request:
+Before `runActions()` executes a non-empty action set.
 
-- after the response arrives, for `trigger`, `refresh`, `redirect`, `location`, and custom actions
-- before the swap, for `pushUrl` and `replaceUrl`
+Core builds one action set per HTTP response from four sources:
+
+- **Request attributes:** [`hx-push-url`](/reference/attributes/hx-push-url), [`hx-replace-url`](/reference/attributes/hx-replace-url)
+- **Response headers:** such as [`HX-Trigger`](/reference/headers/HX-Trigger), [`HX-Location`](/reference/headers/HX-Location), [`HX-Push-Url`](/reference/headers/HX-Push-Url), and custom `HX-*` headers
+- **Status rules:** [`hx-status:*`](/reference/attributes/hx-status)
+- **Boosted navigation:** [`hx-boost`](/reference/attributes/hx-boost)
+
+Core calls `runActions()` once with the result.
+
+## Priority
+
+For `pushUrl`, the first available value wins:
+
+```text
+HX-Push-Url
+→ hx-status:* push
+→ hx-push-url
+→ hx-boost default
+```
+
+## Actions
+
+Response headers map directly to action keys. Attributes and status rules can create the same actions.
+
+| Action key | Response header | Value | Effect |
+|---|---|---|---|
+| `trigger` | [`HX-Trigger`](/reference/headers/HX-Trigger) | Event name, comma-separated names, or an HCON object | Fire named events |
+| `refresh` | [`HX-Refresh`](/reference/headers/HX-Refresh) | `true` or `"true"` | Reload the page |
+| `redirect` | [`HX-Redirect`](/reference/headers/HX-Redirect) | URL | Navigate with a full reload |
+| `location` | [`HX-Location`](/reference/headers/HX-Location) | URL or HCON options | Send a follow-up htmx GET |
+| `pushUrl` | [`HX-Push-Url`](/reference/headers/HX-Push-Url) | URL, `true`, or `false` | Push a URL into browser history |
+| `replaceUrl` | [`HX-Replace-Url`](/reference/headers/HX-Replace-Url) | URL, `true`, or `false` | Replace the current browser history URL |
+
+Any other key is a custom action. Core leaves it for extensions to handle.
 
 ## Event Detail
 
 - `actions` - Actions about to run, e.g. `{trigger: "myEvent"}`
+- `ctx` - HTTP request context, e.g. `ctx.response.status`
 
 ## Example
 

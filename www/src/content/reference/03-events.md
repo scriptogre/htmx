@@ -18,9 +18,43 @@ htmx processes an interaction through request, response, and swap phases. Each p
 
 **Response**
 
-[`htmx:before:response`](/reference/events/htmx-before-response) → read body into `ctx.swap.content` → [`htmx:after:response`](/reference/events/htmx-after-response)
+Decode [`HX-*` response headers](/reference/headers) into `ctx.swap` and `ctx.actions`
 
-Responses with status 400 or higher then fire [`htmx:response:error`](/reference/events/htmx-response-error). htmx next processes HX response headers and status rules.
+↓
+
+[`htmx:before:response`](/reference/events/htmx-before-response)
+
+↓
+
+Read `response.text()` into `ctx.swap.content`
+
+↓
+
+[`htmx:after:response`](/reference/events/htmx-after-response)
+
+↓
+
+[`htmx:response:error`](/reference/events/htmx-response-error) when status is 400 or higher
+
+**Actions**
+
+Apply [`htmx.config.noSwap`](/reference/config/htmx-config-noSwap) and matching [`hx-status:*`](/reference/attributes/hx-status) rules
+
+↓
+
+Resolve [`pushUrl` priority](/reference/events/htmx-before-actions#priority)
+
+↓
+
+[`htmx:before:actions`](/reference/events/htmx-before-actions)
+
+↓
+
+Run [actions](/reference/events/htmx-before-actions#actions)
+
+↓
+
+[`htmx:after:actions`](/reference/events/htmx-after-actions)
 
 **Swap**
 

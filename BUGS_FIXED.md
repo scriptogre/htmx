@@ -65,6 +65,21 @@ Range: `four-dev..4.0/integration`. Each entry: the bug, the fix, the test that 
 - Test: `__runActions.js` "HX-Location replace option replaces instead of pushing". Known weakness: it does not assert history length, so it would also pass with a push. Needs strengthening.
 - Commit: `a06f2667`. Depends on runActions.
 
+## 10. hx-method lost to shorthand request attributes
+
+- Bug: when `hx-action` was absent, `hx-get`, `hx-post`, and other shorthand attributes overwrote an explicit `hx-method`. This contradicted the documented method resolution priority.
+- Fix: resolve action and method precedence independently, with `hx-method` first.
+- Test: `__determineMethodAndAction.js` "hx-method overrides the shorthand request method". The old code returned `POST`; the fixed code returns `DELETE`.
+- Size: applying the fix to `upstream/four-dev` adds 23 B to the minified Brotli output.
+- Commit: `a886974c`. Orthogonal.
+
+## 11. History events fired while history was disabled
+
+- Bug: `htmx:before:history:update` and `htmx:after:history:update` fired with `htmx.config.history = false`. The history-cache extension then saved and stamped a page even though no browser history entry changed.
+- Fix: return from `runHistoryAction` before dispatching history events when history is disabled.
+- Tests: `__runActions.js` "does not run history events when history is disabled" and `hx-history-cache.js` "does not cache a page when history is disabled".
+- Commit: uncommitted. Depends on runActions.
+
 ## Not bugs, but adjacent cleanups
 
 - `efc5ec47`: `ctx.status` was a hidden listener-mutable flag core read once; replaced by queue admission results.

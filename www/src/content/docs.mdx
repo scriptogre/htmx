@@ -531,8 +531,8 @@ This restores the htmx 2.x convention: if you want an internal failure path to s
 | [`htmx:after:request`](/reference/events/htmx-after-request)                 | Immediately after fetch resolves                  |
 | [`htmx:before:response`](/reference/events/htmx-before-response)             | Before response body is read (cancellable)        |
 | [`htmx:after:response`](/reference/events/htmx-after-response)               | After response body is read                       |
-| [`htmx:before:actions`](/reference/events/htmx-before-actions)               | Before server actions run (cancellable)           |
-| [`htmx:after:actions`](/reference/events/htmx-after-actions)                 | After server actions run                          |
+| [`htmx:before:actions`](/reference/events/htmx-before-actions)               | Before actions run (cancellable)                  |
+| [`htmx:after:actions`](/reference/events/htmx-after-actions)                 | After actions run                                 |
 | [`htmx:done`](/reference/events/htmx-done)                                   | When an issuing pipeline completes, fails, or is cancelled |
 | [`htmx:before:settle`](/reference/events/htmx-before-settle)                 | Before settle phase                               |
 | [`htmx:after:settle`](/reference/events/htmx-after-settle)                   | After settle phase                                |
@@ -785,7 +785,7 @@ htmx_after_response: (elt, detail) => {
 }
 ```
 
-Event flow: response received, `htmx:after:request` fires, the body is read into `ctx.swap.content`, `htmx:after:response` fires, then htmx builds the fragment before `htmx:before:swap`.
+See the [request lifecycle](/reference/events).
 
 ##### `encodeParameters`
 
@@ -1532,7 +1532,7 @@ htmx supports htmx-specific response headers:
 
 For more on the `HX-Trigger` headers, see [`HX-Trigger` Response Headers](/reference/headers/HX-Trigger).
 
-htmx decodes `HX-*` response headers into an actions object on the request context: `HX-Push-Url` becomes `ctx.actions.pushUrl`, and so on. `HX-Retarget`, `HX-Reswap`, and `HX-Reselect` are swap directives and update `ctx.swap` instead. Each set of actions runs between [`htmx:before:actions`](/reference/events/htmx-before-actions) and [`htmx:after:actions`](/reference/events/htmx-after-actions).
+htmx decodes `HX-*` response headers into an actions object on the request context: `HX-Push-Url` becomes `ctx.actions.pushUrl`, and so on. `HX-Retarget`, `HX-Reswap`, and `HX-Reselect` are swap directives and update `ctx.swap` instead. Core runs all actions once before the swap. See [sources](/reference/events/htmx-before-actions#when-it-fires) and [formats](/reference/events/htmx-before-actions#actions).
 
 Unknown `HX-*` headers become custom actions: `HX-Toast: Saved!` arrives as `ctx.actions.toast`. Core ignores custom actions; handle them in the action events:
 
@@ -2832,8 +2832,8 @@ Extensions hook into htmx lifecycle events. Event names use underscores instead 
 | `htmx_before_response` | [`htmx:before:response`](/reference/events/htmx-before-response) | `(elt, detail)` | Before body consumption |
 | `htmx_after_response` | [`htmx:after:response`](/reference/events/htmx-after-response) | `(elt, detail)` | After body consumption |
 | `htmx_response_error` | [`htmx:response:error`](/reference/events/htmx-response-error) | `(elt, detail)` | On HTTP status 400 or higher |
-| `htmx_before_actions` | [`htmx:before:actions`](/reference/events/htmx-before-actions) | `(elt, detail)` | Before server actions run |
-| `htmx_after_actions` | [`htmx:after:actions`](/reference/events/htmx-after-actions) | `(elt, detail)` | After server actions run |
+| `htmx_before_actions` | [`htmx:before:actions`](/reference/events/htmx-before-actions) | `(elt, detail)` | Before actions run |
+| `htmx_after_actions` | [`htmx:after:actions`](/reference/events/htmx-after-actions) | `(elt, detail)` | After actions run |
 | `htmx_error` | [`htmx:error`](/reference/events/htmx-error) | `(elt, detail)` | On an exception |
 | `htmx_done` | [`htmx:done`](/reference/events/htmx-done) | `(elt, detail)` | When an issuing pipeline completes, fails, or is cancelled |
 
@@ -2908,11 +2908,19 @@ Available internal API:
 - `isSoftMatch(oldNode, newNode)` - Test whether two nodes can be morphed
 - `initSecurity(ttPolicy, syncFn, asyncFn)` - Configure Trusted Types and script constructors
 - `onTrigger(elt, spec, handler)` - Attach a parsed trigger handler
-- `runActions(actions, element)` - Run server actions, firing `htmx:before:actions` and `htmx:after:actions`
+- `runActions(actions, element, detail?)` - Run actions, firing `htmx:before:actions` and `htmx:after:actions`
 - `htmxProp(elt)` - Get an element's internal htmx state
 - `triggerHtmxEvent(elt, name, detail, bubbles)` - Dispatch an htmx event
 - `executeJavaScript(thisArg, values, code, expression, isAsync)` - Execute JavaScript through htmx security policy
 {/* check_extension_api:end */}
+
+Pass custom event detail as the third argument:
+
+```javascript
+api.runActions(actions, element, {message});
+```
+
+Both action events receive `event.detail.message`.
 
 #### Request Context
 
@@ -2947,7 +2955,7 @@ The `detail.ctx` object contains request and response information:
         status,        // HTTP status code
         headers        // Response headers: https://developer.mozilla.org/en-US/docs/Web/API/Headers
     },
-    actions: {         // Server actions from attributes and HX-* response headers
+    actions: {         // Actions from attributes and HX-* response headers
         pushUrl,       // hx-push-url / HX-Push-Url
         replaceUrl,    // hx-replace-url / HX-Replace-Url
         trigger,       // HX-Trigger

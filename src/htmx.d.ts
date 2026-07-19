@@ -291,15 +291,11 @@ export interface HtmxResponse {
   headers: Headers;
 }
 
-/**
- * Server actions decoded from attributes and HX-* response headers.
- * Unknown HX-* headers become custom actions: HX-Toast → toast.
- * Core ignores custom actions; extensions consume them in htmx:before:actions / htmx:after:actions.
- */
+/** Actions collected from attributes, response headers, or other transports. */
 export interface HtmxActions {
-  /** URL to push into history. `"true"` uses the request URL, `"false"` skips */
+  /** URL to push into history. `true` uses the request URL, `false` skips */
   pushUrl?: string | boolean;
-  /** URL to replace in history. `"true"` uses the request URL, `"false"` skips */
+  /** URL to replace in history. `true` uses the request URL, `false` skips */
   replaceUrl?: string | boolean;
   /** Event names or HCON object to trigger (HX-Trigger) */
   trigger?: string;
@@ -307,10 +303,10 @@ export interface HtmxActions {
   location?: string;
   /** URL for a hard redirect via `location.href` (HX-Redirect) */
   redirect?: string;
-  /** `"true"` reloads the page (HX-Refresh) */
-  refresh?: string;
+  /** `true` reloads the page (HX-Refresh) */
+  refresh?: string | boolean;
   /** Custom actions from unknown HX-* headers */
-  [action: string]: string | boolean | undefined;
+  [action: string]: unknown;
 }
 
 /** Request context passed as evt.detail.ctx on most htmx request lifecycle events */
@@ -325,7 +321,7 @@ export interface HtmxRequestCtx {
   request: HtmxRequestOptions;
   /** Response object, available after fetch resolves */
   response?: HtmxResponse;
-  /** Server actions. Attributes initialize them; HX-* response headers override them */
+  /** Actions. Response headers override attribute values. */
   actions: HtmxActions;
 }
 
@@ -443,17 +439,11 @@ export interface HtmxEventMap {
    */
   'htmx:response:error': { ctx: HtmxRequestCtx };
 
-  /**
-   * Fires before a set of server actions executes.
-   * Read or mutate `detail.actions`; handle custom actions here.
-   * Cancel to skip execution and `htmx:after:actions`.
-   */
-  'htmx:before:actions': { actions: HtmxActions };
+  /** Fires before actions execute. Modify `detail.actions` or cancel to skip. */
+  'htmx:before:actions': { actions: HtmxActions; ctx?: HtmxRequestCtx };
 
-  /**
-   * Fires after a set of server actions executed.
-   */
-  'htmx:after:actions': { actions: HtmxActions };
+  /** Fires after actions execute. `detail.actions` includes before:actions changes. */
+  'htmx:after:actions': { actions: HtmxActions; ctx?: HtmxRequestCtx };
 
   /**
    * Control event — fire this on an element to abort its ongoing request.
@@ -565,7 +555,7 @@ export interface HtmxAjaxOptions {
   select?: string;
   /** Selector for out-of-band swaps */
   selectOOB?: string;
-  /** Server actions to run, e.g. `{pushUrl: '/inbox'}`. Response headers override these */
+  /** Actions to run. Response headers override these values. */
   actions?: HtmxActions;
   /** Shorthand for `actions.pushUrl`. `true` uses the request URL */
   push?: string | boolean;

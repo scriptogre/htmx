@@ -641,12 +641,20 @@ var htmx = (() => {
                 this.__trigger(elt, "htmx:after:request", {ctx});
 
                 // Swap directives update ctx.swap; the rest are actions.
-                let {retarget, reswap, reselect, ...headerActions} = this.__extractResponseActions(ctx.response);
+                let {retarget, reswap, reselect, ...headerActions} =
+                    this.__extractActionsFromHeaders(ctx.response.headers);
+
                 ctx.actions = {...ctx.actions, ...headerActions};
+
+                // HX-Retarget & HX-Reselect
                 if (retarget) ctx.swap.target = retarget;
                 if (reselect) ctx.swap.select = reselect;
+
+                // HX-Reswap
                 if (reswap) {
+                    // Preserve response content and selection; replace swap modifiers.
                     let {content, target, select, selectOOB} = ctx.swap;
+
                     ctx.swap = {
                         content, target, select, selectOOB,
                         transition: this.config.transitions,
@@ -662,15 +670,28 @@ var htmx = (() => {
                     this.__trigger(elt, "htmx:response:error", {ctx})
                 }
 
-                // History actions wait for status rules; the rest run now.
-                let {pushUrl, replaceUrl, ...actions} = ctx.actions;
-                if (Object.keys(actions).length && this.__runActions(actions, ctx.sourceElement)) {
+                let {swap: statusSwap, actions: statusActions} = this.__resolveStatusCode(
+                    ctx.response,
+                    ctx.sourceElement
+                );
+                ctx.swap = {...ctx.swap, ...statusSwap};
+                ctx.actions = {...ctx.actions, ...statusActions};
+
+                let {pushUrl, replaceUrl, ...otherActions} = ctx.actions;
+                let historyAction = this.__resolveHistoryAction(
+                    pushUrl,
+                    replaceUrl,
+                    this.__isBoosted(ctx.sourceElement),
+                    ctx.response.raw.url || ctx.request.action,
+                    ctx.request.anchor
+                );
+                ctx.actions = {...otherActions, ...historyAction};
+
+                if (this.__runActions(ctx.actions, ctx.sourceElement, {ctx})) {
                     ctx.keepIndicators = true;
                     return
                 }
 
-                this.__handleStatusCodes(ctx);
-                this.__handleHistoryUpdate(ctx);
                 await this.__handleSwap(ctx);
 
             } catch (error) {
@@ -684,16 +705,17 @@ var htmx = (() => {
 
                 requestQueue.finish()
                 this.__trigger(elt, "htmx:done", {ctx})
-                // start callbacks are intentionally not awaited; __issueRequest has its own try/catch
                 requestQueue.startNext()
             }
         }
 
-        // Decode all HX-* response headers into a single object.
-        // HX-Push-Url → pushUrl, HX-Reswap → reswap, HX-Toast → toast.
-        __extractResponseActions(response) {
+        /**
+         * Extract camelCase actions from HX-* headers.
+         * @example HX-Push-Url: /inbox, HX-Toast: Hello -> {pushUrl: '/inbox', toast: 'Hello'}
+         */
+        __extractActionsFromHeaders(headers) {
             let actions = {};
-            for (let [name, value] of response.headers) {
+            for (let [name, value] of headers) {
                 name = name.toLowerCase();
                 if (name.startsWith('hx-')) {
                     actions[name.slice(3).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = value;
@@ -702,52 +724,123 @@ var htmx = (() => {
             return actions;
         }
 
-        // Run a set of server actions, whole or subset. Timing comes from the call site.
-        // Fires htmx:before:actions and htmx:after:actions around execution.
-        // Unknown actions are left for extensions to handle in those events.
-        // Returns true when a terminal action (refresh, redirect, location) ran.
-        __runActions(actions, element) {
-            let detail = {actions};
+        /**
+         * Run actions from HX-* headers or other sources.
+         * @example runActions({trigger: 'chatUpdated', pushUrl: '/chat'}, elt)
+         */
+        __runActions(actions, element, detail = {}) {
+            if (!Object.keys(actions).length) return false;
+
+            detail = {...detail, actions};
             if (!this.__trigger(element, "htmx:before:actions", detail)) return false;
-            let {trigger, pushUrl, replaceUrl, refresh, redirect, location: goTo} = detail.actions;
 
-            if (trigger) this.__handleTriggerHeader(trigger, element);
+            let {
+                trigger,
+                refresh,
+                redirect,
+                location,
+                pushUrl,
+                replaceUrl
+            } = detail.actions;
 
-            if (pushUrl === 'false') pushUrl = null;
-            if (replaceUrl === 'false') replaceUrl = null;
-            if (pushUrl != null || replaceUrl != null) {
-                let type = pushUrl != null ? 'push' : 'replace';
-                let path = pushUrl ?? replaceUrl;
-                if (path === 'true') path = location.pathname + location.search;
-                let historyDetail = {history: {type, path}, sourceElement: element};
-                if (this.__trigger(document, "htmx:before:history:update", historyDetail)) {
-                    path = historyDetail.history.path;
-                    if (type === 'push') this.__pushUrlIntoHistory(path);
-                    else this.__replaceUrlInHistory(path);
-                    this.__trigger(document, "htmx:after:history:update", historyDetail);
-                }
+            if (trigger) {
+                this.__runTriggerAction(trigger, element)
             }
 
-            let terminal = true;
-            if (refresh === 'true') {
-                location.reload();
+            let shouldStop = true;
+
+            if (refresh === 'true' || refresh === true) {
+                this.__runNavigationAction('refresh');
             } else if (redirect) {
-                location.href = redirect;
-            } else if (goTo) {
-                let path = goTo, opts = {};
-                if (path[0] === '{' || /[\s,]/.test(path)) {
-                    opts = HCON.parse(path);
-                    path = opts.path;
-                    delete opts.path;
-                }
-                if (opts.replace == null) opts.push ??= 'true';
-                this.ajax('GET', path, opts);
+                this.__runNavigationAction('redirect', redirect);
+            } else if (location) {
+                this.__runNavigationAction('location', location);
             } else {
-                terminal = false;
+                shouldStop = false;
+                if (pushUrl && pushUrl !== 'false') {
+                    this.__runHistoryAction('push', pushUrl, element);
+                } else if (replaceUrl && replaceUrl !== 'false') {
+                    this.__runHistoryAction('replace', replaceUrl, element);
+                }
             }
 
             this.__trigger(element, "htmx:after:actions", detail);
-            return terminal;
+            return shouldStop;
+        }
+
+        __runTriggerAction(value, element) {
+            // HX-Trigger: {...}
+            if (value[0] === '{') {
+                let triggers = HCON.parse(value);
+                for (let name in triggers) {
+                    let detail = triggers[name];
+                    let target = detail?.target ? this.find(detail.target) : element;
+                    this.trigger(target, name, typeof detail === 'object' ? detail : {value: detail});
+                }
+                return;
+            }
+
+            // HX-Trigger: event1, event2
+            for (let name of value.split(',')) {
+                this.trigger(element, name.trim(), {});
+            }
+        }
+
+        __runHistoryAction(type, path, element) {
+            if (!this.config.history) return;
+
+            // true -> current URL
+            if (path === 'true' || path === true) {
+                path = location.pathname + location.search;
+            }
+
+            let detail = {
+                history: {type, path},
+                sourceElement: element
+            };
+            if (!this.__trigger(document, "htmx:before:history:update", detail)) return;
+
+            path = detail.history.path;
+
+            // HX-Push-Url
+            if (type === 'push') {
+                history.pushState({htmx: true}, '', path);
+                this.__trigger(document, "htmx:after:history:push", {path});
+            }
+
+            // HX-Replace-Url
+            if (type === 'replace') {
+                history.replaceState({htmx: true}, '', path);
+                this.__trigger(document, "htmx:after:history:replace", {path});
+            }
+
+            this.__trigger(document, "htmx:after:history:update", detail);
+        }
+
+        __runNavigationAction(type, value) {
+            // HX-Refresh
+            if (type === 'refresh') {
+                location.reload();
+                return;
+            }
+
+            // HX-Redirect
+            if (type === 'redirect') {
+                location.href = value;
+                return;
+            }
+
+            // HX-Location
+            if (type === 'location') {
+                let hasAjaxOptions = value[0] === '{' || /[\s,]/.test(value);
+                let {path, ...ajaxOptions} = hasAjaxOptions
+                    ? HCON.parse(value)
+                    : {path: value};
+                if (ajaxOptions.replace == null) {
+                    ajaxOptions.push ??= 'true';
+                }
+                this.ajax('GET', path, ajaxOptions);
+            }
         }
 
         __initTimeout(ctx) {
@@ -938,22 +1031,6 @@ var htmx = (() => {
             let match = str.match(/^([^\[]*)\[([^\]]*)]/);
             if (!match) return [str, null];
             return [match[1], match[2]];
-        }
-
-        __handleTriggerHeader(value, elt) {
-            if (value[0] === '{') {
-                let triggers = HCON.parse(value);
-                for (let name in triggers) {
-                    let detail = triggers[name];
-                    let target = elt;
-                    if (detail?.target) {
-                        target = this.find(detail.target);
-                    }
-                    this.trigger(target, name, typeof detail === 'object' ? detail : {value: detail});
-                }
-            } else {
-                value.split(',').forEach(name => this.trigger(elt, name.trim(), {}));
-            }
         }
 
         __apiMethods(thisArg) {
@@ -1760,18 +1837,6 @@ var htmx = (() => {
             });
         }
 
-        __pushUrlIntoHistory(path) {
-            if (!this.config.history) return;
-            history.pushState({htmx: true}, '', path);
-            this.__trigger(document, "htmx:after:history:push", {path});
-        }
-
-        __replaceUrlInHistory(path) {
-            if (!this.config.history) return;
-            history.replaceState({htmx: true}, '', path);
-            this.__trigger(document, "htmx:after:history:replace", {path});
-        }
-
         __restoreHistory(path) {
             path = path || location.pathname + location.search;
             let historyElt = document.querySelector(this.__prefixSelector('[hx-history-elt]')) || document.body;
@@ -1793,37 +1858,23 @@ var htmx = (() => {
             }
         }
 
-        __resolveHistoryAction(ctx) {
-            let {sourceElement, response} = ctx;
-            let {pushUrl: push, replaceUrl: replace} = ctx.actions;
-
-            // if this is a boosted element, default to pushing
-            if (push == null && replace == null && this.__isBoosted(sourceElement)) {
-                push = 'true';
+        __resolveHistoryAction(pushUrl, replaceUrl, boosted, finalUrl, anchor) {
+            if (pushUrl == null && replaceUrl == null && boosted) {
+                pushUrl = true;
             }
-            
-            // normalize "false" to null
-            if (push === 'false' || push === false) push = null;
-            if (replace === 'false' || replace === false) replace = null;
 
-            if (!push && !replace) return null;
+            if (pushUrl === 'false' || pushUrl === false) pushUrl = null;
+            if (replaceUrl === 'false' || replaceUrl === false) replaceUrl = null;
+            if (!pushUrl && !replaceUrl) return null;
 
-            let path = push || replace;
-            // if the path is simply "true" normalize to the current path
+            let type = pushUrl ? 'push' : 'replace';
+            let path = pushUrl || replaceUrl;
             if (path === 'true' || path === true) {
-                let finalUrl = response?.raw?.url || ctx.request.action;
                 let url = new URL(finalUrl, location.href);
-                path = url.pathname + url.search + (ctx.request.anchor ? '#' + ctx.request.anchor : '');
+                path = url.pathname + url.search + (anchor ? '#' + anchor : '');
             }
 
-            let type = push ? 'push' : 'replace';
-            return {type, path};
-        }
-
-        __handleHistoryUpdate(ctx) {
-            let action = this.__resolveHistoryAction(ctx);
-            if (!action) return;
-            this.__runActions({[action.type + 'Url']: action.path}, ctx.sourceElement);
+            return {[type + 'Url']: path};
         }
 
         // hx-on:<event> binds to <event> directly
@@ -2366,32 +2417,44 @@ var htmx = (() => {
             return persistentIds;
         }
 
-        __handleStatusCodes(ctx) {
-            let status = ctx.response.raw.status;
-            let noSwapStrings = this.config.noSwap.map(x => x + "");
-            let str = status + ""
-            for (let pattern of [str, str.slice(0, 2) + 'x', str[0] + 'xx']) {
-                if (noSwapStrings.includes(pattern)) {
-                    ctx.swap.style = "none";
-                    return
+        __resolveStatusCode(response, element) {
+            let statusCode = String(response.status);
+
+            let statusCodePatterns = [
+                statusCode,                    // 404
+                statusCode.slice(0, 2) + 'x',  // 40x
+                statusCode[0] + 'xx'           // 4xx
+            ];
+            let noSwapPatterns = this.config.noSwap.map(String);
+
+            for (let pattern of statusCodePatterns) {
+                if (noSwapPatterns.includes(pattern)) {
+                    return {swap: {style: 'none'}, actions: {}};
                 }
-                let hxStatus = this.__attributeValue(ctx.sourceElement, "hx-status:" + pattern);
-                if (hxStatus) {
-                    let {swap, push, replace, ...swapOverrides} = HCON.parse(hxStatus);
-                    HCON.merge({
+
+                let hxStatus = this.__attributeValue(element, 'hx-status:' + pattern);
+                if (!hxStatus) continue;
+
+                let {swap, push, replace, ...swapOptions} = HCON.parse(hxStatus);
+                let actions = {};
+                let hasHistoryHeader =
+                    response.headers?.get('HX-Push-Url') != null ||
+                    response.headers?.get('HX-Replace-Url') != null;
+
+                if (!hasHistoryHeader && (push !== undefined || replace !== undefined)) {
+                    actions = {pushUrl: push, replaceUrl: replace};
+                }
+
+                return {
+                    swap: {
                         ...this.__parseSwapSpec(swap),
-                        ...swapOverrides
-                    }, ctx.swap);
-                    // HX-Push-Url / HX-Replace-Url headers outrank hx-status config
-                    if ((push !== undefined || replace !== undefined)
-                        && ctx.response.headers?.get('HX-Push-Url') == null
-                        && ctx.response.headers?.get('HX-Replace-Url') == null) {
-                        ctx.actions.pushUrl = push;
-                        ctx.actions.replaceUrl = replace;
-                    }
-                    return;
-                }
+                        ...swapOptions
+                    },
+                    actions
+                };
             }
+
+            return {swap: {}, actions: {}};
         }
 
         __submitTransitionTask(task) {

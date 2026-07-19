@@ -1,95 +1,84 @@
 describe('__resolveHistoryAction unit tests', function() {
 
-    beforeEach(function() {
-        setupTest();
-    });
-
-    afterEach(function() {
-        cleanupTest();
-    });
-
-    it('returns null when no push or replace', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = { sourceElement: div, actions: {} }
-        assert.isNull(htmx.__resolveHistoryAction(ctx))
+    it('returns null when no push or replace is requested', function() {
+        assert.isNull(
+            htmx.__resolveHistoryAction(null, null, false, '/fallback')
+        )
     })
 
-    it('returns push with path from hx-push-url attribute', function() {
-        let div = createProcessedHTML('<div hx-get="/test" hx-push-url="/pushed"></div>')
-        let ctx = { sourceElement: div, actions: { pushUrl: '/pushed' } }
-        let action = htmx.__resolveHistoryAction(ctx)
-        assert.equal(action.type, 'push')
-        assert.equal(action.path, '/pushed')
+    it('returns a push action', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction('/pushed', null, false, '/fallback'),
+            {pushUrl: '/pushed'}
+        )
     })
 
-    it('returns replace with path from hx-replace-url attribute', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = { sourceElement: div, actions: { replaceUrl: '/replaced' } }
-        let action = htmx.__resolveHistoryAction(ctx)
-        assert.equal(action.type, 'replace')
-        assert.equal(action.path, '/replaced')
+    it('returns a replace action', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction(null, '/replaced', false, '/fallback'),
+            {replaceUrl: '/replaced'}
+        )
     })
 
-    it('push "false" returns null', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = { sourceElement: div, actions: { pushUrl: 'false' } }
-        assert.isNull(htmx.__resolveHistoryAction(ctx))
+    it('ignores push false', function() {
+        assert.isNull(
+            htmx.__resolveHistoryAction('false', null, false, '/fallback')
+        )
     })
 
-    it('replace "false" returns null', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = { sourceElement: div, actions: { replaceUrl: 'false' } }
-        assert.isNull(htmx.__resolveHistoryAction(ctx))
+    it('ignores replace false', function() {
+        assert.isNull(
+            htmx.__resolveHistoryAction(null, 'false', false, '/fallback')
+        )
     })
 
-    it('pushUrl "false" does not block replaceUrl', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = { sourceElement: div, actions: { pushUrl: 'false', replaceUrl: '/new-path' } }
-        let action = htmx.__resolveHistoryAction(ctx)
-        assert.equal(action.type, 'replace')
-        assert.equal(action.path, '/new-path')
+    it('push false does not block replace', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction('false', '/new-path', false, '/fallback'),
+            {replaceUrl: '/new-path'}
+        )
     })
 
-    it('replaceUrl "false" does not block pushUrl', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = { sourceElement: div, actions: { pushUrl: '/new-path', replaceUrl: 'false' } }
-        let action = htmx.__resolveHistoryAction(ctx)
-        assert.equal(action.type, 'push')
-        assert.equal(action.path, '/new-path')
+    it('replace false does not block push', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction('/new-path', 'false', false, '/fallback'),
+            {pushUrl: '/new-path'}
+        )
     })
 
-    it('push "true" resolves path from response URL', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = {
-            sourceElement: div,
-            actions: { pushUrl: 'true' },
-            response: { raw: { url: 'http://localhost/resolved' } },
-            request: { action: '/fallback' }
-        }
-        let action = htmx.__resolveHistoryAction(ctx)
-        assert.equal(action.type, 'push')
-        assert.equal(action.path, '/resolved')
+    it('resolves push true from the final response URL', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction('true', null, false, 'http://localhost/resolved'),
+            {pushUrl: '/resolved'}
+        )
     })
 
-    it('push "true" falls back to request action', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = {
-            sourceElement: div,
-            actions: { pushUrl: 'true' },
-            response: { raw: {} },
-            request: { action: '/fallback' }
-        }
-        let action = htmx.__resolveHistoryAction(ctx)
-        assert.equal(action.type, 'push')
-        assert.equal(action.path, '/fallback')
+    it('resolves push true from the request fallback URL', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction('true', null, false, '/fallback'),
+            {pushUrl: '/fallback'}
+        )
     })
 
     it('push takes precedence over replace', function() {
-        let div = createProcessedHTML('<div hx-get="/test"></div>')
-        let ctx = { sourceElement: div, actions: { pushUrl: '/push-path', replaceUrl: '/replace-path' } }
-        let action = htmx.__resolveHistoryAction(ctx)
-        assert.equal(action.type, 'push')
-        assert.equal(action.path, '/push-path')
+        assert.deepEqual(
+            htmx.__resolveHistoryAction('/push-path', '/replace-path', false, '/fallback'),
+            {pushUrl: '/push-path'}
+        )
     })
 
-})
+    it('boosted requests push the final URL by default', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction(null, null, true, '/boosted'),
+            {pushUrl: '/boosted'}
+        )
+    })
+
+    it('adds the request anchor when resolving true', function() {
+        assert.deepEqual(
+            htmx.__resolveHistoryAction(true, null, false, '/resolved?tab=one', 'details'),
+            {pushUrl: '/resolved?tab=one#details'}
+        )
+    })
+
+});

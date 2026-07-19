@@ -1,4 +1,4 @@
-describe('__handleTriggerHeader unit tests', function() {
+describe('__runTriggerAction unit tests', function() {
 
     beforeEach(function() {
         setupTest();
@@ -13,7 +13,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let container = createProcessedHTML('<div></div>')
         container.addEventListener('myEvent', () => { eventFired = true })
 
-        htmx.__handleTriggerHeader('myEvent', container)
+        htmx.__runTriggerAction('myEvent', container)
 
         assert.isTrue(eventFired)
     })
@@ -28,7 +28,7 @@ describe('__handleTriggerHeader unit tests', function() {
         container.addEventListener('event2', () => { event2Fired = true })
         container.addEventListener('event3', () => { event3Fired = true })
 
-        htmx.__handleTriggerHeader('event1, event2, event3', container)
+        htmx.__runTriggerAction('event1, event2, event3', container)
 
         assert.isTrue(event1Fired)
         assert.isTrue(event2Fired)
@@ -40,7 +40,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let container = createProcessedHTML('<div></div>')
         container.addEventListener('myEvent', () => { eventFired = true })
 
-        htmx.__handleTriggerHeader('  myEvent  ', container)
+        htmx.__runTriggerAction('  myEvent  ', container)
 
         assert.isTrue(eventFired)
     })
@@ -50,7 +50,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let container = createProcessedHTML('<div></div>')
         container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
 
-        htmx.__handleTriggerHeader('{"myEvent": {"key": "value", "num": 42}}', container)
+        htmx.__runTriggerAction('{"myEvent": {"key": "value", "num": 42}}', container)
 
         assert.isNotNull(eventDetail)
         assert.equal(eventDetail.key, 'value')
@@ -62,7 +62,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let container = createProcessedHTML('<div></div>')
         container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
 
-        htmx.__handleTriggerHeader('{"myEvent": "simpleValue"}', container)
+        htmx.__runTriggerAction('{"myEvent": "simpleValue"}', container)
 
         assert.isNotNull(eventDetail)
         assert.equal(eventDetail.value, 'simpleValue')
@@ -76,7 +76,7 @@ describe('__handleTriggerHeader unit tests', function() {
         container.addEventListener('event1', (e) => { event1Detail = e.detail })
         container.addEventListener('event2', (e) => { event2Detail = e.detail })
 
-        htmx.__handleTriggerHeader('{"event1": {"data": "first"}, "event2": {"data": "second"}}', container)
+        htmx.__runTriggerAction('{"event1": {"data": "first"}, "event2": {"data": "second"}}', container)
 
         assert.equal(event1Detail.data, 'first')
         assert.equal(event2Detail.data, 'second')
@@ -89,7 +89,7 @@ describe('__handleTriggerHeader unit tests', function() {
 
         target.addEventListener('myEvent', () => { eventFired = true })
 
-        htmx.__handleTriggerHeader('{"myEvent": {"target": "#target", "data": "test"}}', container)
+        htmx.__runTriggerAction('{"myEvent": {"target": "#target", "data": "test"}}', container)
 
         assert.isTrue(eventFired)
     })
@@ -100,7 +100,7 @@ describe('__handleTriggerHeader unit tests', function() {
 
         container.addEventListener('myEvent', () => { eventFired = true })
 
-        htmx.__handleTriggerHeader('{"myEvent": {"target": "#nonexistent", "data": "test"}}', container)
+        htmx.__runTriggerAction('{"myEvent": {"target": "#nonexistent", "data": "test"}}', container)
 
         assert.isFalse(eventFired)
     })
@@ -112,7 +112,7 @@ describe('__handleTriggerHeader unit tests', function() {
         document.addEventListener('myEvent', () => { eventFired = true })
 
         try {
-            htmx.__handleTriggerHeader('myEvent', disconnectedElt)
+            htmx.__runTriggerAction('myEvent', disconnectedElt)
             assert.isTrue(eventFired)
         } finally {
             document.removeEventListener('myEvent', () => {})
@@ -124,7 +124,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let container = createProcessedHTML('<div></div>')
         container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
 
-        htmx.__handleTriggerHeader('{"myEvent": {"foo": "bar", "baz": 123}}', container)
+        htmx.__runTriggerAction('{"myEvent": {"foo": "bar", "baz": 123}}', container)
 
         assert.equal(eventDetail.foo, 'bar')
         assert.equal(eventDetail.baz, 123)
@@ -136,7 +136,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let container = createProcessedHTML('<div></div>')
         container.addEventListener('myEvent', (e) => { eventDetail = e.detail })
 
-        htmx.__handleTriggerHeader('{"myEvent": 42}', container)
+        htmx.__runTriggerAction('{"myEvent": 42}', container)
 
         assert.equal(eventDetail.value, 42)
     })
@@ -151,7 +151,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let source = root.querySelector('#source')
         let listener = root.querySelector('#listener')
 
-        htmx.__handleTriggerHeader('myEvent', source)
+        htmx.__runTriggerAction('myEvent', source)
 
         assert.isTrue(listener.classList.contains('updated'))
     })
@@ -166,7 +166,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let source = root.querySelector('#source')
         let listener = root.querySelector('#listener')
 
-        htmx.__handleTriggerHeader('{"notification":"Hello World"}', source)
+        htmx.__runTriggerAction('{"notification":"Hello World"}', source)
 
         assert.equal(listener.dataset.value, 'Hello World')
     })
@@ -181,7 +181,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let source = root.querySelector('#source')
         let listener = root.querySelector('#listener')
 
-        htmx.__handleTriggerHeader('{"notification":{"level":"info", "message":"Saved"}}', source)
+        htmx.__runTriggerAction('{"notification":{"level":"info", "message":"Saved"}}', source)
 
         assert.equal(listener.dataset.level, 'info')
         assert.equal(listener.textContent, 'Saved')
@@ -197,7 +197,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let source = root.querySelector('#source')
         let listener = root.querySelector('#listener')
 
-        htmx.__handleTriggerHeader('{"notification":"Saved", "refreshList":true}', source)
+        htmx.__runTriggerAction('{"notification":"Saved", "refreshList":true}', source)
 
         assert.equal(listener.textContent, 'Saved')
         assert.equal(listener.dataset.refresh, 'true')
@@ -213,7 +213,7 @@ describe('__handleTriggerHeader unit tests', function() {
         let source = root.querySelector('#source')
         let notifications = root.querySelector('#notifications')
 
-        htmx.__handleTriggerHeader('{"notification":{"target":"#notifications", "message":"Saved"}}', source)
+        htmx.__runTriggerAction('{"notification":{"target":"#notifications", "message":"Saved"}}', source)
 
         assert.equal(notifications.textContent, 'Saved')
     })

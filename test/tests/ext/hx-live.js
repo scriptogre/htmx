@@ -1563,7 +1563,7 @@ describe('hx-live extension', function () {
             let source = playground().querySelector('#source');
             let flash = playground().querySelector('#flash');
 
-            htmx.__handleTriggerHeader('{"flash":{"target":"#flash", "level":"success", "message":"Saved"}}', source);
+            htmx.__runTriggerAction('{"flash":{"target":"#flash", "level":"success", "message":"Saved"}}', source);
             flash.dataset.message.should.equal('Saved');
             flash.dataset.level.should.equal('success');
 

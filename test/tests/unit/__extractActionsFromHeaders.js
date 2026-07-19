@@ -1,4 +1,4 @@
-describe('__extractResponseActions unit tests', function() {
+describe('__extractActionsFromHeaders unit tests', function() {
 
     beforeEach(function() {
         setupTest();
@@ -17,7 +17,7 @@ describe('__extractResponseActions unit tests', function() {
             })
         }
 
-        let actions = htmx.__extractResponseActions(response)
+        let actions = htmx.__extractActionsFromHeaders(response.headers)
 
         assert.equal(actions.trigger, 'myEvent')
         assert.equal(actions.redirect, '/new-page')
@@ -33,7 +33,7 @@ describe('__extractResponseActions unit tests', function() {
             })
         }
 
-        let actions = htmx.__extractResponseActions(response)
+        let actions = htmx.__extractActionsFromHeaders(response.headers)
 
         assert.equal(actions.pushUrl, '/new-url')
         assert.equal(actions.replaceUrl, '/replace-url')
@@ -48,7 +48,7 @@ describe('__extractResponseActions unit tests', function() {
             })
         }
 
-        let actions = htmx.__extractResponseActions(response)
+        let actions = htmx.__extractActionsFromHeaders(response.headers)
 
         assert.equal(actions.toast, 'Saved!')
         assert.equal(actions.fooBar, 'baz')
@@ -57,7 +57,7 @@ describe('__extractResponseActions unit tests', function() {
     it('handles empty headers', function () {
         let response = { headers: new Headers() }
 
-        assert.deepEqual(htmx.__extractResponseActions(response), {})
+        assert.deepEqual(htmx.__extractActionsFromHeaders(response.headers), {})
     })
 
     it('only extracts headers that start with HX-', function () {
@@ -70,7 +70,7 @@ describe('__extractResponseActions unit tests', function() {
             })
         }
 
-        let actions = htmx.__extractResponseActions(response)
+        let actions = htmx.__extractActionsFromHeaders(response.headers)
 
         assert.equal(actions.trigger, 'myEvent')
         assert.equal(actions.refresh, 'true')
@@ -87,7 +87,7 @@ describe('__extractResponseActions unit tests', function() {
             })
         }
 
-        let actions = htmx.__extractResponseActions(response)
+        let actions = htmx.__extractActionsFromHeaders(response.headers)
 
         assert.equal(actions.trigger, 'lowercase')
         assert.equal(actions.redirect, 'mixedcase')
