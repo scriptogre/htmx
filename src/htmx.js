@@ -391,7 +391,6 @@ var htmx = (() => {
             let {action, method} = this.__determineMethodAndAction(sourceElement, sourceEvent);
             let [fullAction, anchor] = (action || '').split('#');
 
-            let defaultHxSwap = this.config.defaultSwap;
             let hxSwap = this.__attributeValue(sourceElement, "hx-swap");
             let hxTarget = this.__attributeValue(sourceElement, "hx-target");
             let hxSelect = this.__attributeValue(sourceElement, "hx-select");
@@ -401,9 +400,13 @@ var htmx = (() => {
             let hxConfirm = this.__attributeValue(sourceElement, "hx-confirm");
             let hxValidate = this.__attributeValue(sourceElement, "hx-validate", sourceElement.matches('form') && !sourceElement.noValidate && !sourceEvent.submitter?.formNoValidate ? "true" : "false");
 
-            // Convert "innerHTML transition:true ..." -> { style: "innerHTML", transition: true, ... }.
-            defaultHxSwap = this.__parseSwapSpec(defaultHxSwap);
-            hxSwap = this.__parseSwapSpec(hxSwap);
+            let defaultSwap = this.__parseSwapSpec(this.config.defaultSwap); // "innerHTML transition ..." -> {style, transition, ...}
+            let attributeSwap = {
+                ...(hxTarget !== undefined && {target: hxTarget}),
+                ...(hxSelect !== undefined && {select: hxSelect}),
+                ...(hxSelectOOB !== undefined && {selectOOB: hxSelectOOB}),
+                ...this.__parseSwapSpec(hxSwap)
+            };
 
             let ac = new AbortController();
             let ctx = {
@@ -428,11 +431,8 @@ var htmx = (() => {
                     select: undefined,
                     selectOOB: undefined,
                     transition: this.config.transitions,
-                    ...defaultHxSwap,
-                    ...(hxTarget !== undefined && {target: hxTarget}),
-                    ...(hxSelect !== undefined && {select: hxSelect}),
-                    ...(hxSelectOOB !== undefined && {selectOOB: hxSelectOOB}),
-                    ...hxSwap
+                    ...defaultSwap,
+                    ...attributeSwap
                 },
                 actions: {
                     pushUrl: hxPushUrl,
