@@ -1131,6 +1131,21 @@ describe('hx-sse SSE extension', function() {
         stream.close();
     });
 
+    it('preserves existing Accept values', async function() {
+        const stream = mockStreamResponse('/accept-header-existing');
+        createProcessedHTML('<button hx-get="/accept-header-existing" hx-headers=\'"Accept":"text/html, multipart/mixed"\'>Go</button>');
+
+        find('button').click();
+        await htmx.timeout(1);
+
+        assert.equal(
+            fetchMock.getLastCall().request.headers.Accept,
+            'text/html, multipart/mixed, text/event-stream'
+        );
+
+        stream.close();
+    });
+
     it('oob-only SSE message does not blank main target by default', async function() {
         const stream = mockStreamResponse('/oob-only');
         createProcessedHTML('<div id="target" hx-sse:connect="/oob-only" hx-swap="innerHTML">Original</div><div id="oob">OOB</div>');

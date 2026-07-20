@@ -322,8 +322,9 @@
             api = internalAPI;
         },
 
-        htmx_config_request: (element, detail) => {
-            detail.ctx.request.headers['Accept'] = 'text/html, text/event-stream';
+        htmx_config_request: (element, {ctx: {request}}) => {
+            request.headers.Accept =
+                `${request.headers.Accept ?? request.headers.accept ?? 'text/html'}, text/event-stream`;
         },
 
         // Intercept SSE responses before core consumes the body
