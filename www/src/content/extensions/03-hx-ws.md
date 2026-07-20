@@ -1,6 +1,6 @@
 ---
 title: "hx-ws"
-description: "Send and receive messages over WebSockets"
+description: "Stream HTML and send data over WebSockets"
 category: "Networking"
 icon: "icon-[mdi--swap-horizontal]"
 keywords: ["websockets", "ws", "real-time", "bidirectional", "socket"]
