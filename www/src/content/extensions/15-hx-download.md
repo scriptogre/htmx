@@ -1,7 +1,7 @@
 ---
 title: "hx-download"
 description: "Download files with `hx-swap='download'`"
-category: "Swap behaviors"
+category: "Swaps"
 icon: "icon-[mdi--download-outline]"
 keywords: ["download", "file", "save", "progress", "streaming"]
 ---

@@ -1,7 +1,7 @@
 ---
 title: "hx-upsert"
 description: "Update or insert elements with `hx-swap='upsert'`"
-category: "Swap behaviors"
+category: "Swaps"
 icon: "icon-[mdi--update]"
 keywords: ["upsert", "swap", "list", "update", "insert"]
 ---

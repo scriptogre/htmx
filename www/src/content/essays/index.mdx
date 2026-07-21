@@ -4,6 +4,7 @@ description: "On hypermedia and building for the web."
 ---
 
 import { getFolder } from '../../lib/content';
+import JumpTo from '../../components/JumpTo.astro';
 
 export const essayFolder = await getFolder('essays');
 export const localEssays = essayFolder.files;
@@ -76,6 +77,11 @@ export const grouped = GROUPS.map(g => ({
     essays: allEssays.filter(e => (e.tags || '').includes(g.id)),
 })).filter(g => g.essays.length > 0);
 
+export const getPageHeadings = () => [
+    {depth: 2, slug: 'most-recent', text: 'Most Recent'},
+    ...grouped.map(group => ({depth: 2, slug: group.id, text: group.label})),
+];
+
 <label data-active-search class="not-prose text-field" for="essays-search">
     <span class="sr-only">Search essays</span>
     <i class="icon-[mdi--magnify]" aria-hidden="true"></i>
@@ -91,16 +97,16 @@ export const grouped = GROUPS.map(g => ({
         aria-keyshortcuts="/"
         _="install ActiveSearch"
     />
-    <span aria-hidden="true">Press <kbd>/</kbd></span>
+    <span aria-hidden="true">Focus <kbd>/</kbd></span>
 </label>
+
+<JumpTo headings={getPageHeadings()} />
 
 <section role="group">
 
 <h2 id="most-recent">
-    <a href="#most-recent" class="no-underline interact:underline">
-        Most Recent
-    </a>
-    <span data-search-count class="active-search-count">{recentEssays.length}
+    <span>
+        <a href="#most-recent" class="no-underline interact:underline">Most Recent</a>
     </span>
 </h2>
 
@@ -122,10 +128,10 @@ export const grouped = GROUPS.map(g => ({
 <section role="group">
 
 <h2 id={group.id}>
-    <a href={`#${group.id}`} class="no-underline interact:underline">
-        {group.label}
-    </a>
-    <span data-search-count class="active-search-count">{group.essays.length}
+    <span>
+        <a href={`#${group.id}`} class="no-underline interact:underline">
+            {group.label}
+        </a>
     </span>
 </h2>
 

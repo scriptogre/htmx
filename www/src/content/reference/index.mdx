@@ -4,6 +4,7 @@ description: "Attributes, headers, events, and configuration."
 ---
 
 import { getFolder } from '../../lib/content';
+import JumpTo from '../../components/JumpTo.astro';
 
 export const folder = await getFolder('reference');
 
@@ -78,6 +79,8 @@ export const groups = folder.folders.map(sub => {
     return { slug: sub.slug, label: sub.frontmatter.title, subgroups: [{ label: null, items }] };
 });
 
+export const getPageHeadings = () => groups.map(group => ({depth: 2, slug: group.slug, text: group.label}));
+
 <label data-active-search class="not-prose text-field" for="reference-search">
     <span class="sr-only">Search reference</span>
     <i class="icon-[mdi--magnify]" aria-hidden="true"></i>
@@ -93,27 +96,20 @@ export const groups = folder.folders.map(sub => {
         aria-keyshortcuts="/"
         _="install ActiveSearch"
     />
-    <span aria-hidden="true">Press <kbd>/</kbd></span>
+    <span aria-hidden="true">Focus <kbd>/</kbd></span>
 </label>
 
-<nav aria-label="Reference sections" class="not-prose mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm sm:text-base">
-    <span class="text-neutral-500 dark:text-neutral-400">Jump to:</span>
-    {groups.map((group, index) => (
-        <>
-            {index > 0 && <span class="text-neutral-300 dark:text-neutral-700" aria-hidden="true">•</span>}
-            <a href={`#${group.slug}`} class="text-blue-700 no-underline interact:underline dark:text-blue-350 dark:interact:text-blue-300">{group.label}</a>
-        </>
-    ))}
-</nav>
+<JumpTo headings={getPageHeadings()} />
 
 {groups.map(group => (
 <section role="group">
 
 <h2 id={group.slug}>
-    <a href={`#${group.slug}`} class="no-underline interact:underline">
-        {group.label}
-    </a>
-    <span data-search-count class="active-search-count">{group.subgroups.reduce((total, sg) => total + sg.items.length, 0)}
+    <span>
+        <a href={`#${group.slug}`} class="no-underline interact:underline">
+            {group.label}
+        </a>
+        <span data-search-count class="active-search-count">{group.subgroups.reduce((total, sg) => total + sg.items.length, 0)} {group.label.toLowerCase()}</span>
     </span>
 </h2>
 
@@ -128,8 +124,8 @@ export const groups = folder.folders.map(sub => {
             <tr class="stretch-link">
                 <td>
                     <span hidden>{group.label} {sg.label}</span>
-                    <a href={item.url}><code class="text-sm sm:text-[0.875em]" set:html={item.title} /></a>
-                    {item.description && <span class="mt-0.5 block pl-[6px] text-[0.8125rem] text-neutral-650 dark:text-neutral-350 sm:hidden" set:html={descriptionHtml(item.description)} />}
+                    <a href={item.url}><code set:html={item.title} /></a>
+                    {item.description && <span class="block pl-[6px] text-neutral-650 dark:text-neutral-350 sm:hidden" set:html={descriptionHtml(item.description)} />}
                 </td>
                 <td class="hidden sm:table-cell text-neutral-650 dark:text-neutral-350" set:html={item.description ? descriptionHtml(item.description) : ''} />
             </tr>
