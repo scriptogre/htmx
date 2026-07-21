@@ -19,6 +19,7 @@
 
         return {
             reconnect: true,
+            reconnectCodes: [1006, 1011, 1012, 1013],
             reconnectDelay: 500,
             reconnectMaxDelay: 60000,
             reconnectMaxAttempts: Infinity,
@@ -86,7 +87,9 @@
             socket: null,
             attempt: 0,
             timer: null,
-            pendingRequests: new Map(),       //            abortController: null,
+            pendingRequests: new Map(),
+            queue: [],
+            abortController: null,
             visibilityHandler: null,
             cancelled: false
         };
@@ -138,6 +141,7 @@
             connection.abortController.abort();
         }
         connection.pendingRequests.clear();
+        connection.queue.length = 0;
         if (connection.socket) {
             try {
                 if (connection.socket.readyState === WebSocket.OPEN || connection.socket.readyState === WebSocket.CONNECTING) {
@@ -183,6 +187,7 @@
                     return;
                 }
                 connection.attempt = 0;
+                flushQueue(connection);
             }, opts);
 
             connection.socket.addEventListener('message', (event) => {
@@ -205,7 +210,7 @@
                 let config = connection.config;
                 if (config.pauseOnBackground && document.hidden) return;
 
-                if (config.reconnect && findConnectedElement(url)) {
+                if (config.reconnect && config.reconnectCodes.includes(event.code) && findConnectedElement(url)) {
                     scheduleReconnect(url, connection);
                 } else {
                     // No element or reconnect disabled — full cleanup
@@ -285,6 +290,7 @@
             connection.abortController.abort();
         }
         connection.pendingRequests.clear();
+        connection.queue.length = 0;
         api.triggerHtmxEvent(element, 'htmx:ws:close', {
             connection, reason: 'removed', code: null
         });
@@ -313,6 +319,23 @@
     // REQUESTS
     // ========================================
 
+    function sendMessage(connection, element, message, requestId) {
+        try {
+            connection.socket.send(message.data);
+            connection.pendingRequests.set(requestId, { element, timestamp: Date.now() });
+            api.triggerHtmxEvent(element, 'htmx:ws:after:message:outgoing', {message});
+        } catch (error) {
+            api.triggerHtmxEvent(element, 'htmx:ws:error', { url: connection.url, error });
+        }
+    }
+
+    function flushQueue(connection) {
+        while (connection.queue.length && connection.socket?.readyState === WebSocket.OPEN) {
+            let queuedMessage = connection.queue.shift();
+            sendMessage(connection, queuedMessage.element, queuedMessage.message, queuedMessage.requestId);
+        }
+    }
+
     async function sendRequest(element, event) {
         // hx-ws:send="/url" creates its own connection; hx-ws:send (no value) uses ancestor's
         let sendAttr = api.attributeValue(element, 'hx-ws:send');
@@ -334,16 +357,7 @@
         let normalizedUrl = normalizeWebSocketUrl(url);
         let connection = connections.get(normalizedUrl);
 
-        // Wait for socket to open if still connecting
-        if (connection && connection.socket && connection.socket.readyState === WebSocket.CONNECTING) {
-            await new Promise(resolve => {
-                connection.socket.addEventListener('open', resolve, { once: true });
-                connection.socket.addEventListener('close', resolve, { once: true });
-                connection.socket.addEventListener('error', resolve, { once: true });
-            });
-        }
-
-        if (!connection || !connection.socket || connection.socket.readyState !== WebSocket.OPEN) {
+        if (!connection) {
             api.triggerHtmxEvent(element, 'htmx:ws:error', { url: normalizedUrl, error: 'Connection not open' });
             return;
         }
@@ -383,27 +397,32 @@
         let message = {
             headers,
             values,
-            data: undefined,
+            data: undefined
+        };
+        let detail = {
+            message,
             cancelled: false,
             waitUntil(promise) {
                 pendingWork.push(Promise.resolve(promise));
             }
         };
-        let detail = { message };
         let shouldSend = api.triggerHtmxEvent(element, 'htmx:ws:before:message:outgoing', detail);
 
         try {
             await Promise.all(pendingWork);
-            if (!shouldSend || message.cancelled) return;
+            if (!shouldSend || detail.cancelled) return;
 
             message.data ??= JSON.stringify({ ...message.values, headers: message.headers });
-            connection.socket.send(message.data);
+            if (connections.get(normalizedUrl) !== connection) {
+                api.triggerHtmxEvent(element, 'htmx:ws:error', { url: normalizedUrl, error: 'Connection closed' });
+                return;
+            }
 
-            // [Correlation] Store pending request for response matching
-            connection.pendingRequests.set(requestId, { element, timestamp: Date.now() });
-
-            delete message.cancelled;
-            api.triggerHtmxEvent(element, 'htmx:ws:after:message:outgoing', detail);
+            if (connection.socket?.readyState === WebSocket.OPEN) {
+                sendMessage(connection, element, message, requestId);
+            } else {
+                connection.queue.push({element, message, requestId});
+            }
         } catch (error) {
             api.triggerHtmxEvent(element, 'htmx:ws:error', { url: normalizedUrl, error });
         }
@@ -423,10 +442,6 @@
         let message = {
             data,
             type: typeof data === 'string' ? 'text' : 'binary',
-            cancelled: false,
-            waitUntil(promise) {
-                pendingWork.push(Promise.resolve(promise));
-            },
             text() {
                 return textResult ??= typeof data === 'string'
                     ? Promise.resolve(data)
@@ -477,11 +492,17 @@
             return;
         }
 
-        let detail = { message };
+        let detail = {
+            message,
+            cancelled: false,
+            waitUntil(promise) {
+                pendingWork.push(Promise.resolve(promise));
+            }
+        };
         let shouldProcess = api.triggerHtmxEvent(element, 'htmx:ws:before:message:incoming', detail);
 
         await Promise.all(pendingWork);
-        if (!shouldProcess || message.cancelled) return;
+        if (!shouldProcess || detail.cancelled) return;
 
         // JSON with 'content' or 'payload' field: swap the HTML
         // Raw (non-JSON) string: swap the entire string as HTML
@@ -515,8 +536,7 @@
             htmx.swap(html, target || element, options);
         }
 
-        delete detail.message.cancelled;
-        api.triggerHtmxEvent(element, 'htmx:ws:after:message:incoming', detail);
+        api.triggerHtmxEvent(element, 'htmx:ws:after:message:incoming', {message});
     }
     
     // ========================================
@@ -675,6 +695,7 @@
                             connection.socket.close();
                         }
                         connection.pendingRequests.clear();
+                        connection.queue.length = 0;
                     });
                 },
                 get: (key) => connections.get(normalizeWebSocketUrl(key)),

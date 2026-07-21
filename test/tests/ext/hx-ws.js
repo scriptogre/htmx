@@ -44,6 +44,8 @@ describe('hx-ws WebSocket extension', function() {
                     throw new Error('WebSocket is not open');
                 }
                 this.lastSent = data;
+                this.sentMessages ??= [];
+                this.sentMessages.push(data);
             }
             
             close(code = 1000, reason = '') {
@@ -270,18 +272,56 @@ describe('hx-ws WebSocket extension', function() {
     
     describe('Message Sending', function() {
         
-        it('sends message on load trigger (waits for socket open)', async function() {
+        it('queues a message until the initial connection opens', async function() {
             let div = createProcessedHTML(`
                 <div hx-ws:connect="/ws/test">
                     <div id="load-sender" hx-ws:send hx-trigger="load" hx-vals='{"test": "load"}'></div>
                 </div>
             `);
-            await htmx.timeout(50);
+            await htmx.timeout(1);
 
             let ws = mockWebSocketInstances[0];
-            assert.isDefined(ws.lastSent, 'Should have sent a message on load');
-            let sent = JSON.parse(ws.lastSent);
-            assert.equal(sent.test, 'load');
+            let connection = htmx.ext.ws.getRegistry().get('/ws/test');
+            assert.equal(connection.queue.length, 1);
+            assert.isUndefined(ws.lastSent);
+
+            await htmx.timeout(30);
+
+            assert.equal(connection.queue.length, 0);
+            assert.equal(JSON.parse(ws.lastSent).test, 'load');
+        });
+
+        it('queues messages during reconnect and sends them in order', async function() {
+            htmx.config.ws = { reconnectDelay: 50, reconnectJitter: 0 };
+            let div = createProcessedHTML(`
+                <div hx-ws:connect="/ws/test">
+                    <button hx-ws:send hx-vals='{"order": "first"}'>First</button>
+                    <button hx-ws:send hx-vals='{"order": "second"}'>Second</button>
+                </div>
+            `);
+            await htmx.timeout(20);
+
+            let sentOrders = [];
+            div.addEventListener('htmx:ws:after:message:outgoing', event => {
+                sentOrders.push(event.detail.message.values.order);
+            });
+
+            mockWebSocketInstances[0].close(1006);
+            let buttons = div.querySelectorAll('button');
+            buttons[0].click();
+            buttons[1].click();
+            await htmx.timeout(10);
+
+            let connection = htmx.ext.ws.getRegistry().get('/ws/test');
+            assert.equal(connection.queue.length, 2);
+            assert.deepEqual(sentOrders, []);
+
+            await htmx.timeout(70);
+
+            let sent = mockWebSocketInstances[1].sentMessages.map(JSON.parse);
+            assert.deepEqual(sent.map(message => message.order), ['first', 'second']);
+            assert.deepEqual(sentOrders, ['first', 'second']);
+            assert.equal(connection.queue.length, 0);
         });
 
         it('sends message with hx-ws:send on form submit', async function() {
@@ -800,9 +840,8 @@ describe('hx-ws WebSocket extension', function() {
             await htmx.timeout(50);
 
             container.addEventListener('htmx:ws:before:message:incoming', (event) => {
-                let message = event.detail.message;
-                message.waitUntil(htmx.timeout(20).then(() => {
-                    message.cancelled = true;
+                event.detail.waitUntil(htmx.timeout(20).then(() => {
+                    event.detail.cancelled = true;
                 }));
             });
 
@@ -899,19 +938,48 @@ describe('hx-ws WebSocket extension', function() {
             assert.isTrue(closeFired);
         });
         
-        it('attempts reconnection on close when config.reconnect is true', async function() {
+        it('defaults to the htmx 2 reconnect codes', async function() {
+            createProcessedHTML('<div hx-ws:connect="/ws/test"></div>');
+            await htmx.timeout(20);
+
+            let connection = htmx.ext.ws.getRegistry().get('/ws/test');
+            assert.deepEqual(connection.config.reconnectCodes, [1006, 1011, 1012, 1013]);
+        });
+
+        it('reconnects after an allowed close code', async function() {
             htmx.config.ws = { reconnect: true, reconnectDelay: 50 };
-            
-            let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test"></div>
-            `);
+
+            createProcessedHTML('<div hx-ws:connect="/ws/test"></div>');
             await htmx.timeout(50);
-            
-            let firstWs = mockWebSocketInstances[0];
-            firstWs.close();
+
+            mockWebSocketInstances[0].close(1006);
             await htmx.timeout(100);
-            
-            assert.isTrue(mockWebSocketInstances.length > 1, 'Should create new WebSocket for reconnection');
+
+            assert.isTrue(mockWebSocketInstances.length > 1);
+        });
+
+        it('does not reconnect after a normal close', async function() {
+            htmx.config.ws = { reconnect: true, reconnectDelay: 20 };
+
+            createProcessedHTML('<div hx-ws:connect="/ws/test"></div>');
+            await htmx.timeout(50);
+
+            mockWebSocketInstances[0].close(1000);
+            await htmx.timeout(50);
+
+            assert.equal(mockWebSocketInstances.length, 1);
+        });
+
+        it('uses custom reconnectCodes', async function() {
+            htmx.config.ws = { reconnectCodes: [1000], reconnectDelay: 20 };
+
+            createProcessedHTML('<div hx-ws:connect="/ws/test"></div>');
+            await htmx.timeout(50);
+
+            mockWebSocketInstances[0].close(1000);
+            await htmx.timeout(50);
+
+            assert.equal(mockWebSocketInstances.length, 2);
         });
         
         it('does not reconnect when config.reconnect is false', async function() {
@@ -923,7 +991,7 @@ describe('hx-ws WebSocket extension', function() {
             await htmx.timeout(50);
             
             let firstWs = mockWebSocketInstances[0];
-            firstWs.close();
+            firstWs.close(1006);
             await htmx.timeout(100);
             
             assert.equal(mockWebSocketInstances.length, 1);
@@ -945,7 +1013,7 @@ describe('hx-ws WebSocket extension', function() {
 
             await htmx.timeout(50);
             let firstWs = mockWebSocketInstances[0];
-            firstWs.close();
+            firstWs.close(1006);
             await htmx.timeout(100);
 
             assert.equal(reconnectAttempt, 1);
@@ -972,17 +1040,17 @@ describe('hx-ws WebSocket extension', function() {
             
             // First close
             let ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(200);
             
             // Second close
             ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(300);
             
             // Third close
             ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(500);
             
             // Verify delays are increasing
@@ -1111,7 +1179,7 @@ describe('hx-ws WebSocket extension', function() {
             await htmx.timeout(50);
 
             container.addEventListener('htmx:ws:before:message:incoming', (e) => {
-                if (e.detail.message.type === 'text') e.detail.message.cancelled = true;
+                if (e.detail.message.type === 'text') e.detail.cancelled = true;
             });
 
             let ws = mockWebSocketInstances[0];
@@ -1152,7 +1220,7 @@ describe('hx-ws WebSocket extension', function() {
             
             let ws = mockWebSocketInstances[0];
             let closeTime = Date.now();
-            ws.close();
+            ws.close(1006);
             
             await htmx.timeout(100);
             assert.equal(mockWebSocketInstances.length, 1, 'Should not reconnect yet');
@@ -1175,7 +1243,7 @@ describe('hx-ws WebSocket extension', function() {
             
             // This test just ensures jitter doesn't break reconnection
             let ws = mockWebSocketInstances[0];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(200);
             
             assert.isTrue(mockWebSocketInstances.length > 1);
@@ -1201,7 +1269,7 @@ describe('hx-ws WebSocket extension', function() {
 
             // Close the first connection — this triggers reconnect attempt 1
             let ws = mockWebSocketInstances[0];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(50);
 
             // The reconnected socket auto-opens (mock behavior), which resets
@@ -1241,7 +1309,7 @@ describe('hx-ws WebSocket extension', function() {
             });
 
             let ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(200);
 
             assert.isAtLeast(reconnectAttempts.length, 1, 'Should have at least 1 reconnect');
@@ -1270,11 +1338,11 @@ describe('hx-ws WebSocket extension', function() {
             // Each reconnect succeeds (mock auto-opens), so reconnectAttempts
             // resets to 0 — each subsequent close starts at attempt 1 again
             let ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(50);
 
             ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(50);
 
             assert.isAtLeast(reconnectAttempts.length, 2, 'Should have at least 2 reconnects');
@@ -1300,7 +1368,7 @@ describe('hx-ws WebSocket extension', function() {
             });
 
             let ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(100);
 
             // Per-element config set reconnectDelay to 20ms (not global 5000ms),
@@ -1316,7 +1384,7 @@ describe('hx-ws WebSocket extension', function() {
             };
 
             let container = createProcessedHTML(`
-                <div hx-ws:connect="/ws/test" hx-config='{"ws": {"reconnectDelay": 20, "reconnectMaxAttempts": 2}}'></div>
+                <div hx-ws:connect="/ws/test" hx-config='{"ws": {"reconnectCodes": [1000], "reconnectDelay": 20}}'></div>
             `);
             await htmx.timeout(50);
 
@@ -1328,7 +1396,7 @@ describe('hx-ws WebSocket extension', function() {
             });
 
             let ws = mockWebSocketInstances[mockWebSocketInstances.length - 1];
-            ws.close();
+            ws.close(1000);
             await htmx.timeout(100);
 
             assert.isAtLeast(reconnectAttempts.length, 1, 'Should reconnect using per-element JSON config');
@@ -1524,7 +1592,7 @@ describe('hx-ws WebSocket extension', function() {
 
             await htmx.timeout(50);
             let firstWs = mockWebSocketInstances[0];
-            firstWs.close();
+            firstWs.close(1006);
             await htmx.timeout(150);
 
             assert.equal(mockWebSocketInstances.length, 1, 'Should not reconnect when cancelled');
@@ -1599,9 +1667,8 @@ describe('hx-ws WebSocket extension', function() {
             `);
 
             div.addEventListener('htmx:ws:before:message:outgoing', (event) => {
-                let message = event.detail.message;
-                message.waitUntil(htmx.timeout(20).then(() => {
-                    message.values.delayed = true;
+                event.detail.waitUntil(htmx.timeout(20).then(() => {
+                    event.detail.message.values.delayed = true;
                 }));
             });
 
@@ -1981,7 +2048,7 @@ describe('hx-ws WebSocket extension', function() {
 
             // Close to trigger reconnect
             let ws = mockWebSocketInstances[0];
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(150);
 
             assert.isNotNull(reportedAttempt, 'after:ws:connection should have fired on reconnect');
@@ -2111,7 +2178,7 @@ describe('hx-ws WebSocket extension', function() {
             let registry = htmx.ext.ws.getRegistry();
 
             // Close to trigger reconnect scheduling
-            ws.close();
+            ws.close(1006);
             await htmx.timeout(20);
 
             // Remove element during the reconnect delay

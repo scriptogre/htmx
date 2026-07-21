@@ -2,13 +2,13 @@
 title: "hx-ws"
 description: "Stream HTML and send data over WebSockets"
 category: "Networking"
-icon: "icon-[mdi--swap-horizontal]"
+icon: "icon-[mdi--connection]"
 keywords: ["websockets", "ws", "real-time", "bidirectional", "socket"]
 ---
 
 The `hx-ws` extension opens [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API) connections, swaps incoming HTML, and sends form data as JSON.
 
-If you used the WebSocket extension in [htmx 2.0](https://htmx.org/extensions/ws/), see [Migration](#migration).
+If you used [`ws`](https://htmx.org/extensions/ws/) in htmx 2.0, see [migration notes](#migration).
 
 ## Installing
 
@@ -19,7 +19,7 @@ If you used the WebSocket extension in [htmx 2.0](https://htmx.org/extensions/ws
 
 ## Usage
 
-### Swap One Target
+### Update an Element
 
 Open a [persistent](#wsreconnect) WebSocket connection:
 
@@ -43,12 +43,14 @@ The result is:
 </div>
 ```
 
-htmx applied its normal swap rules using the defaults:
+htmx uses the same rules as with a `text/html` response:
 
 - [`hx-target="this"`](/reference/attributes/hx-target#this)
 - [`hx-swap="innerHTML"`](/reference/attributes/hx-swap#innerhtml) (from [`htmx.config.defaultSwap`](/reference/config/htmx-config-defaultSwap))
 
-Because it behaves like normal swaps, you can set [`hx-target`](/reference/attributes/hx-target) and [`hx-swap`](/reference/attributes/hx-swap) (including [modifiers](/reference/attributes/hx-swap#modifiers)):
+**Choose the Swap**
+
+Use [`hx-swap`](/reference/attributes/hx-swap) and [`hx-target`](/reference/attributes/hx-target) to choose how and where updates swap:
 
 ```html
 <div hx-ws:connect="/chat"
@@ -89,9 +91,7 @@ You can also use:
 - [`hx-select`](/reference/attributes/hx-select) to select content for the swap
 - [`hx-select-oob`](/reference/attributes/hx-select-oob) to select more elements to swap
 
-These attributes follow [attribute inheritance](/docs#attribute-inheritance).
-
-### Swap Multiple Targets
+### Update Elements
 
 Start with the page elements to update:
 
@@ -128,7 +128,8 @@ The page becomes:
 <div id="status">Online</div>
 ```
 
-**Why wasn't the normal swap used?**
+<details>
+<summary>Why wasn't the normal swap used?</summary>
 
 After htmx extracts extra swaps, the normal swap may be empty:
 
@@ -136,7 +137,7 @@ After htmx extracts extra swaps, the normal swap may be empty:
 (empty)
 ```
 
-`hx-swap-oob` and `<hx-partial>` elements are extracted before the normal swap. By default, [`swapEmpty:false`](/reference/attributes/hx-swap#swapempty) leaves the connection unchanged.
+[`hx-swap-oob`](/reference/attributes/hx-swap-oob) and [`<hx-partial>`](/reference/tags/hx-partial) elements are extracted before the normal swap. By default, [`swapEmpty:false`](/reference/attributes/hx-swap#swapempty) leaves the connection unchanged.
 
 The server can also mix these updates with ordinary HTML:
 
@@ -157,7 +158,9 @@ To disable the connection's swap, set `hx-swap="none"`:
 </div>
 ```
 
-Partials and OOB swaps still run.
+[`hx-swap-oob`](/reference/attributes/hx-swap-oob) and [`<hx-partial>`](/reference/tags/hx-partial) swaps still run.
+
+</details>
 
 ### Send a Message
 
@@ -310,7 +313,11 @@ await message.arrayBuffer()
 
 Cancel to skip built-in handling. Binary messages are not swapped automatically.
 
-### Choose a Trigger
+### Persistent Connections
+
+WebSocket connections stay open for incoming and outgoing messages.
+
+#### Open Connections
 
 Use [`hx-trigger`](/reference/attributes/hx-trigger) to open a connection later than `load`:
 
@@ -324,9 +331,9 @@ Use [`hx-trigger`](/reference/attributes/hx-trigger) to open a connection later 
 
 All [`hx-trigger` modifiers](/reference/attributes/hx-trigger#event-modifiers) are supported.
 
-### Open a Direct Connection
+##### Open a Connection with `hx-ws:send`
 
-A sender can open its own connection when it has no `hx-ws:connect` ancestor:
+Give `hx-ws:send` a URL to open a connection:
 
 ```html
 <button hx-ws:send="/actions" name="action" value="refresh">
@@ -334,7 +341,9 @@ A sender can open its own connection when it has no `hx-ws:connect` ancestor:
 </button>
 ```
 
-### Use Shared Connections
+Clicking the button opens `/actions` and sends `action=refresh` over that connection.
+
+##### Use Shared Connections
 
 Put several [`hx-ws:send`](#hx-wssend) elements inside one [`hx-ws:connect`](#hx-wsconnect):
 
@@ -353,7 +362,7 @@ Put several [`hx-ws:send`](#hx-wssend) elements inside one [`hx-ws:connect`](#hx
 
 Both buttons use the same WebSocket connection, but each incoming message needs the right target.
 
-#### Route Incoming Messages
+**Route Incoming Messages**
 
 Copy an outgoing [`HX-Request-ID`](#hx-request-id) into the incoming message:
 
@@ -374,7 +383,7 @@ With the ID:
 - Delete uses `#delete-result`
 - Relative targets and swap events use the sending button
 
-#### Reuse by URL
+**Reuse by URL**
 
 Separate `hx-ws:connect` elements with the same URL share a connection too:
 
@@ -385,24 +394,43 @@ Separate `hx-ws:connect` elements with the same URL share a connection too:
 
 Only one connection to `/actions` is opened. It closes when htmx removes its last element.
 
-### Configure Connections
+#### Close Connections
 
-Set [WebSocket defaults](#config) for every connection:
+Close with code `1000` to stop reconnecting:
 
-```html
-<meta name="htmx-config"
-      content="ws.reconnectDelay:1s ws.reconnectMaxAttempts:5">
+```js
+socket.close(1000, 'done')
 ```
 
-Override them for one connection with [`hx-config`](/reference/attributes/hx-config):
+Codes in [`ws.reconnectCodes`](#wsreconnectcodes) reconnect instead.
 
-```html
-<div hx-ws:connect="/ws"
-     hx-config="ws.reconnectMaxAttempts:2">
-</div>
-```
+#### Configure Connections
 
-Config is fixed when the connection is created.
+You can configure `hx-ws` in three places:
+
+- **[`<meta name="htmx-config">`](/reference/config/htmx-config#configure-via-meta-tag)** sets global defaults from HTML.
+
+  ```html
+  <meta name="htmx-config"
+        content="ws.reconnectDelay:1s ws.reconnectMaxAttempts:5">
+  ```
+
+- **[`htmx.config.ws`](#config)** sets global defaults from JavaScript.
+
+  ```js
+  htmx.config.ws.reconnectDelay = '1s'
+  htmx.config.ws.reconnectMaxAttempts = 5
+  ```
+
+- **[`hx-config`](/reference/attributes/hx-config)** overrides the defaults for one connection.
+
+  ```html
+  <div hx-ws:connect="/ws"
+       hx-config="ws.reconnectMaxAttempts:2">
+  </div>
+  ```
+
+These values are read when the connection is created.
 
 ## Attributes
 
@@ -424,8 +452,9 @@ Incoming HTML uses these inherited swap attributes:
 Defaults:
 
 - [`swapEmpty:false`](/reference/attributes/hx-swap#swapempty); set it explicitly in `hx-swap` to override it
-- [`hx-trigger="load"`](/reference/attributes/hx-trigger#load); use [`hx-trigger`](#choose-a-trigger) to change it
-- Automatic reconnection
+- [`hx-trigger="load"`](/reference/attributes/hx-trigger#load); use [`hx-trigger`](#open-connections) to change it
+- [`ws.reconnect:true`](#wsreconnect)
+- [`ws.pauseOnBackground:true`](#wspauseonbackground)
 
 [Elements using the same URL share one connection](#use-shared-connections).
 
@@ -452,6 +481,22 @@ Default [`hx-trigger`](/reference/attributes/hx-trigger):
 - `submit` for `<form>`
 - `click` for buttons and other elements
 
+## Headers
+
+### `HX-Request-ID`
+
+Associates an incoming message with its outgoing sender.
+
+```jsonc
+// Browser → server
+{ "headers": { "HX-Request-ID": "abc123" }, "message": "Save" }
+
+// Server → browser
+{ "headers": { "HX-Request-ID": "abc123" }, "content": "<p>Saved</p>" }
+```
+
+`hx-ws` adds a unique ID to every outgoing message. Copy it into the incoming message's `headers` to [use the sender](#use-shared-connections).
+
 ## Events
 
 Event data is available on `event.detail`.
@@ -463,6 +508,7 @@ event.detail.connection = {
   url,
   config,
   socket,     // WebSocket or null
+  queue,      // outgoing messages waiting to send
   attempt,    // reconnect count
   cancelled
 }
@@ -471,27 +517,31 @@ event.detail.connection = {
 Incoming message events:
 
 ```js
-event.detail.message = {
-  data,          // original string, Blob, or ArrayBuffer
-  type,          // "text" or "binary"
-  text(),
-  json(),
-  blob(),
-  arrayBuffer(),
-  waitUntil(),
-  cancelled      // before processing only
+event.detail = {
+  message: {
+    data,          // original string, Blob, or ArrayBuffer
+    type,          // "text" or "binary"
+    text(),
+    json(),
+    blob(),
+    arrayBuffer()
+  },
+  waitUntil(),     // before processing only
+  cancelled        // before processing only
 }
 ```
 
 Outgoing message events expose:
 
 ```js
-event.detail.message = {
-  headers,       // htmx metadata
-  values,        // form values and hx-vals
-  data,          // actual WebSocket payload
-  waitUntil(),
-  cancelled      // before sending only
+event.detail = {
+  message: {
+    headers,       // htmx metadata
+    values,        // form values and hx-vals
+    data            // actual WebSocket payload
+  },
+  waitUntil(),     // before sending only
+  cancelled        // before sending only
 }
 ```
 
@@ -569,19 +619,20 @@ Fires before processing an incoming message.
 
 ```js
 document.addEventListener('htmx:ws:before:message:incoming', event => {
-  let message = event.detail.message
-  message.waitUntil(message.json().then(data => {
-    if (!isValid(data)) message.cancelled = true
+  let { message, waitUntil } = event.detail
+
+  waitUntil(message.json().then(data => {
+    if (!isValid(data)) event.detail.cancelled = true
   }))
 })
 ```
 
-`message.waitUntil(promise)` delays built-in processing until asynchronous work finishes.
+`detail.waitUntil(promise)` delays built-in processing until asynchronous work finishes.
 
 Cancel synchronous processing either way:
 
 - call `event.preventDefault()`
-- set `event.detail.message.cancelled` to `true`
+- set `event.detail.cancelled` to `true`
 
 ### `htmx:ws:after:message:incoming`
 
@@ -606,6 +657,8 @@ document.addEventListener('htmx:ws:close', event => {
 - `reason`: `closed`, `removed`, or `cancelled`
 - `code`: the WebSocket close code, or `null`
 
+A code in [`ws.reconnectCodes`](#wsreconnectcodes) schedules a reconnect when [`ws.reconnect:true`](#wsreconnect).
+
 ### `htmx:ws:error`
 
 Fires on connection and send errors.
@@ -621,17 +674,26 @@ document.addEventListener('htmx:ws:error', event => {
 
 ## Config
 
-Set global defaults with an `htmx-config` meta tag.
-
 ### `ws.reconnect`
 
-Control whether a closed connection reconnects automatically.
+Control whether allowed close codes reconnect automatically.
 
 ```html
 <meta name="htmx-config" content="ws.reconnect:false">
 ```
 
 Defaults to `true`.
+
+### `ws.reconnectCodes`
+
+Choose which [WebSocket close codes](https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent/code) reconnect:
+
+```html
+<meta name="htmx-config"
+      content='{"ws":{"reconnectCodes":[1006,1011,1012,1013]}}'>
+```
+
+Defaults to `[1006, 1011, 1012, 1013]`: abnormal closure, internal error, service restart, and try again later.
 
 ### `ws.reconnectDelay`
 
@@ -702,22 +764,6 @@ Set [WebSocket subprotocols](https://developer.mozilla.org/en-US/docs/Web/API/We
 ```
 
 No subprotocol is set by default. Use JSON config to set several subprotocols.
-
-## Headers
-
-### `HX-Request-ID`
-
-Associates an incoming message with its outgoing sender.
-
-```jsonc
-// Browser → server
-{ "headers": { "HX-Request-ID": "abc123" }, "message": "Save" }
-
-// Server → browser
-{ "headers": { "HX-Request-ID": "abc123" }, "content": "<p>Saved</p>" }
-```
-
-`hx-ws` adds a unique ID to every outgoing message. Copy it into the incoming message's `headers` to [use the sender](#use-shared-connections).
 
 ## Migration
 
@@ -812,7 +858,7 @@ These events changed:
 | [`htmx:wsBeforeSend`](https://htmx.org/extensions/ws/#htmx:wsBeforeSend) | [`htmx:ws:before:message:outgoing`](#htmxwsbeforemessageoutgoing) |
 | [`htmx:wsAfterSend`](https://htmx.org/extensions/ws/#htmx:wsAfterSend) | [`htmx:ws:after:message:outgoing`](#htmxwsaftermessageoutgoing) |
 
-### htmx 4.0 alpha
+### htmx 4.0 Alpha
 
 Early htmx 4 builds used different names:
 
@@ -833,6 +879,7 @@ Early htmx 4 builds used different names:
 
   HTTP(S) URLs are converted to their WebSocket equivalents.
 
+- Messages sent before the connection opens or while it reconnects are queued and sent in order when it opens.
 - All WebSocket swaps use [`htmx.swap()`](/reference/methods/htmx-swap).
 - Use `hx-ws-connect` and `hx-ws-send` when colons are not supported, such as in JSX.
 

@@ -592,7 +592,7 @@
         },
         {
           "name": "ws:close",
-          "description": "Fires when a WebSocket connection closes. `detail.connection`, `detail.reason`, and `detail.code` describe the close.",
+          "description": "Fires when a WebSocket connection closes. `detail.connection`, `detail.reason`, and `detail.code` describe the close. Codes in `detail.connection.config.reconnectCodes` reconnect.",
           "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsclose"
         },
         {
@@ -602,7 +602,7 @@
         },
         {
           "name": "ws:before:message:outgoing",
-          "description": "Fires before sending a WebSocket message. Modify `detail.message.headers` and `detail.message.values`, or replace the native payload through `detail.message.data`. `waitUntil()` delays sending.",
+          "description": "Fires before sending a WebSocket message. Modify `detail.message`, use `detail.waitUntil()` to delay sending, or set `detail.cancelled` to cancel.",
           "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsbeforemessageoutgoing"
         },
         {
@@ -612,7 +612,7 @@
         },
         {
           "name": "ws:before:message:incoming",
-          "description": "Fires before an incoming WebSocket message is processed. `detail.message.data` preserves the native data; conversion methods decode it and `waitUntil()` delays processing. Associated messages fire from their sending element.",
+          "description": "Fires before an incoming WebSocket message is processed. Convert `detail.message`, use `detail.waitUntil()` to delay processing, or set `detail.cancelled` to cancel. Associated messages fire from their sending element.",
           "doc-url": "https://four.htmx.org/extensions/hx-ws#htmxwsbeforemessageincoming"
         },
         {
