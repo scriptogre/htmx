@@ -282,7 +282,7 @@
 
         summary {
             @apply flex w-full items-center cursor-pointer select-none text-sm
-            px-3 py-2 -mx-3 rounded-[4px]
+            py-2 rounded-lg
             text-neutral-600 dark:text-neutral-400
             interact:bg-neutral-75 dark:interact:bg-neutral-875
             interact:text-neutral-900 dark:interact:text-neutral-200
