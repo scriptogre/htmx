@@ -1,14 +1,14 @@
 ---
 title: "hx-sse"
-description: "Stream HTML over HTTP with Server-Sent Events (SSE)"
+description: "Stream HTML with `text/event-stream` (SSE)"
 category: "Networking"
 icon: "icon-[mdi--rss]"
 keywords: ["sse", "server-sent events", "server sent events", "event stream", "streaming", "real-time"]
 ---
 
-The `hx-sse` extension streams [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) through normal htmx requests and swaps.
+The `hx-sse` extension lets one HTTP response stream many [Server-Sent Events (SSE)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events).
 
-If you used the SSE extension in [htmx 2.0](https://htmx.org/extensions/sse/), see [Migration](#migration).
+If you used [`sse`](https://htmx.org/extensions/sse/) in htmx 2.0, see [migration notes](#migration).
 
 ## Installing
 
@@ -19,9 +19,9 @@ If you used the SSE extension in [htmx 2.0](https://htmx.org/extensions/sse/), s
 
 ## Usage
 
-### Stream One Target
+### Update an Element
 
-Start a stream with a normal htmx request:
+Start with a typical htmx request using [`hx-get`](/reference/attributes/hx-get):
 
 ```html
 <button hx-get="/ping">
@@ -29,7 +29,43 @@ Start a stream with a normal htmx request:
 </button>
 ```
 
-The server responds with [`text/event-stream`](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events):
+Instead of `text/html`, respond with [`text/event-stream`](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events):
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+data: Pong
+
+```
+
+This unnamed event has a `data:` field but no `event:` field.
+
+<details>
+<summary>Backend libraries</summary>
+
+- **Python:** [FastAPI](https://fastapi.tiangolo.com/tutorial/server-sent-events/) or [`sse-starlette`](https://github.com/sysid/sse-starlette)
+- **Go:** [`go-sse`](https://github.com/tmaxmax/go-sse)
+- **PHP:** [Laravel event streams](https://laravel.com/docs/13.x/responses#event-streams)
+
+</details>
+
+The event replaces the button's content:
+
+```html
+<button hx-get="/ping">
+  Pong
+</button>
+```
+
+htmx uses the same rules as with a `text/html` response:
+
+- [`hx-target="this"`](/reference/attributes/hx-target#this)
+- [`hx-swap="innerHTML"`](/reference/attributes/hx-swap#innerhtml) (from [`htmx.config.defaultSwap`](/reference/config/htmx-config-defaultSwap))
+
+**Stream an Update**
+
+You can also stream HTML using multiple unnamed events:
 
 ```http
 HTTP/1.1 200 OK
@@ -45,20 +81,13 @@ data: Pong
 
 ```
 
-Each message replaces the content as it arrives:
+The button changes as each event arrives:
 
-```html
-<button hx-get="/ping">
-  Pong
-</button>
-```
+`Ping` → `P` → `Po` → `Pon` → `Pong`
 
-htmx applied its normal swap rules using the defaults:
+**Choose the Swap**
 
-- [`hx-target="this"`](/reference/attributes/hx-target#this)
-- [`hx-swap="innerHTML"`](/reference/attributes/hx-swap#innerhtml) (from [`htmx.config.defaultSwap`](/reference/config/htmx-config-defaultSwap))
-
-Because it behaves like normal swaps, you can set [`hx-target`](/reference/attributes/hx-target) and [`hx-swap`](/reference/attributes/hx-swap) (including [modifiers](/reference/attributes/hx-swap#modifiers)):
+Use [`hx-swap`](/reference/attributes/hx-swap) and [`hx-target`](/reference/attributes/hx-target) to choose how and where updates swap:
 
 ```html
 <button hx-post="/generate"
@@ -71,7 +100,7 @@ Because it behaves like normal swaps, you can set [`hx-target`](/reference/attri
 <output></output>
 ```
 
-Each message contains one text chunk:
+Each unnamed event contains one text chunk:
 
 ```http
 HTTP/1.1 200 OK
@@ -96,26 +125,15 @@ You can also use:
 - [`hx-select`](/reference/attributes/hx-select) to select content for the swap
 - [`hx-select-oob`](/reference/attributes/hx-select-oob) to select more elements to swap
 
-Use [attribute inheritance](/docs#attribute-inheritance) to share these settings with descendants.
+### Update Elements
 
-### Stream Live Updates
-
-Use `hx-sse:connect` to update several parts of the page over one [persistent](#ssereconnect) connection:
+Use a normal htmx request to update several elements:
 
 ```html
-<div hx-sse:connect="/events"></div>
+<button hx-get="/events">Connect</button>
 
 <div id="feed"></div>
 <div id="status">Offline</div>
-```
-
-With default config, `hx-sse:connect` behaves like:
-
-```html
-<div hx-get="/events"
-     hx-trigger="load"
-     hx-config="sse.reconnect:true sse.pauseOnBackground:true">
-</div>
 ```
 
 The server sends two extra swaps using [`hx-swap-oob`](/reference/attributes/hx-swap-oob) and [`<hx-partial>`](/reference/tags/hx-partial):
@@ -132,7 +150,7 @@ data: <hx-partial hx-target="#feed"><p>New</p></hx-partial>
 The page becomes:
 
 ```html
-<div hx-sse:connect="/events"></div>
+<button hx-get="/events">Connect</button>
 
 <div id="feed">
   <p>New</p>
@@ -140,7 +158,8 @@ The page becomes:
 <div id="status">Online</div>
 ```
 
-**Why wasn't the normal swap used?**
+<details>
+<summary>Why wasn't the normal swap used?</summary>
 
 After htmx extracts the extra swaps, the normal swap is empty:
 
@@ -148,7 +167,7 @@ After htmx extracts the extra swaps, the normal swap is empty:
 (empty)
 ```
 
-By default, [`swapEmpty:false`](/reference/attributes/hx-swap#swapempty) leaves the connection element unchanged.
+[`hx-swap-oob`](/reference/attributes/hx-swap-oob) and [`<hx-partial>`](/reference/tags/hx-partial) elements are extracted before the normal swap. By default, [`swapEmpty:false`](/reference/attributes/hx-swap#swapempty) leaves the connection element unchanged.
 
 The server can mix extra swaps with ordinary HTML:
 
@@ -161,17 +180,122 @@ data: <hx-partial hx-target="#status">Busy</hx-partial>
 
 ```
 
-The paragraph follows `hx-target` and `hx-swap` on the `hx-sse:connect` element. The partial updates `#status`.
+The paragraph follows `hx-target` and `hx-swap` on the request element. The partial updates `#status`.
 
-To disable the connection's swap, set `hx-swap="none"`:
+To disable the request element's swap, set `hx-swap="none"`:
 
 ```html
-<div hx-sse:connect="/events" hx-swap="none"></div>
+<button hx-get="/events" hx-swap="none">Connect</button>
 ```
 
-Partials and OOB swaps still run.
+[`hx-swap-oob`](/reference/attributes/hx-swap-oob) and [`<hx-partial>`](/reference/tags/hx-partial) swaps still run.
 
-### Send Named Events
+</details>
+
+### Persistent Connections
+
+Use a persistent connection to keep receiving server updates.
+
+#### Open Connections
+
+Add [`hx-sse:connect`](#hx-sseconnect) to the element that receives them:
+
+```html
+<div hx-sse:connect="/events"></div>
+```
+
+Use [`hx-trigger`](/reference/attributes/hx-trigger) to connect after an event:
+
+```html
+<button id="connect">Connect</button>
+
+<div hx-sse:connect="/events"
+     hx-trigger="click from:#connect">
+</div>
+```
+
+All [`hx-trigger` modifiers](/reference/attributes/hx-trigger#event-modifiers) are supported.
+
+#### Close Connections
+
+Close a connection when a specific named event arrives:
+
+```html
+<div hx-sse:connect="/progress" hx-sse:close="done"></div>
+```
+
+The server sends:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+event: done
+data: Complete
+
+```
+
+Client handlers for the `done` event run before the connection closes.
+
+#### Configure Connections
+
+You can configure `hx-sse` in three places:
+
+- **[`<meta name="htmx-config">`](/reference/config/htmx-config#configure-via-meta-tag)** sets global defaults from HTML.
+
+  ```html
+  <meta name="htmx-config"
+        content="sse.reconnectDelay:1s sse.reconnectMaxAttempts:5">
+  ```
+
+- **[`htmx.config.sse`](#config)** sets global defaults from JavaScript.
+
+  ```js
+  htmx.config.sse.reconnectDelay = '1s'
+  htmx.config.sse.reconnectMaxAttempts = 5
+  ```
+
+- **[`hx-config`](/reference/attributes/hx-config)** overrides the defaults for one connection.
+
+  ```html
+  <div hx-sse:connect="/events"
+       hx-config="sse.reconnectMaxAttempts:2">
+  </div>
+  ```
+
+These values are read when stream handling begins.
+
+### Replay Messages
+
+Add [`id:`](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#id) to recover messages missed while disconnected:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+
+id: event-42
+data: <p>New message</p>
+
+```
+
+On reconnect, `hx-sse` automatically includes the [`Last-Event-ID`](#last-event-id) header:
+
+```http
+Last-Event-ID: event-42
+```
+
+This tells the server where the client left off, so it can replay missed messages.
+
+```text
+Server                          Client
+
+event-42  ------------------->  received
+event-43  --------X             disconnected
+          <-------------------  Last-Event-ID: event-42
+event-43  ------------------->  replayed
+```
+
+### Trigger Client Events
 
 An SSE `event` field dispatches a DOM event instead of swapping its data:
 
@@ -188,9 +312,10 @@ id: task-5
 Handle it with [`hx-on`](/reference/attributes/hx-on):
 
 ```html
-<div hx-sse:connect="/progress"
-     hx-on:progress="htmx.find('#progress').value = event.detail.data">
-</div>
+<button hx-get="/progress"
+        hx-on:progress="htmx.find('#progress').value = event.detail.data">
+  Start
+</button>
 
 <progress id="progress" max="100" value="0"></progress>
 ```
@@ -210,81 +335,6 @@ A named event can also trigger another htmx request:
 <div hx-get="/status" hx-trigger="progress from:body"></div>
 ```
 
-### Close a Stream
-
-Close a connection when a specific named event arrives:
-
-```html
-<div hx-sse:connect="/progress" hx-sse:close="done"></div>
-```
-
-The server sends:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: text/event-stream
-
-event: done
-data: Complete
-
-```
-
-The `done` DOM event and [`htmx:sse:after:message`](#htmxsseaftermessage) fire before [`htmx:sse:close`](#htmxsseclose).
-
-### Use Custom Trigger
-
-Use [`hx-trigger`](/reference/attributes/hx-trigger) to connect later than `load`:
-
-```html
-<button id="connect">Connect</button>
-
-<div hx-sse:connect="/events"
-     hx-trigger="click from:#connect">
-</div>
-```
-
-All [`hx-trigger` modifiers](/reference/attributes/hx-trigger#event-modifiers) are supported.
-
-### Resume After Reconnecting
-
-Give each message an ID so the server can replay missed messages:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: text/event-stream
-
-id: event-42
-data: <p>New message</p>
-
-```
-
-The next reconnect includes:
-
-```http
-Last-Event-ID: event-42
-```
-
-The server must use that ID to replay later messages. Without server-side replay, messages sent while disconnected are lost.
-
-### Configure Connections
-
-Set [SSE defaults](#config) for every stream:
-
-```html
-<meta name="htmx-config"
-      content="sse.reconnectDelay:1s sse.reconnectMaxAttempts:5">
-```
-
-Override them for one request with [`hx-config`](/reference/attributes/hx-config):
-
-```html
-<div hx-sse:connect="/events"
-     hx-config="sse.reconnectMaxAttempts:2">
-</div>
-```
-
-[`htmx.config.sse`](#config) and [`hx-config`](/reference/attributes/hx-config) are read when stream handling begins.
-
 ## Attributes
 
 ### `hx-get`/`hx-post`/`hx-put`/...
@@ -298,7 +348,7 @@ The `hx-sse` extension enhances:
 - [`hx-delete`](/reference/attributes/hx-delete)
 - [`hx-action`](/reference/attributes/hx-action) with [`hx-method`](/reference/attributes/hx-method)
 
-When a response uses `Content-Type: text/event-stream`, htmx streams its messages instead of reading one HTML response.
+When a response uses `Content-Type: text/event-stream`, htmx processes each SSE event as it arrives.
 
 ### `hx-sse:connect`
 
@@ -336,6 +386,28 @@ event: done
 data: Complete
 
 ```
+
+## Headers
+
+### `Accept`
+
+Advertises SSE support on every htmx request while the extension is loaded.
+
+```http
+Accept: text/html, text/event-stream
+```
+
+A response is streamed when its `Content-Type` contains `text/event-stream`.
+
+### `Last-Event-ID`
+
+Identifies the last received SSE event during reconnection.
+
+```http
+Last-Event-ID: event-42
+```
+
+The extension sends this header after a message supplies an `id` field. The server decides how to replay later messages.
 
 ## Events
 
@@ -450,8 +522,6 @@ document.addEventListener('htmx:sse:error', event => {
 
 ## Config
 
-Set global defaults with an [`htmx-config`](/reference/config/htmx-config) meta tag.
-
 ### `sse.reconnect`
 
 Control whether a closed stream reconnects automatically.
@@ -522,28 +592,6 @@ Close the stream while the page is hidden and reconnect when it becomes visible.
 ```
 
 Defaults to `true` for `hx-sse:connect` and `false` for normal htmx requests. Use event IDs and server-side replay to recover messages sent while disconnected.
-
-## Headers
-
-### `Accept`
-
-Advertises SSE support on every htmx request while the extension is loaded.
-
-```http
-Accept: text/html, text/event-stream
-```
-
-A response is streamed when its `Content-Type` contains `text/event-stream`.
-
-### `Last-Event-ID`
-
-Identifies the last received SSE event during reconnection.
-
-```http
-Last-Event-ID: event-42
-```
-
-The extension sends this header after a message supplies an `id` field. The server decides how to replay later messages.
 
 ## Migration
 
