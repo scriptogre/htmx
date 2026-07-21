@@ -114,7 +114,7 @@ data: !
 
 ```
 
-[`hx-swap="beforeend"`](/reference/attributes/hx-swap#beforeend) accumulates them in `<output>`:
+[`hx-swap="beforeend"`](/reference/attributes/hx-swap#beforeend--append) accumulates them in `<output>`:
 
 ```html
 <output>Hello, world!</output>
