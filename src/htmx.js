@@ -1596,37 +1596,129 @@ var htmx = (() => {
         //============================================================================================
 
         #scrollHistory = {};
+        #pendingHashScroll = null;
+        #historyId = null;
+        #historyPrefix = Date.now().toString(36) + Math.random().toString(36);
+        #historySequence = 0;
+        #historyUrl = location.href;
         #historyPath = location.pathname + location.search;
+
+        __persistScrollHistory() {
+            try {
+                sessionStorage.setItem('htmx:scroll-history', JSON.stringify(this.#scrollHistory));
+            } catch (_) {}
+        }
 
         __initHistoryHandling() {
             if (!this.config.history) return;
-            if (!history.state) {
-                history.replaceState({htmx: true}, '', location.href);
+            history.scrollRestoration = 'manual';
+            try {
+                this.#scrollHistory = JSON.parse(sessionStorage.getItem('htmx:scroll-history')) || {};
+            } catch (_) {}
+            let state = history.state;
+            if (!state) state = {htmx: true};
+            if (state.htmx && !state.htmxHistoryId) {
+                state = {...state, htmxHistoryId: this.#historyPrefix + ':' + ++this.#historySequence, htmxScroll: [scrollX, scrollY]};
+                history.replaceState(state, '', location.href);
             }
+            this.#historyId = state?.htmxHistoryId || null;
+            if (this.#historyId) {
+                this.#scrollHistory[this.#historyId] = this.#scrollHistory[this.#historyId] || state.htmxScroll || [scrollX, scrollY];
+                this.__persistScrollHistory();
+            }
+
+            let restorePageScroll = () => {
+                let scroll = this.#scrollHistory[this.#historyId] || history.state?.htmxScroll;
+                if (scroll) requestAnimationFrame(() => scrollTo(...scroll));
+            };
+            let navigationType = performance.getEntriesByType('navigation')[0]?.type;
+            if (navigationType === 'reload' || navigationType === 'back_forward') {
+                if (document.readyState === 'complete') setTimeout(restorePageScroll);
+                else window.addEventListener('load', restorePageScroll, {once: true});
+            }
+            window.addEventListener('pageshow', (event) => {
+                if (event.persisted) restorePageScroll();
+            });
+            let savePageScroll = () => {
+                if (location.href !== this.#historyUrl || !this.#historyId || history.state?.htmxHistoryId !== this.#historyId) return;
+                this.#scrollHistory[this.#historyId] = [scrollX, scrollY];
+                this.__persistScrollHistory();
+            };
+            window.addEventListener('scrollend', savePageScroll, {passive: true});
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') savePageScroll();
+            });
+            window.addEventListener('pagehide', savePageScroll);
+            window.addEventListener('hashchange', () => {
+                let id = history.state?.htmxHistoryId;
+                if (id) {
+                    this.#historyId = id;
+                    this.#historyUrl = location.href;
+                    let scroll = this.#pendingHashScroll || history.state.htmxScroll || this.#scrollHistory[id];
+                    this.#pendingHashScroll = null;
+                    if (scroll) setTimeout(() => scrollTo(...scroll), 200);
+                    return;
+                }
+                id = this.#historyPrefix + ':' + ++this.#historySequence;
+                let scroll = this.#scrollHistory[id] = [scrollX, scrollY];
+                this.__persistScrollHistory();
+                history.replaceState({...history.state, htmx: true, htmxHash: true, htmxHistoryId: id, htmxScroll: scroll}, '', location.href);
+                this.#historyId = id;
+                this.#historyUrl = location.href;
+            });
             window.addEventListener('popstate', (event) => {
                 let path = location.pathname + location.search;
-                if (path === this.#historyPath) return;
-                this.#scrollHistory[this.#historyPath] = [scrollX, scrollY];
+                let samePath = path === this.#historyPath;
+                if (this.#historyId && !this.#historyAbort) {
+                    this.#scrollHistory[this.#historyId] = [scrollX, scrollY];
+                    this.__persistScrollHistory();
+                }
+                this.#historyId = event.state?.htmxHistoryId || null;
+                this.#historyUrl = location.href;
                 this.#historyPath = path;
-                if (event.state?.htmx) {
+                let scroll = samePath
+                    ? event.state?.htmxScroll || this.#scrollHistory[this.#historyId]
+                    : this.#scrollHistory[this.#historyId] || event.state?.htmxScroll;
+                if (samePath) {
+                    this.#pendingHashScroll = scroll;
+                } else if (event.state?.htmx) {
                     this.#historyAbort?.abort();
-                    this.__restoreHistory(null, this.#scrollHistory[path]);
+                    this.__restoreHistory(null, scroll || [0, 0]);
+                } else {
+                    history.scrollRestoration = 'auto';
+                    setTimeout(() => history.scrollRestoration = 'manual');
                 }
             });
         }
 
         __pushUrlIntoHistory(path) {
             if (!this.config.history) return;
-            if (!history.state) history.replaceState({htmx: true}, '', location.href);
-            this.#scrollHistory[this.#historyPath] = [scrollX, scrollY];
-            history.pushState({htmx: true}, '', path);
+            if (history.state?.htmxHistoryId !== this.#historyId) this.#historyId = null;
+            if (!this.#historyId && !history.state && location.hash) {
+                this.#historyId = this.#historyPrefix + ':' + ++this.#historySequence;
+                history.replaceState({htmx: true, htmxHash: true, htmxHistoryId: this.#historyId}, '', location.href);
+            }
+            if (this.#historyId) {
+                let scroll = this.#scrollHistory[this.#historyId] = [scrollX, scrollY];
+                this.__persistScrollHistory();
+                history.replaceState({...history.state, htmxScroll: scroll}, '', location.href);
+            }
+            let id = this.#historyPrefix + ':' + ++this.#historySequence;
+            history.pushState({htmx: true, htmxHistoryId: id}, '', path);
+            this.#historyId = id;
+            this.#historyUrl = location.href;
             this.#historyPath = location.pathname + location.search;
             this.__trigger(document, "htmx:after:history:push", {path});
         }
 
         __replaceUrlInHistory(path) {
             if (!this.config.history) return;
-            history.replaceState({htmx: true}, '', path);
+            let id = this.#historyPrefix + ':' + ++this.#historySequence;
+            let scroll = this.#scrollHistory[id] = [scrollX, scrollY];
+            this.__persistScrollHistory();
+            history.replaceState({htmx: true, htmxHistoryId: id, htmxScroll: scroll}, '', path);
+            this.#historyId = id;
+            this.#historyUrl = location.href;
             this.#historyPath = location.pathname + location.search;
             this.__trigger(document, "htmx:after:history:replace", {path});
         }
@@ -1638,7 +1730,6 @@ var htmx = (() => {
                 if (this.config.history === "reload") {
                     location.reload();
                 } else {
-                    history.scrollRestoration = scroll ? 'manual' : 'auto';
                     let abort = this.#historyAbort = new AbortController();
                     if (scroll) document.addEventListener('htmx:before:settle',
                         () => scrollTo(...scroll), {once: true, signal: abort.signal});
@@ -1650,10 +1741,8 @@ var htmx = (() => {
                             headers: {'HX-History-Restore-Request': 'true'},
                             signal: abort.signal
                         }
-                    }).then(async () => {
-                        await new Promise(requestAnimationFrame);
-                        await new Promise(requestAnimationFrame);
-                        if (!abort.signal.aborted) history.scrollRestoration = 'auto';
+                    }).finally(() => {
+                        if (this.#historyAbort === abort) this.#historyAbort = null;
                     });
                 }
             }

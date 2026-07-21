@@ -396,6 +396,33 @@ describe('scroll restoration on history traversal', function() {
         assert.equal(window.scrollY, 500);
     });
 
+    it('does not scroll before restored content is ready', async function() {
+        playground().innerHTML = '<main hx-history-elt><div style="height:3000px">page A</div></main>';
+        htmx.process(playground());
+        htmx.__replaceUrlInHistory('/scroll-wait-a');
+        window.scrollTo(0, 500);
+
+        htmx.__pushUrlIntoHistory('/scroll-wait-b');
+        playground().innerHTML = '<main hx-history-elt><div style="height:3000px">page B</div></main>';
+        window.scrollTo(0, 100);
+
+        mockResponse('GET', '/scroll-wait-a', () => new Promise(resolve =>
+            setTimeout(() => resolve(new MockResponse(
+                '<html><body><main hx-history-elt><div style="height:3000px">page A restored</div></main></body></html>'
+            )), 150)));
+
+        let request = forRequest(500);
+        history.back();
+        await htmx.timeout(50);
+
+        playground().textContent.should.include('page B');
+        assert.equal(window.scrollY, 100);
+
+        await request;
+        await untilScrollY(500);
+        assert.equal(window.scrollY, 500);
+    });
+
     it('back and forward return to the latest scroll positions after re-scrolling', async function() {
         this.timeout(5000);
         playground().innerHTML = '<main hx-history-elt><div style="height:3000px">page A</div></main>';
@@ -422,6 +449,45 @@ describe('scroll restoration on history traversal', function() {
         await untilScrollY(0);
 
         history.back();
+        await forRequest();
+        await untilScrollY(800);
+
+        assert.equal(window.scrollY, 800);
+    });
+
+    it('keeps separate positions for repeated visits to the same URL', async function() {
+        this.timeout(5000);
+        playground().innerHTML = '<main hx-history-elt><div style="height:3000px">page A1</div></main>';
+        htmx.process(playground());
+        htmx.__replaceUrlInHistory('/scroll-repeat');
+        window.scrollTo(0, 500);
+
+        htmx.__pushUrlIntoHistory('/scroll-repeat-b');
+        playground().innerHTML = '<main hx-history-elt><div style="height:3000px">page B</div></main>';
+        window.scrollTo(0, 100);
+
+        htmx.__pushUrlIntoHistory('/scroll-repeat');
+        playground().innerHTML = '<main hx-history-elt><div style="height:3000px">page A2</div></main>';
+        window.scrollTo(0, 800);
+
+        mockResponse('GET', '/scroll-repeat',
+            '<html><body><main hx-history-elt><div style="height:3000px">page A</div></main></body></html>');
+        mockResponse('GET', '/scroll-repeat-b',
+            '<html><body><main hx-history-elt><div style="height:3000px">page B</div></main></body></html>');
+
+        history.back();
+        await forRequest();
+        await untilScrollY(100);
+
+        history.back();
+        await forRequest();
+        await untilScrollY(500);
+
+        history.forward();
+        await forRequest();
+        await untilScrollY(100);
+
+        history.forward();
         await forRequest();
         await untilScrollY(800);
 
@@ -522,6 +588,7 @@ describe('scroll restoration on history traversal', function() {
         assert.equal(location.hash, '');
         playground().textContent.should.include('hash page');
     });
+
 });
 
 describe('history restore edge cases', function() {
