@@ -161,12 +161,12 @@
         return canUseStorage() ? getFromStorage(id) : null;
     }
 
-    async function restoreFromCache(cacheEntry) {
-        let detail = { head: cacheEntry.head, ready: null };
+    async function restoreFromCache(item) {
+        let detail = { head: item.head, ready: null };
         api.triggerHtmxEvent(document, 'htmx:history:cache:before:restore', detail);
         if (detail.ready) await detail.ready;
 
-        let cachedHTML = cacheEntry.content;
+        let cachedHTML = item.content;
         let restoreSwapTarget = getHistoryTarget();
         let restoreSwapStyle = cfg().swapStyle;
 
@@ -176,11 +176,11 @@
             transition: false
         });
 
-        document.title = cacheEntry.title || document.title;
+        document.title = item.title || document.title;
         requestAnimationFrame(() => {
-            window.scrollTo(0, cacheEntry.scroll || 0);
+            window.scrollTo(0, item.scroll || 0);
             restoreAnnotations(getHistoryTarget());
-            detail.item = cacheEntry;
+            detail.item = item;
             api.triggerHtmxEvent(document, 'htmx:history:cache:after:restore', detail);
         });
     }
