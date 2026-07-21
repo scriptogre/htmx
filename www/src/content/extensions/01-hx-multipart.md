@@ -301,6 +301,37 @@ You can configure `hx-multipart` in three places:
 
 These values are read when multipart handling begins.
 
+### Overlap Swaps
+
+Use `multipart/parallel` so a [`swap`](/reference/attributes/hx-swap#swap) or [`settle`](/reference/attributes/hx-swap#settle) delay does not block later parts:
+
+```http
+Content-Type: multipart/parallel; boundary=...
+
+--...
+HX-Target: #one
+HX-Swap: innerHTML swap:1s
+
+First
+--...
+HX-Target: #two
+
+Second
+--...--
+```
+
+**With `multipart/parallel`:**
+
+- `Second` swaps now.
+- One second later, `First` swaps.
+
+**With `multipart/mixed`:**
+
+- Nothing swaps for one second.
+- Then `First` and `Second` swap in order.
+
+Use `multipart/parallel` only when either swap can finish first.
+
 ### Mix Content Types
 
 With `multipart/mixed`, each part can use any [media type](https://www.iana.org/assignments/media-types/media-types.xhtml) in its `Content-Type`, including:
@@ -494,6 +525,38 @@ A multipart response must include its media type and boundary:
 Content-Type: multipart/mixed; boundary=...
 Content-Type: multipart/parallel; boundary=...
 ```
+
+Part bodies always arrive in wire order. When the first swap is slow, the handling order differs:
+
+```text
+TIME  ------------------------------------------------------------>
+
+multipart/mixed
+Part 1  [read][actions][--------- swap ---------][finished]
+Part 2                                                   [read][actions][swap][finished]
+
+multipart/parallel
+Part 1  [read][actions][--------- swap ---------][finished]
+Part 2                       [read][actions][swap][finished]
+```
+
+`multipart/mixed` waits for each part's swap to finish before reading the next body. `multipart/parallel` runs each part's actions in arrival order, starts its swap, then reads the next body without waiting for that swap to finish.
+
+When every swap finishes immediately, both formats usually look the same. See [Overlap Swaps](#overlap-swaps) for a visible comparison.
+
+Use `multipart/parallel` when:
+
+- Parts update independent targets.
+- A later update is useful before an earlier swap finishes.
+- A swap delay or CSS settle phase should not block later updates.
+
+Use `multipart/mixed` when:
+
+- Parts update the same target.
+- A part depends on the DOM produced by an earlier part.
+- Arrival order must also be completion order.
+
+Native view transitions do not run in parallel. htmx queues `transition:true` swaps globally, so `multipart/parallel` can queue the next transition sooner but still runs each transition one at a time.
 
 The extension includes the `Response.prototype.parts()` parser for both formats.
 

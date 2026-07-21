@@ -183,7 +183,7 @@
                     api.triggerHtmxEvent(element, 'htmx:multipart:after:connection', {connection});
                 }
 
-                let pending = [];
+                let pending = new Set();
                 let iterator = currentResponse.parts()[Symbol.asyncIterator]();
                 connection.iterator = iterator;
 
@@ -192,39 +192,39 @@
                         let {done, value: part} = await iterator.next();
                         if (done) break;
 
+                        let pendingWork = [];
+                        let detail = {
+                            ctx,
+                            part,
+                            cancelled: false,
+                            waitUntil: promise => pendingWork.push(Promise.resolve(promise))
+                        };
+                        let shouldProcess = api.triggerHtmxEvent(
+                            ctx.sourceElement,
+                            'htmx:multipart:before:part',
+                            detail
+                        );
+
+                        await Promise.all(pendingWork);
+                        if (!shouldProcess || detail.cancelled) continue;
+
+                        let {
+                            swap,     // HX-Swap
+                            target,   // HX-Target
+                            select,   // HX-Select
+                            reswap,   // HX-Reswap
+                            retarget, // HX-Retarget
+                            reselect, // HX-Reselect
+                            ...actions // other HX-* headers in camelCase
+                        } = extractPartActions(part.headers);
+
+                        // Let part headers override envelope and request defaults.
+                        swap = reswap ?? swap ?? defaultSwapValue;
+                        target = retarget ?? target ?? defaultTarget;
+                        select = reselect ?? select ?? defaultSelect;
+
+                        let text = await part.text();
                         let handling = (async () => {
-                            let pendingWork = [];
-                            let detail = {
-                                ctx,
-                                part,
-                                cancelled: false,
-                                waitUntil: promise => pendingWork.push(Promise.resolve(promise))
-                            };
-                            let shouldProcess = api.triggerHtmxEvent(
-                                ctx.sourceElement,
-                                'htmx:multipart:before:part',
-                                detail
-                            );
-
-                            await Promise.all(pendingWork);
-                            if (!shouldProcess || detail.cancelled) return;
-
-                            let {
-                                swap,     // HX-Swap
-                                target,   // HX-Target
-                                select,   // HX-Select
-                                reswap,   // HX-Reswap
-                                retarget, // HX-Retarget
-                                reselect, // HX-Reselect
-                                ...actions // other HX-* headers in camelCase
-                            } = extractPartActions(part.headers);
-
-                            // Let part headers override envelope and request defaults.
-                            swap = reswap ?? swap ?? defaultSwapValue;
-                            target = retarget ?? target ?? defaultTarget;
-                            select = reselect ?? select ?? defaultSelect;
-
-                            let text = await part.text();
                             let skipSwap = api.runActions(actions, ctx.sourceElement, {ctx, part});
 
                             if (!skipSwap) {
@@ -246,7 +246,11 @@
                         })();
 
                         if (type === 'multipart/parallel') {
-                            pending.push(handling);
+                            pending.add(handling);
+                            handling.then(
+                                () => pending.delete(handling),
+                                () => {}
+                            );
                         } else {
                             await handling;
                         }

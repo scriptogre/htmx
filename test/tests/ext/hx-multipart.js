@@ -470,4 +470,120 @@ describe('hx-multipart extension', function() {
         assertTextContentIs('#one', 'First');
         assertTextContentIs('#two', 'Second');
     });
+
+    it('reads delayed multipart/parallel bodies before handling them', async function() {
+        let button = createProcessedHTML('<button hx-get="/parallel">Go</button><div id="one"></div><div id="two"></div>');
+        let encoder = new TextEncoder();
+        let stream = new ReadableStream({
+            start(controller) {
+                controller.enqueue(encoder.encode([
+                    '--updates\r\n',
+                    'Content-Type: text/html\r\n',
+                    'HX-Target: #one\r\n',
+                    '\r\n',
+                    'Fir'
+                ].join('')));
+                setTimeout(() => {
+                    controller.enqueue(encoder.encode([
+                        'st',
+                        '\r\n--updates\r\n',
+                        'Content-Type: text/html\r\n',
+                        'HX-Target: #two\r\n',
+                        '\r\n',
+                        'Second',
+                        '\r\n--updates--\r\n'
+                    ].join('')));
+                    controller.close();
+                }, 20);
+            }
+        });
+
+        fetchMock.mockResponse('GET', '/parallel', new Response(stream, {
+            headers: {'Content-Type': 'multipart/parallel; boundary=updates'}
+        }));
+
+        button.click();
+        let done = await forRequest(500);
+
+        assert.isNotNull(done, 'parallel request did not finish');
+        assertTextContentIs('#one', 'First');
+        assertTextContentIs('#two', 'Second');
+    });
+
+    it('waits for mixed swaps and overlaps parallel swaps', async function() {
+        let response = (type, prefix) => new Response([
+            '--updates\r\n',
+            'Content-Type: text/html\r\n',
+            `HX-Target: #${prefix}-one\r\n`,
+            'HX-Swap: innerHTML swap:100ms\r\n',
+            '\r\n',
+            'First',
+            '\r\n--updates\r\n',
+            'Content-Type: text/html\r\n',
+            `HX-Target: #${prefix}-two\r\n`,
+            '\r\n',
+            'Second',
+            '\r\n--updates--\r\n'
+        ].join(''), {
+            headers: {'Content-Type': `multipart/${type}; boundary=updates`}
+        });
+
+        fetchMock.mockResponse('GET', '/mixed', response('mixed', 'mixed'));
+        fetchMock.mockResponse('GET', '/parallel', response('parallel', 'parallel'));
+        createProcessedHTML([
+            '<button id="mixed" hx-get="/mixed">Mixed</button>',
+            '<div id="mixed-one">one</div><div id="mixed-two">two</div>',
+            '<button id="parallel" hx-get="/parallel">Parallel</button>',
+            '<div id="parallel-one">one</div><div id="parallel-two">two</div>'
+        ].join(''));
+
+        let mixedDone = forRequest(500);
+        find('#mixed').click();
+        await htmx.timeout(20);
+        assertTextContentIs('#mixed-one', 'one');
+        assertTextContentIs('#mixed-two', 'two');
+        assert.isNotNull(await mixedDone, 'mixed request did not finish');
+        assertTextContentIs('#mixed-one', 'First');
+        assertTextContentIs('#mixed-two', 'Second');
+
+        let parallelDone = forRequest(500);
+        find('#parallel').click();
+        assert.isTrue(await waitUntil(() => htmx.find('#parallel-two').textContent === 'Second', 500));
+        assertTextContentIs('#parallel-one', 'one');
+        assert.isNotNull(await parallelDone, 'parallel request did not finish');
+        assertTextContentIs('#parallel-one', 'First');
+    });
+
+    it('handles the next parallel part while an earlier part settles', async function() {
+        let button = createProcessedHTML([
+            '<button hx-get="/parallel">Go</button>',
+            '<div id="one"><span id="state" data-phase="old">one</span></div>',
+            '<div id="two">two</div>'
+        ].join(''));
+        fetchMock.mockResponse('GET', '/parallel', new Response([
+            '--updates\r\n',
+            'Content-Type: text/html\r\n',
+            'HX-Target: #one\r\n',
+            'HX-Swap: innerHTML settle:100ms\r\n',
+            '\r\n',
+            '<span id="state" data-phase="new">First</span>',
+            '\r\n--updates\r\n',
+            'Content-Type: text/html\r\n',
+            'HX-Target: #two\r\n',
+            '\r\n',
+            'Second',
+            '\r\n--updates--\r\n'
+        ].join(''), {
+            headers: {'Content-Type': 'multipart/parallel; boundary=updates'}
+        }));
+
+        let done = forRequest(500);
+        button.click();
+
+        assert.isTrue(await waitUntil(() => htmx.find('#two').textContent === 'Second', 500));
+        assertTextContentIs('#state', 'First');
+        assert.equal(find('#state').getAttribute('data-phase'), 'old');
+        assert.isNotNull(await done, 'parallel request did not finish');
+        assert.equal(find('#state').getAttribute('data-phase'), 'new');
+    });
 });
