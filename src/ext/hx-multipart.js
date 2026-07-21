@@ -7,84 +7,272 @@
 //==========================================================
 (() => {
     let api;
-    let pristine = new WeakMap();
 
-    htmx.registerExtension('hx-multipart', {
-        init: (internalAPI) => {
-            api = internalAPI;
-        },
-        htmx_before_request: (element, {ctx, ctx: {request}}) => {
-            request.headers.Accept = `${request.headers.Accept ?? request.headers.accept ?? 'text/html'}, multipart/mixed, multipart/parallel`;
+    function getReconnectDelay(config, attempt) {
+        let baseDelay = htmx.parseInterval(config.reconnectDelay) ?? config.reconnectDelay;
+        let maxDelay = htmx.parseInterval(config.reconnectMaxDelay) ?? config.reconnectMaxDelay;
+        let delay = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
 
-            // Parts own their HX-* headers. Remember the pre-response state so
-            // envelope HX-* headers can be undone if the response is multipart.
-            pristine.set(ctx, {actions: {...ctx.actions}, swap: {...ctx.swap}});
-        },
+        if (config.reconnectJitter > 0) {
+            let jitterRange = delay * config.reconnectJitter;
+            delay = Math.max(0, delay + (Math.random() * 2 - 1) * jitterRange);
+        }
 
-        htmx_before_response: (element, detail) => {
-            let ctx = detail.ctx;
-            let response = ctx.response.raw;
-            let contentType = response.headers.get('Content-Type') || '';
-            let type = contentType.split(';', 1)[0].trim().toLowerCase();
-            if (type !== 'multipart/mixed' && type !== 'multipart/parallel') return;
+        return delay;
+    }
 
-            // Core already decoded envelope HX-* headers into ctx.actions and ctx.swap.
-            // Parts own their HX-* headers, so restore the pre-response state.
-            let saved = pristine.get(ctx);
-            if (saved) {
-                ctx.actions = {...saved.actions};
-                ctx.swap = {...saved.swap};
-            }
+    function cleanup(element, reason) {
+        let connection = element?._htmx?.multipart;
+        if (!connection) return;
 
-            let handled = false;
-            response.text = async () => {
-                if (handled) return '';
-                handled = true;
+        connection.cancelled = true;
+        connection.abort?.();
+        connection.abortController?.abort();
+        connection.iterator?.return?.().catch?.(() => {
+        });
+        connection.delayCanceller?.();
+        if (connection.visibilityHandler) {
+            document.removeEventListener('visibilitychange', connection.visibilityHandler);
+        }
+        api.triggerHtmxEvent(element, 'htmx:multipart:close', {
+            connection,
+            reason: reason || 'cleanup'
+        });
+        delete element._htmx.multipart;
+    }
 
-                let {content, target, ...defaults} = ctx.swap;
+    async function handleMultipartResponse(ctx, type) {
+        let element = ctx.sourceElement;
+        let hasConnect = api.attributeValue(element, 'hx-multipart:connect') != null;
+        let hxConfig = api.HCON.parse(api.attributeValue(element, 'hx-config')).multipart || {};
+        let config = {
+            reconnect: hasConnect,
+            reconnectDelay: 500,
+            reconnectMaxDelay: 60000,
+            reconnectMaxAttempts: Infinity,
+            reconnectJitter: 0.3,
+            pauseOnBackground: hasConnect,
+            ...htmx.config.multipart,
+            ...hxConfig
+        };
+        let connection = {
+            url: ctx.request.action,
+            config,
+            abort: ctx.request.abort,
+            abortController: null,
+            iterator: null,
+            delayCanceller: null,
+            visibilityHandler: null,
+            unpauseResolver: null,
+            attempt: 0,
+            cancelled: false,
+            reconnectRequested: false,
+            status: ctx.response.status
+        };
+        api.htmxProp(element).multipart = connection;
 
-                let pending = [];
-                for await (let part of response.parts()) {
-                    let handlePart = (async () => {
-                        let {retarget, reswap, reselect, ...actions} = extractPartActions(part.headers);
-                        let text = await part.text();
+        if (!api.triggerHtmxEvent(element, 'htmx:multipart:before:connection', {connection}) || connection.cancelled) {
+            cleanup(element, 'cancelled');
+            return;
+        }
+        api.triggerHtmxEvent(element, 'htmx:multipart:after:connection', {connection});
 
-                        // Terminal actions (refresh, redirect, location) stop part processing.
-                        if (api.runActions(actions, ctx.sourceElement, {ctx})) {
-                            ctx.keepIndicators = true;
-                            return false;
-                        }
+        if (config.pauseOnBackground) {
+            connection.visibilityHandler = () => {
+                if (document.hidden) {
+                    connection.reconnectRequested = true;
+                    connection.iterator?.return?.().catch?.(() => {
+                    });
+                    connection.abort?.();
+                    connection.abortController?.abort();
+                } else {
+                    connection.unpauseResolver?.();
+                }
+            };
+            document.addEventListener('visibilitychange', connection.visibilityHandler);
+        }
 
-                        let options = {source: ctx.sourceElement};
-                        if (reswap) { // HX-Reswap replaces the swap spec, like core does for the envelope
-                            options.swap = reswap;
-                            if (defaults.select !== undefined) options.select = defaults.select;
-                            if (defaults.selectOOB !== undefined) options.selectOOB = defaults.selectOOB;
-                        } else {
-                            for (let key in defaults) {
-                                if (defaults[key] !== undefined) options[key] = defaults[key];
-                            }
-                        }
-                        if (reselect) options.select = reselect;                // HX-Reselect
-                        await htmx.swap(text, retarget ?? target, options);    // HX-Retarget
-                        return true;
-                    })();
+        let currentResponse = ctx.response.raw;
+        let {
+            target: envelopeTarget,
+            swap: envelopeSwap,
+            select: envelopeSelect,
+            retarget: envelopeRetarget,
+            reswap: envelopeReswap,
+            reselect: envelopeReselect
+        } = extractPartActions(currentResponse.headers);
+        let {
+            content,
+            target: requestTarget,
+            ...defaultSwap
+        } = ctx.swap;
+        let defaultTarget = envelopeRetarget ?? envelopeTarget ?? requestTarget;
+        let defaultSwapValue = envelopeReswap ?? envelopeSwap;
+        let defaultSelect = envelopeReselect ?? envelopeSelect ?? defaultSwap.select;
 
-                    if (type === 'multipart/parallel') {
-                        pending.push(handlePart);
-                    } else if (!await handlePart) {
-                        break;
+        try {
+            while (element.isConnected && !connection.cancelled) {
+                if (connection.attempt > 0) {
+                    if (!config.reconnect || connection.attempt > config.reconnectMaxAttempts) break;
+
+                    if (config.pauseOnBackground && document.hidden) {
+                        await new Promise(resolve => connection.unpauseResolver = resolve);
+                        connection.unpauseResolver = null;
+                        if (!element.isConnected || connection.cancelled) break;
                     }
+
+                    connection.cancelled = false;
+                    if (!api.triggerHtmxEvent(element, 'htmx:multipart:before:connection', {connection}) || connection.cancelled) break;
+
+                    await new Promise(resolve => {
+                        let done = () => {
+                            connection.delayCanceller = null;
+                            resolve();
+                        };
+                        let timer = setTimeout(done, getReconnectDelay(config, connection.attempt));
+                        connection.delayCanceller = () => {
+                            clearTimeout(timer);
+                            done();
+                        };
+                    });
+                    if (!element.isConnected || connection.cancelled) break;
+
+                    let ac = new AbortController();
+                    connection.abortController = ac;
+                    try {
+                        currentResponse = await fetch(ctx.request.action, {
+                            ...ctx.request,
+                            signal: ac.signal
+                        });
+                    } catch (error) {
+                        if (!ac.signal.aborted) {
+                            api.triggerHtmxEvent(element, 'htmx:multipart:error', {
+                                error,
+                                url: ctx.request.action
+                            });
+                        }
+                        connection.attempt++;
+                        continue;
+                    }
+
+                    if (!currentResponse.ok) {
+                        api.triggerHtmxEvent(element, 'htmx:multipart:error', {
+                            error: new Error(`Multipart reconnect failed with status ${currentResponse.status}`),
+                            status: currentResponse.status,
+                            url: ctx.request.action
+                        });
+                        connection.attempt++;
+                        continue;
+                    }
+
+                    let contentType = currentResponse.headers.get('Content-Type') || '';
+                    let nextType = contentType.split(';', 1)[0].trim().toLowerCase();
+                    if (nextType !== type) {
+                        api.triggerHtmxEvent(element, 'htmx:multipart:error', {
+                            error: new Error(`Multipart reconnect returned ${nextType || 'no Content-Type'}`),
+                            status: currentResponse.status,
+                            url: ctx.request.action
+                        });
+                        connection.attempt++;
+                        continue;
+                    }
+
+                    connection.status = currentResponse.status;
+                    connection.reconnectRequested = false;
+                    connection.attempt = 0;
+                    api.triggerHtmxEvent(element, 'htmx:multipart:after:connection', {connection});
                 }
 
-                await Promise.all(pending);
-                ctx.swap.style = 'none'; // parts already swapped; the envelope swaps nothing
-                return '';
-            };
-        }
-    });
+                let pending = [];
+                let iterator = currentResponse.parts()[Symbol.asyncIterator]();
+                connection.iterator = iterator;
 
-    // Mirrors core's HX-* response header decoding: HX-Push-Url becomes pushUrl.
+                try {
+                    while (true) {
+                        let {done, value: part} = await iterator.next();
+                        if (done) break;
+
+                        let handling = (async () => {
+                            let pendingWork = [];
+                            let detail = {
+                                ctx,
+                                part,
+                                cancelled: false,
+                                waitUntil: promise => pendingWork.push(Promise.resolve(promise))
+                            };
+                            let shouldProcess = api.triggerHtmxEvent(
+                                ctx.sourceElement,
+                                'htmx:multipart:before:part',
+                                detail
+                            );
+
+                            await Promise.all(pendingWork);
+                            if (!shouldProcess || detail.cancelled) return;
+
+                            let {
+                                swap,     // HX-Swap
+                                target,   // HX-Target
+                                select,   // HX-Select
+                                reswap,   // HX-Reswap
+                                retarget, // HX-Retarget
+                                reselect, // HX-Reselect
+                                ...actions // other HX-* headers in camelCase
+                            } = extractPartActions(part.headers);
+
+                            // Let part headers override envelope and request defaults.
+                            swap = reswap ?? swap ?? defaultSwapValue;
+                            target = retarget ?? target ?? defaultTarget;
+                            select = reselect ?? select ?? defaultSelect;
+
+                            let text = await part.text();
+                            let skipSwap = api.runActions(actions, ctx.sourceElement, {ctx, part});
+
+                            if (!skipSwap) {
+                                let options = {source: ctx.sourceElement};
+                                if (swap) {
+                                    options.swap = swap;
+                                    if (defaultSwap.select !== undefined) options.select = defaultSwap.select;
+                                    if (defaultSwap.selectOOB !== undefined) options.selectOOB = defaultSwap.selectOOB;
+                                } else {
+                                    for (let key in defaultSwap) {
+                                        if (defaultSwap[key] !== undefined) options[key] = defaultSwap[key];
+                                    }
+                                }
+                                if (select) options.select = select;
+                                await htmx.swap(text, target, options);
+                            }
+
+                            api.triggerHtmxEvent(ctx.sourceElement, 'htmx:multipart:after:part', {ctx, part});
+                        })();
+
+                        if (type === 'multipart/parallel') {
+                            pending.push(handling);
+                        } else {
+                            await handling;
+                        }
+                    }
+                    await Promise.all(pending);
+                } catch (error) {
+                    if (!connection.cancelled) {
+                        api.triggerHtmxEvent(element, 'htmx:multipart:error', {
+                            error,
+                            url: ctx.request.action
+                        });
+                    }
+                } finally {
+                    connection.iterator = null;
+                }
+
+                if (!config.reconnect && !connection.reconnectRequested) break;
+                if (!element.isConnected || connection.cancelled) break;
+                connection.reconnectRequested = false;
+                connection.attempt++;
+            }
+        } finally {
+            cleanup(element, element.isConnected ? 'ended' : 'removed');
+        }
+    }
+
     function extractPartActions(headers) {
         let actions = {};
         for (let [name, value] of headers) {
@@ -95,6 +283,88 @@
         }
         return actions;
     }
+
+    htmx.registerExtension('hx-multipart', {
+        init: (internalAPI) => {
+            api = internalAPI;
+        },
+
+        /**
+         * Add `multipart/mixed` and `multipart/parallel` to every htmx request's `Accept` header.
+         */
+        htmx_config_request: (element, {ctx: {request}}) => {
+            request.headers['Accept'] = `${request.headers['Accept'] ?? request.headers['accept'] ?? 'text/html'}, multipart/mixed, multipart/parallel`;
+        },
+
+        /**
+         * Connect each `hx-multipart:connect` element on `hx-trigger`, or on load.
+         */
+        htmx_after_process: (element) => {
+            let metaCharacter = htmx.config.metaCharacter || ':';
+            let selector = [
+                `hx-multipart${metaCharacter}connect`,
+                htmx.config.prefix && `${htmx.config.prefix}multipart${metaCharacter}connect`
+            ]
+                .filter(Boolean)
+                .map(name => `[${CSS.escape(name)}]`)
+                .join(',');
+
+            // Find elements with hx-multipart:connect
+            let connectElements = [
+                element,
+                ...element.querySelectorAll(selector)
+            ].filter(elt => elt.matches?.(selector));
+
+            for (let connectElt of connectElements) {
+                let hxMultipartConnect = api.attributeValue(connectElt, 'hx-multipart:connect');
+                let hxMultipartClose = api.attributeValue(connectElt, 'hx-multipart:close');
+                let hxTrigger = api.attributeValue(connectElt, 'hx-trigger');
+
+                let url = hxMultipartConnect;
+
+                api.onTrigger(
+                    connectElt,
+                    hxTrigger || 'load',
+                    () => {
+                        if (connectElt._htmx?.multipart) return;
+
+                        htmx.ajax(
+                            'GET',
+                            url,
+                            {
+                                source: connectElt,
+                                request: {timeout: 0}
+                            });
+                    }
+                );
+
+                if (hxMultipartClose) {
+                    api.onTrigger(connectElt, hxMultipartClose, () => cleanup(connectElt, 'part'));
+                }
+            }
+        },
+
+        htmx_before_response: (element, detail) => {
+            let ctx = detail.ctx;
+            let response = ctx.response.raw;
+            let contentType = response.headers.get('Content-Type') || '';
+            let type = contentType.split(';', 1)[0].trim().toLowerCase();
+            if (type !== 'multipart/mixed' && type !== 'multipart/parallel') return;
+
+            let handled = false;
+            response.text = async () => {
+                if (handled) return '';
+                handled = true;
+                await handleMultipartResponse(ctx, type);
+                ctx.swap.style = 'none';
+                return '';
+            };
+        },
+
+        htmx_before_cleanup: (element) => {
+            cleanup(element, 'removed');
+        }
+    });
 
 // BEGIN vendored fetch-multipart parser from https://github.com/scriptogre/fetch-multipart
 // Copied so this extension can parse multipart responses without requiring core htmx changes.
