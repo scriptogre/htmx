@@ -782,6 +782,10 @@ Hello
 | `Content-Length: 5` | The next five bytes |
 | No `Content-Length` | Until the next boundary |
 
-A boundary always follows the body. If the boundary is `part`, a body line starting with `--part` will be mistaken for the next part.
+With `Content-Length`, htmx closes the part body as soon as all declared bytes arrive. A persistent response may pause there while htmx waits for the next boundary.
+
+htmx still validates that boundary when it arrives. A malformed boundary reports [`htmx:multipart:error`](#htmxmultiparterror), but does not revoke the completed part.
+
+Without `Content-Length`, the part body stays open until its boundary arrives. If the boundary is `part`, a body line starting with `--part` will be mistaken for the next part.
 
 </details>

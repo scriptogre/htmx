@@ -47,6 +47,191 @@ describe('hx-multipart extension', function() {
         assert.equal(typeof Response.prototype.parts, 'function');
     });
 
+    function controlledMultipartResponse() {
+        let controller;
+        let encoder = new TextEncoder();
+        return {
+            response: new Response(new ReadableStream({
+                start(c) { controller = c; }
+            }), {
+                headers: {'Content-Type': 'multipart/mixed; boundary=b'}
+            }),
+            write(value) { controller.enqueue(encoder.encode(value)); },
+            close() { controller.close(); }
+        };
+    }
+
+    function observe(promise, timeout = 30) {
+        return Promise.race([
+            promise.then(
+                value => ({status: 'fulfilled', value}),
+                reason => ({status: 'rejected', reason})
+            ),
+            htmx.timeout(timeout).then(() => ({status: 'pending'}))
+        ]);
+    }
+
+    describe('Response.parts() parser', function() {
+        it('closes a complete Content-Length body before the next boundary arrives', async function() {
+            let stream = controlledMultipartResponse();
+            stream.write('--b\r\nContent-Length: 5\r\n\r\nhello');
+
+            let iterator = stream.response.parts()[Symbol.asyncIterator]();
+            let {value: part} = await iterator.next();
+            let textPromise = part.text();
+            let textResult = await observe(textPromise);
+            let nextPromise;
+            let nextResult;
+
+            if (textResult.status === 'fulfilled') {
+                nextPromise = iterator.next();
+                nextResult = await observe(nextPromise);
+            }
+
+            stream.write('\r\n--b--\r\n');
+            stream.close();
+            await textPromise;
+            if (nextPromise && nextResult.status === 'pending') await nextPromise;
+            await iterator.return();
+
+            assert.deepEqual(textResult, {status: 'fulfilled', value: 'hello'});
+            assert.equal(nextResult.status, 'pending');
+        });
+
+        it('parses a later part and closes it at its Content-Length', async function() {
+            let stream = controlledMultipartResponse();
+            stream.write('--b\r\nContent-Length: 5\r\n\r\nhello');
+
+            let iterator = stream.response.parts()[Symbol.asyncIterator]();
+            let {value: first} = await iterator.next();
+            assert.equal(await first.text(), 'hello');
+
+            let secondPromise = iterator.next();
+            assert.equal((await observe(secondPromise)).status, 'pending');
+            stream.write('\r\n--b\r\nContent-Length: 5\r\n\r\nworld');
+
+            let {value: second} = await secondPromise;
+            assert.equal(await second.text(), 'world');
+
+            let donePromise = iterator.next();
+            assert.equal((await observe(donePromise)).status, 'pending');
+            stream.write('\r\n--b--\r\n');
+            stream.close();
+            assert.isTrue((await donePromise).done);
+        });
+
+        it('validates a boundary split across chunks after Content-Length', async function() {
+            let stream = controlledMultipartResponse();
+            stream.write('--b\r\nContent-Length: 5\r\n\r\nhello');
+
+            let iterator = stream.response.parts()[Symbol.asyncIterator]();
+            let {value: first} = await iterator.next();
+            assert.equal(await first.text(), 'hello');
+
+            let secondPromise = iterator.next();
+            for (let chunk of ['\r', '\n--', 'b']) {
+                stream.write(chunk);
+                assert.equal((await observe(secondPromise)).status, 'pending');
+            }
+
+            stream.write('\r\nContent-Length: 5\r\n\r\nworld');
+            let {value: second} = await secondPromise;
+            assert.equal(await second.text(), 'world');
+
+            let donePromise = iterator.next();
+            stream.write('\r\n--b--\r\n');
+            stream.close();
+            assert.isTrue((await donePromise).done);
+        });
+
+        it('keeps a complete body delivered when the later boundary is invalid', async function() {
+            let stream = controlledMultipartResponse();
+            stream.write('--b\r\nContent-Length: 5\r\n\r\nhello');
+
+            let iterator = stream.response.parts()[Symbol.asyncIterator]();
+            let {value: part} = await iterator.next();
+            assert.equal(await part.text(), 'hello');
+
+            let nextPromise = iterator.next();
+            stream.write('\r\n--x');
+            stream.close();
+            let result = await observe(nextPromise);
+
+            assert.equal(result.status, 'rejected');
+            assert.equal(result.reason.name, 'MultipartParseError');
+        });
+
+        it('closes a zero-length body before the next boundary arrives', async function() {
+            let stream = controlledMultipartResponse();
+            stream.write('--b\r\nContent-Length: 0\r\n\r\n');
+
+            let iterator = stream.response.parts()[Symbol.asyncIterator]();
+            let {value: part} = await iterator.next();
+            assert.equal((await part.bytes()).length, 0);
+
+            let donePromise = iterator.next();
+            assert.equal((await observe(donePromise)).status, 'pending');
+            stream.write('\r\n--b--\r\n');
+            stream.close();
+            assert.isTrue((await donePromise).done);
+        });
+
+        it('errors an incomplete Content-Length body at end of stream', async function() {
+            let stream = controlledMultipartResponse();
+            stream.write('--b\r\nContent-Length: 5\r\n\r\nhel');
+
+            let iterator = stream.response.parts()[Symbol.asyncIterator]();
+            let {value: part} = await iterator.next();
+            let reader = part.body.getReader();
+            let bodyChunk = await reader.read();
+            assert.equal(new TextDecoder().decode(bodyChunk.value), 'hel');
+
+            let bodyPromise = reader.read();
+            assert.equal((await observe(bodyPromise)).status, 'pending');
+            stream.close();
+            let bodyResult = await observe(bodyPromise);
+            let iteratorResult = await observe(iterator.next());
+
+            assert.equal(bodyResult.status, 'rejected');
+            assert.equal(bodyResult.reason.name, 'MultipartParseError');
+            assert.include(bodyResult.reason.message, 'Content-Length body');
+            assert.equal(iteratorResult.status, 'rejected');
+            assert.equal(iteratorResult.reason.name, 'MultipartParseError');
+        });
+
+        it('keeps a body without Content-Length open until its boundary', async function() {
+            let stream = controlledMultipartResponse();
+            stream.write('--b\r\nContent-Type: text/plain\r\n\r\nhello');
+
+            let iterator = stream.response.parts()[Symbol.asyncIterator]();
+            let {value: part} = await iterator.next();
+            let textPromise = part.text();
+            assert.equal((await observe(textPromise)).status, 'pending');
+
+            stream.write('\r\n--b--\r\n');
+            stream.close();
+            assert.equal(await textPromise, 'hello');
+            assert.isTrue((await iterator.next()).done);
+        });
+
+        it('parses a finite Content-Length part with a closing boundary', async function() {
+            let response = new Response([
+                '--b\r\n',
+                'Content-Length: 5\r\n',
+                '\r\n',
+                'hello',
+                '\r\n--b--\r\n'
+            ].join(''), {
+                headers: {'Content-Type': 'multipart/mixed; boundary=b'}
+            });
+
+            let iterator = response.parts()[Symbol.asyncIterator]();
+            let {value: part} = await iterator.next();
+            assert.equal(await part.text(), 'hello');
+            assert.isTrue((await iterator.next()).done);
+        });
+    });
+
     it('appends multipart types to an existing Accept header', async function() {
         mockResponse('GET', '/test', 'OK');
         let button = createProcessedHTML('<button hx-get="/test" hx-swap="none" hx-headers=\'"Accept":"text/html, text/event-stream"\'>Go</button>');
@@ -426,6 +611,48 @@ describe('hx-multipart extension', function() {
         assert.equal(received, 'custom data');
         assertTextContentIs('#result', 'Done');
         assert.equal(button.textContent, 'Go');
+    });
+
+    it('swaps a Content-Length part while the endpoint delays its boundary', async function() {
+        let releaseBoundary;
+        let boundaryDelay = new Promise(resolve => releaseBoundary = resolve);
+        let encoder = new TextEncoder();
+        let parserError;
+        let response = new Response(new ReadableStream({
+            start(controller) {
+                controller.enqueue(encoder.encode([
+                    '--updates\r\n',
+                    'Content-Type: text/html\r\n',
+                    'Content-Length: 5\r\n',
+                    'HX-Target: #stream-target\r\n',
+                    '\r\n',
+                    'hello'
+                ].join('')));
+                boundaryDelay.then(() => {
+                    controller.enqueue(encoder.encode('\r\n--updates--\r\n'));
+                    controller.close();
+                });
+            }
+        }), {
+            headers: {'Content-Type': 'multipart/mixed; boundary=updates'}
+        });
+        fetchMock.mockResponse('GET', '/delayed-boundary', response);
+
+        let button = createProcessedHTML('<button hx-get="/delayed-boundary">Go</button><div id="stream-target"></div>');
+        button.addEventListener('htmx:multipart:error', event => parserError = event.detail.error);
+        let done = forRequest(500);
+        button.click();
+
+        let swappedBeforeBoundary = await waitUntil(
+            () => htmx.find('#stream-target').textContent === 'hello',
+            500
+        );
+        releaseBoundary();
+        await done;
+
+        assert.isTrue(swappedBeforeBoundary);
+        assert.isUndefined(parserError);
+        assertTextContentIs('#stream-target', 'hello');
     });
 
     it('swaps multipart/mixed parts before the response stream closes', async function() {
