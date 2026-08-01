@@ -753,7 +753,6 @@
                 data: makeDataProxy(elt),
                 aria: makeAriaProxy(elt)
             });
-            elt.data = makeDataProxy(elt, false);
             if (htmx.config.live?.useDollar) detail.scope.$ = detail.scope.q;
         }
     });
