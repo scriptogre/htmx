@@ -1000,16 +1000,55 @@ describe('hx-live extension', function () {
         assert.isFunction(htmx.live.toggle);
     });
 
-    it('classList scope helper accesses this.classList', function() {
+    it('classes reads, writes, and deletes class state', function() {
+        let button = createProcessedHTML(`
+            <button class="pending remove-me" hx-on:click="
+                window.__classState = [classes.pending, classes.done];
+                Object.assign(classes, { pending: false, done: true });
+                classes['is-active'] = true;
+                delete classes['remove-me']
+            ">Go</button>
+        `);
+        button.click();
+        window.__classState.should.deep.equal([true, false]);
+        button.classList.contains('pending').should.equal(false);
+        button.classList.contains('done').should.equal(true);
+        button.classList.contains('is-active').should.equal(true);
+        button.classList.contains('remove-me').should.equal(false);
+        delete window.__classState;
+    });
+
+    it('classes.active.toggle() toggles membership', function() {
+        let button = createProcessedHTML(`
+            <button hx-on:click="classes.active.toggle()">Go</button>
+        `);
+        button.click();
+        button.classList.contains('active').should.equal(true);
+        button.click();
+        button.classList.contains('active').should.equal(false);
+    });
+
+    it('classes.active.take() moves membership between siblings', function() {
         playground().innerHTML = `
-            <button hx-on:click="classList.add('done'); classList.remove('pending')">Go</button>
+            <div>
+                <button class="active">One</button>
+                <button hx-on:click="classes.active.take()">Two</button>
+            </div>
         `;
         htmx.process(playground());
-        let btn = playground().querySelector('button');
-        btn.classList.add('pending');
-        btn.click();
-        btn.classList.contains('done').should.equal(true);
-        btn.classList.contains('pending').should.equal(false);
+        let buttons = playground().querySelectorAll('button');
+        buttons[1].click();
+        buttons[0].classList.contains('active').should.equal(false);
+        buttons[1].classList.contains('active').should.equal(true);
+    });
+
+    it('q().classes accesses only the first matched element', function() {
+        playground().innerHTML = '<button id="one"></button><button id="two"></button>';
+        let classes = htmx.live.q('#one').classes;
+        classes.active = true;
+        classes.active.should.equal(true);
+        playground().querySelector('#one').classList.contains('active').should.equal(true);
+        playground().querySelector('#two').classList.contains('active').should.equal(false);
     });
 
     it('htmx.live.toggle(target, name) toggles across matches', function() {

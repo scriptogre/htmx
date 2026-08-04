@@ -260,6 +260,31 @@
         return value;
     }
 
+    function makeClassesProxy(elt) {
+        return new Proxy({}, {
+            get: (_, name) => typeof name === 'string'
+                ? exposeState(elt.classList.contains(name), elt, '.' + name)
+                : undefined,
+            set: (_, name, value) => {
+                if (typeof name !== 'string') return false;
+                elt.classList.toggle(name, !!value);
+                if (!elt.classList.length) elt.removeAttribute('class');
+                return true;
+            },
+            deleteProperty: (_, name) => {
+                if (typeof name !== 'string') return false;
+                elt.classList.remove(name);
+                if (!elt.classList.length) elt.removeAttribute('class');
+                return true;
+            },
+            has: (_, name) => typeof name === 'string' && elt.classList.contains(name),
+            ownKeys: () => [...elt.classList],
+            getOwnPropertyDescriptor: (_, name) => elt.classList.contains(name)
+                ? { enumerable: true, configurable: true }
+                : undefined
+        });
+    }
+
     function makeAriaProxy(elt, cascades = true) {
         let findOwner = name => cascades
             ? elt.closest('[' + name + ']')
@@ -588,6 +613,7 @@
                     return proxy;
                 };
                 if (p === 'data') return elts[0] ? makeDataProxy(elts[0], false) : undefined;
+                if (p === 'classes') return elts[0] ? makeClassesProxy(elts[0]) : undefined;
                 if (arrayMethods.has(p)) return elts[p].bind(elts);
                 if (p === 'aria') return elts[0] ? makeAriaProxy(elts[0], false) : undefined;
                 let v = elts[0]?.[p];
@@ -782,7 +808,7 @@
                 insert: (pos, html) => elt.insertAdjacentHTML(positions[pos], html),
                 matches: (sel) => elt.matches(sel),
                 style: elt.style,
-                classList: elt.classList,
+                classes: makeClassesProxy(elt),
                 data: makeDataProxy(elt),
                 aria: makeAriaProxy(elt)
             });
