@@ -22,6 +22,33 @@ The paragraph updates as you type.
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/hx-live.min.js"></script>
 ```
 
+## Idiomatic hx-live
+
+Keep local UI state in the DOM, close to the elements that use it:
+
+```html
+<button aria-pressed="false"
+        hx-on:click="aria.pressed = !aria.pressed">
+    Mute
+</button>
+
+<style>
+[aria-pressed="true"] { background: lightblue }
+</style>
+```
+
+Use these principles:
+
+1. **Start with the browser.** Prefer native HTML behavior, native DOM properties, and CSS before adding hx-live.
+2. **Choose one state owner.** Store each value in one native property, ARIA attribute, `data-*` attribute, or form control. Derive everything else from it.
+3. **Use the narrowest shared scope.** Put shared `data-*` state on the nearest common ancestor. Bare `data.*` intentionally checks the current element, then its ancestors.
+4. **Read state directly.** Prefer native properties, `aria.*`, and `data.*` over selectors and raw attribute access. Use `q()` when the source is outside the current scope.
+5. **Bind derived state.** Use `:<attr>` for values that follow other DOM state. Use [`hx-on`](/reference/attributes/hx-on) for user actions.
+6. **Let CSS handle presentation.** Style native states and semantic attributes instead of maintaining parallel presentation classes.
+7. **Use `hx-live` last.** Reserve the imperative form for multi-step work, asynchronous work, and side effects that a binding cannot express.
+
+Keep every expression safe to run again. DOM changes, input events, and htmx swaps can all recompute live expressions.
+
 ## Attributes
 
 ### `:<attr>`
@@ -233,23 +260,29 @@ q('.list').insert('end', '<li>new</li>') // before / after / start / end
 
 ### `attr(name, value?)`
 
-Get or set an attribute, class, or property on this element. Pass one argument to read, two to write.
+Get or set an HTML attribute on this element. Pass one argument to read, two to write.
 
 ```js
-attr('hidden')                              // is hidden present?
-attr('hidden', true)                        // add (false/null/undefined removes)
-attr('.active')                             // has class .active?
-attr('.active', q('#src').checked)          // add/remove class
-attr('class', 'foo bar')                    // multi-class string
-attr('class', { active: matches('.tab') })  // multi-class object
-attr('aria-expanded')                       // raw string or null
-attr('aria-expanded', false)                // write "false"
-attr('aria-expanded', null)                 // remove
-attr('value', 'hello')                      // value/checked/selected: syncs property + attribute
-attr('data-x', null)                        // remove
+attr('hidden')                  // boolean attribute presence
+attr('hidden', true)            // add hidden
+attr('hidden', false)           // remove hidden
+attr('aria-expanded', false)    // write aria-expanded="false"
+attr('contenteditable', false)  // write contenteditable="false"
+attr('class', 'foo bar')        // replace the raw class attribute
+attr('value', 'hello')          // set the value attribute
+attr('data-x', null)            // remove data-x
 ```
 
-Use [`aria.*`](#aria) to read booleans, numbers, and lists.
+`checked` and `selected` also return attribute presence. `value` returns the attribute value. `attr()` never reads or writes the current `checked`, `selected`, or `value` properties.
+
+Use native properties for current control state:
+
+```js
+this.checked = false
+this.value = 'hello'
+```
+
+Use [`classes.*`](#classes) for class membership and [`aria.*`](#aria) for typed ARIA values.
 
 ### `toggle(name, values?)`
 
@@ -275,6 +308,45 @@ take('.selected', '.tab')              // become the selected tab among .tab
 take('aria-current', 'nav a')          // become the current nav item
 take('.active')                        // implicit scope: parent element's subtree
 ```
+
+### `classes`
+
+Read and write class membership on this element:
+
+```html
+<button class="pending"
+        hx-on:click="
+            classes.pending = false;
+            classes.done = true
+        ">
+    Finish
+</button>
+```
+
+Use bracket notation for class names that are not JavaScript identifiers. Assignment, deletion, `:class`, and `:.<class>` all use the same membership rules:
+
+```js
+classes['is-active'] = true
+delete classes.pending
+Object.assign(classes, { loading: true, done: false })
+```
+
+The proxy is enumerable, so `Object.keys(classes)` and `{ ...classes }` return the element's current classes with `true` values.
+
+Use `q()` to access another element:
+
+```js
+q('#menu').classes.open = true
+```
+
+Boolean class values support direct transitions:
+
+```js
+classes.active.toggle()
+classes.selected.take()
+```
+
+`toggle()` flips membership. `take()` removes the class from siblings under the same parent, then adds it to this element.
 
 ### `aria`
 
@@ -303,6 +375,30 @@ Use bare `aria` for shared state. Use `q()` for one element:
 aria.busy            // closest aria-busy, starting at this
 q(this).aria.busy    // aria-busy on this
 q('#form').aria.busy // aria-busy on the selected form
+```
+
+Call transitions directly on an existing ARIA value:
+
+```html
+<button aria-pressed="false"
+        hx-on:click="aria.pressed.toggle()">
+    Mute
+</button>
+
+<button aria-sort="ascending"
+        hx-on:click="aria.sort.toggle('ascending', 'descending')">
+    Name
+</button>
+```
+
+Boolean values flip when `toggle()` has no arguments. With arguments, `toggle()` moves to the next listed value. `take()` writes `"false"` on sibling owners under the same parent, then writes `"true"` on this owner:
+
+```html
+<div role="tablist">
+    <button role="tab" aria-selected="true">One</button>
+    <button role="tab" aria-selected="false"
+            hx-on:click="aria.selected.take()">Two</button>
+</div>
 ```
 
 Each form uses the same value rules. You can use these values as booleans, numbers, and arrays:
@@ -434,6 +530,36 @@ On write, hx-live converts booleans, numbers, arrays, and objects to JSON. On re
 
 Plain strings that aren't valid JSON are returned as-is.
 
+Call `toggle()` directly on an existing value. A Boolean flips without arguments. Other values cycle through the listed JavaScript values:
+
+```html
+<div data-active="false" data-view="grid">
+    <button hx-on:click="data.active.toggle()">Toggle details</button>
+    <button hx-on:click="data.view.toggle('grid', 'list')">Change view</button>
+</div>
+```
+
+The first button writes `data-active="true"`. The second writes `data-view="list"`.
+
+Explicit cycles preserve types and use the normal data writer:
+
+```js
+data.active.toggle(true, false, '')
+```
+
+This cycles through `"true"`, `"false"`, and an empty `data-active=""` attribute.
+
+Use `take()` to move attribute presence between siblings:
+
+```html
+<div>
+    <button data-active="">One</button>
+    <button hx-on:click="data.active.take()" data-active="">Two</button>
+</div>
+```
+
+Clicking Two removes `data-active` from One and leaves an empty `data-active=""` on Two.
+
 The `data` proxy is enumerable. Object spread, rest destructuring, and `Object.keys()`/`Object.entries()` use the same cascading lookup rules:
 
 ```html
@@ -448,15 +574,16 @@ The `data` proxy is enumerable. Object spread, rest destructuring, and `Object.k
 
 Here, `hx-vals` receives `{ x: 1, y: 3 }`.
 
-Delete state to remove its attribute:
+Delete a value or assign `undefined` to remove its attribute:
 
 ```js
+data.count = undefined       // remove the closest data-count
 delete data.count            // remove the closest data-count
 delete q(this).data.count    // remove data-count from this
 delete q('#cart').data.count // remove data-count from the selected cart
 ```
 
-`data.count = null` writes `data-count="null"`. Use `delete` to remove the attribute.
+`data.count = null` writes `data-count="null"`. `data.count = ''` writes an empty `data-count=""` attribute.
 
 Use `dataset` when you need raw strings:
 
@@ -593,7 +720,7 @@ For a single inline section, native [`<details>`](https://developer.mozilla.org/
 
 ```html
 <header>
-    <button hx-on:click="toggle('aria-expanded')" aria-expanded="false">Menu</button>
+    <button hx-on:click="aria.expanded.toggle()" aria-expanded="false">Menu</button>
 </header>
 <aside :hidden="!q('header button').aria.expanded">...</aside>
 ```
@@ -601,7 +728,7 @@ For a single inline section, native [`<details>`](https://developer.mozilla.org/
 **Toggle button.**
 
 ```html
-<button hx-on:click="toggle('aria-pressed')" aria-pressed="false">Bold</button>
+<button hx-on:click="aria.pressed.toggle()" aria-pressed="false">Bold</button>
 ```
 
 ```css
@@ -612,13 +739,13 @@ For a single inline section, native [`<details>`](https://developer.mozilla.org/
 
 ```html
 <div role="tablist">
-    <button role="tab" hx-on:click="take('aria-selected', '[role=tab]')" aria-selected="true">A</button>
-    <button role="tab" hx-on:click="take('aria-selected', '[role=tab]')">B</button>
-    <button role="tab" hx-on:click="take('aria-selected', '[role=tab]')">C</button>
+    <button role="tab" hx-on:click="aria.selected.take()" aria-selected="true">A</button>
+    <button role="tab" hx-on:click="aria.selected.take()" aria-selected="false">B</button>
+    <button role="tab" hx-on:click="aria.selected.take()" aria-selected="false">C</button>
 </div>
 ```
 
-`take('aria-selected', '[role=tab]')` writes `"false"` on every `[role=tab]`, then `"true"` on this one.
+`aria.selected.take()` writes `"false"` on sibling ARIA owners under the tablist, then writes `"true"` on the clicked tab.
 
 **Loading state.**
 
@@ -866,6 +993,10 @@ Defaults to `false`.
 
 ## Notes
 
+- Fluent `toggle()` and `take()` calls must be chained directly from `aria.*`, `data.*`, or `classes.*`.
+- ARIA and data attributes must already exist before you call a fluent method. Missing values are `null` or `undefined`, which cannot expose methods.
+- Fluent methods are available on Boolean, string, and number values until the next microtask. Read the value again after `await`.
+- `null`, arrays, and objects remain normal JavaScript values without fluent methods.
 - Expressions run on any DOM mutation. There is no per-variable tracking. The microtask coalescing keeps this cheap, but expensive expressions should `debounce` or guard themselves.
 - The DOM is the source of truth. To share state between expressions, use ARIA attributes, `data-*` attributes (the `data` proxy makes this ergonomic), or hidden inputs.
 - When using morph swap styles (`innerMorph` / `outerMorph`), server responses will overwrite `data-*` attributes by default. To preserve client-side state during morphs, add a prefix to `morphIgnore` — e.g. `morphIgnore:["data-"]` will protect all `data-*` attributes from being overwritten. Non-morph swaps (`innerHTML`, `outerHTML`) replace the DOM entirely, so state should live on an ancestor element that isn't swapped.
