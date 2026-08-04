@@ -233,6 +233,32 @@
         'owns',
         'relevant'
     ]);
+    let stateGetter = Symbol();
+
+    function exposeState(value, owner, name) {
+        if (value == null || !['boolean', 'string', 'number'].includes(typeof value)) return value;
+        let prototype = Object.getPrototypeOf(Object(value));
+        let installed = [];
+        let methods = {
+            toggle: (...values) => applyToggle(name, values.length > 1 ? values : values[0], owner),
+            take: () => applyTake([owner], name)
+        };
+        for (let [method, run] of Object.entries(methods)) {
+            let current = Object.getOwnPropertyDescriptor(prototype, method);
+            // Leave native or application methods untouched.
+            if (current && !current.get?.[stateGetter]) continue;
+            let getter = function() {
+                if (Object.is(this.valueOf(), value)) return run;
+            };
+            getter[stateGetter] = true;
+            Object.defineProperty(prototype, method, { configurable: true, get: getter });
+            installed.push([method, getter]);
+        }
+        queueMicrotask(() => installed.forEach(([method, getter]) => {
+            if (Object.getOwnPropertyDescriptor(prototype, method)?.get === getter) delete prototype[method];
+        }));
+        return value;
+    }
 
     function makeAriaProxy(elt, cascades = true) {
         let findOwner = name => cascades
@@ -243,13 +269,18 @@
                 if (typeof prop !== 'string') return undefined;
                 let key = prop.toLowerCase();
                 let name = 'aria-' + key;
-                let value = findOwner(name)?.getAttribute(name);
-                if (booleanAria.has(key) && (value === 'true' || value === 'false')) return value === 'true';
+                let owner = findOwner(name);
+                let value = owner?.getAttribute(name);
+                if (booleanAria.has(key) && (value === 'true' || value === 'false')) {
+                    return exposeState(value === 'true', owner, name);
+                }
                 let number = Number(value);
                 let validNumber = numberAria.has(key) || (integerAria.has(key) && Number.isInteger(number));
-                if (validNumber && value?.trim() && Number.isFinite(number)) return number;
-                if (listAria.has(key) && value != null) return value.trim() ? value.trim().split(/\s+/) : [];
-                return value;
+                if (validNumber && value?.trim() && Number.isFinite(number)) return exposeState(number, owner, name);
+                if (listAria.has(key) && value != null) {
+                    return exposeState(value.trim() ? value.trim().split(/\s+/) : [], owner, name);
+                }
+                return exposeState(value, owner, name);
             },
             set: (_, prop, value) => {
                 if (typeof prop !== 'string') return false;
@@ -283,7 +314,9 @@
                 let ancestor = findOwner(kebab);
                 if (!ancestor) return undefined;
                 let raw = ancestor.dataset[prop];
-                try { return JSON.parse(raw); } catch { return raw; }
+                let value;
+                try { value = JSON.parse(raw); } catch { value = raw; }
+                return exposeState(value, ancestor, 'data-' + kebab);
             },
             set: (_, prop, val) => {
                 if (typeof prop !== 'string') return false;

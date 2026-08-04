@@ -1388,6 +1388,46 @@ describe('hx-live extension', function () {
         playground().querySelector('section').getAttribute('aria-busy').should.equal('true');
     });
 
+    it('aria.sort.toggle() cycles explicit values', function() {
+        playground().innerHTML = `
+            <div aria-sort="ascending">
+                <button hx-on:click="aria.sort.toggle('ascending', 'descending', 'other')">Sort</button>
+            </div>
+        `;
+        htmx.process(playground());
+        let owner = playground().querySelector('div');
+        let button = playground().querySelector('button');
+        button.click();
+        owner.getAttribute('aria-sort').should.equal('descending');
+        button.click();
+        owner.getAttribute('aria-sort').should.equal('other');
+    });
+
+    it('aria.selected.take() claims sibling state', function() {
+        playground().innerHTML = `
+            <div role="tablist">
+                <button role="tab" aria-selected="true">One</button>
+                <button role="tab" aria-selected="false"
+                        hx-on:click="aria.selected.take()">Two</button>
+            </div>
+        `;
+        htmx.process(playground());
+        let tabs = playground().querySelectorAll('[role=tab]');
+        tabs[1].click();
+        tabs[0].getAttribute('aria-selected').should.equal('false');
+        tabs[1].getAttribute('aria-selected').should.equal('true');
+    });
+
+    it('state methods stay bound while their arguments read other state', function() {
+        let button = createProcessedHTML(`
+            <button aria-sort="ascending" aria-current="other"
+                    hx-on:click="aria.sort.toggle('ascending', 'descending', aria.current)">Sort</button>
+        `);
+        button.click();
+        button.getAttribute('aria-sort').should.equal('descending');
+        button.getAttribute('aria-current').should.equal('other');
+    });
+
     it('q().aria uses only its first match', function() {
         playground().innerHTML = `
             <section aria-busy="false">
@@ -1611,6 +1651,45 @@ describe('hx-live extension', function () {
     // -------------------------------------------------------------------------
     // cascading data proxy
     // -------------------------------------------------------------------------
+
+    it('data.view.toggle() cycles explicit values', function() {
+        playground().innerHTML = `
+            <div data-view="grid">
+                <button hx-on:click="data.view.toggle('grid', 'list')">View</button>
+            </div>
+        `;
+        htmx.process(playground());
+        let owner = playground().querySelector('div');
+        let button = playground().querySelector('button');
+        button.click();
+        owner.dataset.view.should.equal('list');
+        button.click();
+        owner.dataset.view.should.equal('grid');
+    });
+
+    it('data.active.take() moves sibling state', function() {
+        playground().innerHTML = `
+            <div>
+                <button data-active="true">One</button>
+                <button data-active="false" hx-on:click="data.active.take()">Two</button>
+            </div>
+        `;
+        htmx.process(playground());
+        let buttons = playground().querySelectorAll('button');
+        buttons[1].click();
+        buttons[0].hasAttribute('data-active').should.equal(false);
+        buttons[1].hasAttribute('data-active').should.equal(true);
+    });
+
+    it('removes primitive methods after the current microtask', async function() {
+        let button = createProcessedHTML(`
+            <button aria-selected="false" hx-on:click="aria.selected.take()"></button>
+        `);
+        button.click();
+        await flushMicrotasks();
+        assert.isUndefined(Object.getOwnPropertyDescriptor(Boolean.prototype, 'take'));
+        assert.isUndefined(Object.getOwnPropertyDescriptor(Boolean.prototype, 'toggle'));
+    });
 
     it('reads valid JSON values and preserves other data attribute text', function() {
         playground().innerHTML = '<div id="state"></div>';
