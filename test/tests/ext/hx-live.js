@@ -1051,6 +1051,23 @@ describe('hx-live extension', function () {
         playground().querySelector('#two').classList.contains('active').should.equal(false);
     });
 
+    it('classes supports keys and object spread', function() {
+        playground().innerHTML = '<button id="one" class="active pending"></button>';
+        let classes = htmx.live.q('#one').classes;
+        Object.keys(classes).should.deep.equal(['active', 'pending']);
+        ({ ...classes }).should.deep.equal({ active: true, pending: true });
+    });
+
+    it('class bindings react to classes state', async function() {
+        let elt = createProcessedHTML(`
+            <div class="selected" :class="{ visible: classes.selected }"></div>
+        `);
+        elt.classList.contains('visible').should.equal(true);
+        elt.classList.remove('selected');
+        await htmx.timeout(5);
+        elt.classList.contains('visible').should.equal(false);
+    });
+
     it('htmx.live.toggle(target, name) toggles across matches', function() {
         playground().innerHTML = `
             <div class="tab"></div>
@@ -1656,6 +1673,37 @@ describe('hx-live extension', function () {
         owner.dataset.view.should.equal('list');
         button.click();
         owner.dataset.view.should.equal('grid');
+    });
+
+    it('data.active.toggle() flips a typed boolean', function() {
+        let button = createProcessedHTML(`
+            <button data-active="false" hx-on:click="data.active.toggle()"></button>
+        `);
+        button.click();
+        button.dataset.active.should.equal('true');
+        button.click();
+        button.dataset.active.should.equal('false');
+    });
+
+    it('data.active.toggle() cycles typed values through the data writer', function() {
+        let button = createProcessedHTML(`
+            <button data-active="true"
+                    hx-on:click="data.active.toggle(true, false, '')"></button>
+        `);
+        button.click();
+        button.dataset.active.should.equal('false');
+        button.click();
+        button.dataset.active.should.equal('');
+        button.click();
+        button.dataset.active.should.equal('true');
+    });
+
+    it('data.active = undefined removes the attribute', function() {
+        let button = createProcessedHTML(`
+            <button data-active="true" hx-on:click="data.active = undefined"></button>
+        `);
+        button.click();
+        button.hasAttribute('data-active').should.equal(false);
     });
 
     it('data.active.take() moves sibling state', function() {
