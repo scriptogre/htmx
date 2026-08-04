@@ -74,73 +74,43 @@
         'multiple','autofocus','novalidate','default','reversed',
         'loop','muted','controls','autoplay','playsinline',
         'formnovalidate','async','defer','ismap','typemustmatch',
-        'allowfullscreen','itemscope','nomodule'
+        'allowfullscreen','itemscope','nomodule','checked','selected'
     ]);
-    let PROPERTY_ATTRS = new Set(['checked','value','selected']);
+    let PROPERTY_BINDING_ATTRS = new Set(['checked','value','selected']);
     let STRINGY_BOOLEAN_ATTRS = new Set(['contenteditable','draggable','spellcheck']);
 
     /**
-     * Get or set an attribute, class, or property-backed value on one or more elements.
+     * Get or set an attribute or property-backed value on one or more elements.
      *
      * @param {Element[]} elts - Target elements.
-     * @param {string} name - Class (`.foo`), `'class'`, or attribute name.
+     * @param {string} name - Attribute name.
      * @param {*} [value] - Value to set. Omit for getter (reads from first element).
      * @returns {*} Getter result; setter returns nothing.
      *
      * @example
      * attr('hidden')                  // boolean: is hidden present?
      * attr('hidden', true)            // set hidden=""
-     * attr('.active')                 // boolean: has class .active?
-     * attr('.active', cond)           // add/remove class
-     * attr('class', 'foo bar')        // multi-class string
-     * attr('class', { active: cond }) // multi-class object
+     * attr('class', 'foo bar')        // raw class attribute
      * attr('aria-expanded', open)     // ARIA: raw string value
-     * attr('value', 'hello')          // sync DOM property + attribute
+     * attr('value', 'hello')          // set the value attribute
      * attr('contenteditable', false)  // "false", not removed
      * attr('data-x', null)            // remove attribute
      */
     function applyAttr(elts, name, ...rest) {
-        let isClass = name.startsWith('.');
-        let isMultiClass = name === 'class';
         let isAria = name.startsWith('aria-');
-        let isPropAttr = PROPERTY_ATTRS.has(name);
 
         if (rest.length === 0) {
             let e = elts[0];
             if (!e) return undefined;
-            if (isClass) return e.classList.contains(name.slice(1));
-            if (isMultiClass) return e.getAttribute('class');
-            if (isAria) return e.getAttribute(name);
             if (BOOLEAN_ATTRS.has(name)) return e.hasAttribute(name);
-            if (isPropAttr) return e[name];
             return e.getAttribute(name);
         }
 
         let value = rest[0];
         for (let e of elts) {
-            if (isClass) {
-                e.classList.toggle(name.slice(1), !!value);
-                if (e.classList.length === 0) e.removeAttribute('class');
-            } else if (isMultiClass) {
-                applyMultiClass(e, value);
-            } else if (isAria) {
+            if (isAria) {
                 if (value == null) e.removeAttribute(name);
                 else e.setAttribute(name, String(value));
-            } else if (isPropAttr) {
-                if (name === 'checked' || name === 'selected') {
-                    let present = !!value;
-                    e[name] = present;
-                    e.toggleAttribute(name, present);
-                } else if (value === false || value == null) {
-                    e[name] = (typeof e[name] === 'boolean') ? false : '';
-                    e.removeAttribute(name);
-                } else if (value === true) {
-                    e[name] = true;
-                    e.setAttribute(name, '');
-                } else {
-                    e[name] = value;
-                    e.setAttribute(name, String(value));
-                }
             } else if (BOOLEAN_ATTRS.has(name)) {
                 if (value) e.setAttribute(name, '');
                 else e.removeAttribute(name);
@@ -380,6 +350,32 @@
                 if (findOwner(kebab)) return { enumerable: true, configurable: true };
             }
         });
+    }
+
+    function applyPropertyBinding(elt, name, value) {
+        if (name === 'checked' || name === 'selected') {
+            let present = !!value;
+            elt[name] = present;
+            elt.toggleAttribute(name, present);
+        } else if (value === false || value == null) {
+            elt[name] = typeof elt[name] === 'boolean' ? false : '';
+            elt.removeAttribute(name);
+        } else if (value === true) {
+            elt[name] = true;
+            elt.setAttribute(name, '');
+        } else {
+            elt[name] = value;
+            elt.setAttribute(name, String(value));
+        }
+    }
+
+    function applyClassBinding(elt, name, value) {
+        if (name === 'class') {
+            applyMultiClass(elt, value);
+        } else {
+            elt.classList.toggle(name.slice(1), !!value);
+            if (!elt.classList.length) elt.removeAttribute('class');
+        }
     }
 
     function applyMultiClass(elt, value) {
@@ -753,9 +749,16 @@
             return;
         }
         if (attrName === 'style') { applyStyleBinding(elt, value); return; }
-        // Always write aria-* and property-backed attrs (getter type differs from setter).
-        // For everything else skip if unchanged.
-        if (!attrName.startsWith('aria-') && !PROPERTY_ATTRS.has(attrName) && applyAttr([elt], attrName) === value) return;
+        if (attrName === 'class' || attrName.startsWith('.')) {
+            applyClassBinding(elt, attrName, value);
+            return;
+        }
+        if (PROPERTY_BINDING_ATTRS.has(attrName)) {
+            applyPropertyBinding(elt, attrName, value);
+            return;
+        }
+        // Always write aria-* attrs because their getter and setter types differ.
+        if (!attrName.startsWith('aria-') && applyAttr([elt], attrName) === value) return;
         applyAttr([elt], attrName, value);
     }
 

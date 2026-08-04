@@ -1171,12 +1171,6 @@ describe('hx-live extension', function () {
         assert.isNull(htmx.live.attr('#f', 'aria-label'));
     });
 
-    it('attr() getter: .class returns boolean (has class)', function() {
-        playground().innerHTML = '<div id="a" class="foo"></div><div id="b"></div>';
-        htmx.live.attr('#a', '.foo').should.equal(true);
-        htmx.live.attr('#b', '.foo').should.equal(false);
-    });
-
     it('attr() getter: class returns full class string', function() {
         playground().innerHTML = '<div id="a" class="foo bar baz"></div>';
         htmx.live.attr('#a', 'class').should.equal('foo bar baz');
@@ -1188,18 +1182,18 @@ describe('hx-live extension', function () {
         assert.isNull(htmx.live.attr('#b', 'data-x'));
     });
 
-    it('attr() getter: checked returns property value', function() {
-        playground().innerHTML = '<input id="a" type="checkbox" checked><input id="b" type="checkbox">';
-        htmx.live.attr('#a', 'checked').should.equal(true);
-        htmx.live.attr('#b', 'checked').should.equal(false);
+    it('attr() getter: checked returns attribute presence', function() {
+        playground().innerHTML = '<input id="a" type="checkbox">';
+        let inp = playground().querySelector('#a');
+        inp.checked = true;
+        htmx.live.attr('#a', 'checked').should.equal(false);
     });
 
-    it('attr() getter: value returns property value', function() {
+    it('attr() getter: value returns the attribute value', function() {
         playground().innerHTML = '<input id="a" value="hello">';
         let inp = playground().querySelector('#a');
-        // After user interaction the property and attribute can diverge
         inp.value = 'world';
-        htmx.live.attr('#a', 'value').should.equal('world');
+        htmx.live.attr('#a', 'value').should.equal('hello');
     });
 
     it('attr() setter: boolean attr truthy sets, falsy removes', function() {
@@ -1233,74 +1227,32 @@ describe('hx-live extension', function () {
         playground().querySelector('#c').getAttribute('aria-valuenow').should.equal('50');
     });
 
-    it('attr() setter: .class true/false add/remove', function() {
-        playground().innerHTML = '<div id="a"></div>';
-        let div = playground().querySelector('#a');
-        htmx.live.attr('#a', '.active', true);
-        div.classList.contains('active').should.equal(true);
-        htmx.live.attr('#a', '.active', false);
-        div.classList.contains('active').should.equal(false);
-    });
-
-    it('attr() setter: class (string) sets managed class list', function() {
+    it('attr() treats class as a raw attribute', function() {
         playground().innerHTML = '<div id="a" class="external"></div>';
         let div = playground().querySelector('#a');
         htmx.live.attr('#a', 'class', 'foo bar');
-        div.classList.contains('external').should.equal(true);
-        div.classList.contains('foo').should.equal(true);
-        div.classList.contains('bar').should.equal(true);
-
-        // Re-apply with different set. Previous managed dropped, external untouched.
-        htmx.live.attr('#a', 'class', 'baz');
-        div.classList.contains('external').should.equal(true);
-        div.classList.contains('foo').should.equal(false);
-        div.classList.contains('bar').should.equal(false);
-        div.classList.contains('baz').should.equal(true);
+        div.getAttribute('class').should.equal('foo bar');
     });
 
-    it('attr() setter: class (object) toggles each independently', function() {
-        playground().innerHTML = '<div id="a" class="external"></div>';
-        let div = playground().querySelector('#a');
-        htmx.live.attr('#a', 'class', { foo: true, bar: false });
-        div.classList.contains('foo').should.equal(true);
-        div.classList.contains('bar').should.equal(false);
-        div.classList.contains('external').should.equal(true);
-
-        // Flip foo, set bar
-        htmx.live.attr('#a', 'class', { foo: false, bar: true });
-        div.classList.contains('foo').should.equal(false);
-        div.classList.contains('bar').should.equal(true);
-    });
-
-    it('attr() setter: class (object) supports space-separated keys', function() {
-        playground().innerHTML = '<div id="a"></div>';
-        let div = playground().querySelector('#a');
-        htmx.live.attr('#a', 'class', { 'foo bar': true, baz: false });
-        div.classList.contains('foo').should.equal(true);
-        div.classList.contains('bar').should.equal(true);
-        div.classList.contains('baz').should.equal(false);
-    });
-
-    it('attr() setter: checked syncs property and attribute', function() {
+    it('attr() setter: checked changes attribute presence, not live state', function() {
         playground().innerHTML = '<input id="a" type="checkbox">';
         let inp = playground().querySelector('#a');
+        inp.checked = false;
         htmx.live.attr('#a', 'checked', true);
-        inp.checked.should.equal(true);
         inp.hasAttribute('checked').should.equal(true);
-        htmx.live.attr('#a', 'checked', false);
         inp.checked.should.equal(false);
-        inp.hasAttribute('checked').should.equal(false);
     });
 
-    it('attr() setter: value syncs property and attribute', function() {
-        playground().innerHTML = '<input id="a" type="text">';
+    it('attr() setter: value changes the attribute, not live state', function() {
+        playground().innerHTML = '<input id="a" type="text" value="initial">';
         let inp = playground().querySelector('#a');
-        htmx.live.attr('#a', 'value', 'hello');
-        inp.value.should.equal('hello');
-        inp.getAttribute('value').should.equal('hello');
+        inp.value = 'live';
+        htmx.live.attr('#a', 'value', 'default');
+        inp.getAttribute('value').should.equal('default');
+        inp.value.should.equal('live');
         htmx.live.attr('#a', 'value', null);
-        inp.value.should.equal('');
         inp.hasAttribute('value').should.equal(false);
+        inp.value.should.equal('live');
     });
 
     it('attr() setter: regular attr null removes', function() {
@@ -1353,11 +1305,11 @@ describe('hx-live extension', function () {
 
     it('q().attr() returns proxy for chaining', function() {
         playground().innerHTML = '<button class="x"></button>';
-        let r = htmx.live.q('.x').attr('role', 'button').attr('.active', true);
+        let r = htmx.live.q('.x').attr('role', 'button').attr('title', 'Go');
         r.count.should.equal(1);
         let btn = playground().querySelector('.x');
         btn.getAttribute('role').should.equal('button');
-        btn.classList.contains('active').should.equal(true);
+        btn.getAttribute('title').should.equal('Go');
     });
 
     it('attr() is available in hx-on scope bound to element', function() {
@@ -1370,10 +1322,10 @@ describe('hx-live extension', function () {
 
     it('attr() in hx-live expression operates on current element', async function() {
         let elt = createProcessedHTML(
-            `<output hx-live="!this.dataset.s && (this.dataset.s='1', attr('.flipped', true))"></output>`
+            `<output hx-live="!this.dataset.s && (this.dataset.s='1', attr('data-flipped', true))"></output>`
         );
         await htmx.timeout(5);
-        elt.classList.contains('flipped').should.equal(true);
+        elt.hasAttribute('data-flipped').should.equal(true);
     });
 
     // -------------------------------------------------------------------------
