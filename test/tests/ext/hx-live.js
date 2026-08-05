@@ -911,6 +911,40 @@ describe('hx-live extension', function () {
         div.getAttribute('data-mode').should.equal('light');
     });
 
+    it('toggle(name, "a", "b", "c") cycles attribute through values (variadic form)', function() {
+        playground().innerHTML = '<div></div>';
+        let div = playground().querySelector('div');
+        let p = htmx.live.q('div');
+        p.toggle('data-mode', 'light', 'dark', 'auto');
+        div.getAttribute('data-mode').should.equal('light');
+        p.toggle('data-mode', 'light', 'dark', 'auto');
+        div.getAttribute('data-mode').should.equal('dark');
+        p.toggle('data-mode', 'light', 'dark', 'auto');
+        div.getAttribute('data-mode').should.equal('auto');
+        p.toggle('data-mode', 'light', 'dark', 'auto');
+        div.getAttribute('data-mode').should.equal('light');
+    });
+
+    it('toggle(name, "v", "") cycles between value and absent (variadic form)', function() {
+        playground().innerHTML = '<div></div>';
+        let div = playground().querySelector('div');
+        let p = htmx.live.q('div');
+        p.toggle('data-state', 'on', '');
+        div.getAttribute('data-state').should.equal('on');
+        p.toggle('data-state', 'on', '');
+        div.hasAttribute('data-state').should.equal(false);
+    });
+
+    it('htmx.live.toggle(target, name, "a", "b") cycles across matches', function() {
+        playground().innerHTML = '<div class="t"></div><div class="t"></div>';
+        htmx.live.toggle('.t', 'data-view', 'grid', 'list');
+        [...playground().querySelectorAll('.t')].map(e => e.getAttribute('data-view'))
+            .should.deep.equal(['grid', 'grid']);
+        htmx.live.toggle('.t', 'data-view', 'grid', 'list');
+        [...playground().querySelectorAll('.t')].map(e => e.getAttribute('data-view'))
+            .should.deep.equal(['list', 'list']);
+    });
+
     it('toggle(name, [array]) cycles attribute through values (array form)', function() {
         playground().innerHTML = '<div></div>';
         let div = playground().querySelector('div');
@@ -1651,6 +1685,21 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <div data-view="grid">
                 <button hx-on:click="q('closest [data-view]').toggle(@data-view, 'grid|list')">View</button>
+            </div>
+        `;
+        htmx.process(playground());
+        let owner = playground().querySelector('div');
+        let button = playground().querySelector('button');
+        button.click();
+        owner.dataset.view.should.equal('list');
+        button.click();
+        owner.dataset.view.should.equal('grid');
+    });
+
+    it('toggle(@data-name, "a", "b") cycles values passed as separate arguments', function() {
+        playground().innerHTML = `
+            <div data-view="grid">
+                <button hx-on:click="q('closest [data-view]').toggle(@data-view, 'grid', 'list')">View</button>
             </div>
         `;
         htmx.process(playground());

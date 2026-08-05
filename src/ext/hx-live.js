@@ -590,25 +590,27 @@
     /**
      * Toggle or cycle a class, ARIA attribute, or attribute on an element.
      *
-     * @param {string} name - Class (`.foo`) or attribute name.
-     * @param {string|string[]} [values] - Cycle list (pipe-delimited string or array). Omit for binary flip.
      * @param {Element} element - DOM element to mutate.
+     * @param {string} name - Class (`.foo`) or attribute name.
+     * @param {...(string|string[])} values - Cycle list, as separate arguments, a pipe-delimited string, or an array. Omit for binary flip.
      *
      * @example
      * toggle('.active')                      // toggle class
      * toggle('aria-expanded')                // flip "true" ↔ "false"
      * toggle('hidden')                       // toggle attribute presence
-     * toggle('data-view', 'grid|list|table') // cycle attribute through values
+     * toggle('data-view', 'grid', 'list')    // cycle attribute through values
+     * toggle('data-view', 'grid|list|table') // same, pipe-delimited
      * toggle('.size', 'sm|md|lg')            // cycle classes (one at a time)
      * toggle('data-open', 'on|')             // 'on' ↔ absent slot
      */
-    function applyToggle(name, values, element) {
+    function applyToggle(element, name, ...values) {
         let isClass = name.startsWith('.');
         let key = isClass ? name.slice(1) : name;
         let isAria = name.startsWith('aria-');
-        let asArray = values && (typeof values === 'string'
-            ? values.split('|').map(v => v.trim())
-            : values);
+        let list = values.length > 1 ? values : values[0];
+        let asArray = list && (typeof list === 'string'
+            ? list.split('|').map(v => v.trim())
+            : list);
 
         if (!asArray) {
             if (isClass) element.classList.toggle(key);
@@ -737,7 +739,7 @@
                 if (p === 'trigger') return (t, d, b) => { elts.forEach(e => htmx.trigger(e, t, d, b)); return proxy; };
                 if (p === 'insert') return (pos, s) => { elts.forEach(e => e.insertAdjacentHTML(positions[pos], s)); return proxy; };
                 if (p === 'take') return (name, scope) => { applyTake(elts, name, scope); return proxy; };
-                if (p === 'toggle') return (name, values) => { elts.forEach(e => applyToggle(name, values, e)); return proxy; };
+                if (p === 'toggle') return (name, ...values) => { elts.forEach(e => applyToggle(e, name, ...values)); return proxy; };
                 if (p === 'attr') return makeAttrProxy(elts);
                 if (p === 'data') return elts[0] ? makeDataProxy(elts[0], false) : undefined;
                 if (p === 'class') return elts[0] ? makeClassProxy(elts[0]) : undefined;
@@ -905,7 +907,7 @@
         debounce: makeDebounce(),
         refresh: () => schedule(),
         take: (target, name, scope) => applyTake([...asTargets(target)], name, scope),
-        toggle: (target, name, values) => [...asTargets(target)].forEach(e => applyToggle(name, values, e)),
+        toggle: (target, name, ...values) => [...asTargets(target)].forEach(e => applyToggle(e, name, ...values)),
         attr: (target, name, ...rest) => applyAttr([...asTargets(target)], name, ...rest),
         forEvent: (...args) => forEvent(null, ...args),
         nextFrame: () => new Promise(r => requestAnimationFrame(r))
@@ -939,7 +941,7 @@
                 trigger: (type, detail, bubbles) => htmx.trigger(elt, type, detail, bubbles),
                 debounce: getDebounce(elt),
                 take: (name, scope) => applyTake([elt], name, scope),
-                toggle: (name, values) => applyToggle(name, values, elt),
+                toggle: (name, ...values) => applyToggle(elt, name, ...values),
                 attr: makeAttrProxy([elt]),
                 insert: (pos, html) => elt.insertAdjacentHTML(positions[pos], html),
                 matches: (sel) => elt.matches(sel),

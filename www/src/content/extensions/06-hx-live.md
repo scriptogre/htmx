@@ -411,12 +411,17 @@ Toggle or cycle a class, ARIA attribute, or attribute on this element.
 toggle('.active')                      // toggle class
 toggle('aria-expanded')                // flip "true" ↔ "false"
 toggle('hidden')                       // toggle attribute presence
-toggle('data-view', 'grid|list|table') // cycle attribute through values
-toggle('.size', 'sm|md|lg')            // cycle classes (one at a time)
-toggle('data-open', 'on|')             // cycle: 'on' ↔ absent
+toggle('data-view', 'grid', 'list')    // cycle attribute through values
+toggle('.size', 'sm', 'md', 'lg')      // cycle classes (one at a time)
+toggle('data-open', 'on', '')          // cycle: 'on' ↔ absent
 ```
 
-`values` accepts a `|`-separated string or an array.
+Values can also arrive as one `|`-separated string or one array:
+
+```js
+toggle('data-view', 'grid|list|table')
+toggle('data-view', ['grid', 'list', 'table'])
+```
 
 Use `@` sugar to spell the attribute name once:
 
@@ -741,7 +746,7 @@ Use `toggle()` and `take()` for transitions:
 <div data-syntax="standard">
 
 ```html
-<button data-active="false"
+<button data-active
         hx-on:click="toggle('data-active')">Toggle details</button>
 
 <button data-view="grid"
@@ -753,7 +758,7 @@ Use `toggle()` and `take()` for transitions:
 <div data-syntax="at">
 
 ```html
-<button data-active="false"
+<button data-active
         hx-on:click="toggle(@data-active)">Toggle details</button>
 
 <button data-view="grid"
@@ -761,6 +766,8 @@ Use `toggle()` and `take()` for transitions:
 ```
 
 </div>
+
+Without values, `toggle()` adds or removes the attribute. Pass values to cycle through them.
 
 Use `take()` to move state between siblings:
 
