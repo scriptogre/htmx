@@ -2878,6 +2878,50 @@ describe('hx-live extension', function () {
             div.hasAttribute('my-flag').should.equal(false);
         });
 
+        it('reads number and range inputs as numbers', function() {
+            playground().innerHTML = `
+                <input id="n" type="number" value="18">
+                <input id="r" type="range" min="0" max="100" value="50">
+                <button hx-on:click="window.__vals = [q('#n').@value, q('#r').@value, q('#n').@value + 1]"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__vals.should.deep.equal([18, 50, 19]);
+            delete window.__vals;
+        });
+
+        it('leaves other input types as strings', function() {
+            playground().innerHTML = `
+                <input id="t" type="text" value="007">
+                <button hx-on:click="window.__val = q('#t').@value"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__val.should.equal('007');
+            delete window.__val;
+        });
+
+        it('reads an empty number input as null', function() {
+            playground().innerHTML = `
+                <input id="n" type="number">
+                <button hx-on:click="window.__val = q('#n').@value"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            assert.isNull(window.__val);
+            delete window.__val;
+        });
+
+        it('renders an empty number input as empty text', async function() {
+            playground().innerHTML = `
+                <input id="n" type="number">
+                <output :text="q('#n').@value"></output>
+            `;
+            htmx.process(playground());
+            await htmx.timeout(5);
+            playground().querySelector('output').textContent.should.equal('');
+        });
+
         it('reaches custom attributes', function() {
             let div = createProcessedHTML(`
                 <div hx-on:click="@my-attr = 'on'; window.__custom = @my-attr"></div>

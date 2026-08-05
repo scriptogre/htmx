@@ -78,6 +78,7 @@
     ]);
     let PROPERTY_BINDING_ATTRS = new Set(['checked','value','selected']);
     let STRINGY_BOOLEAN_ATTRS = new Set(['contenteditable','draggable','spellcheck']);
+    let NUMERIC_INPUT_TYPES = new Set(['number', 'range']);
     let NUMERIC_ATTRS = new Set([
         'tabindex','colspan','rowspan','maxlength','minlength',
         'size','span','start','rows','cols','width','height'
@@ -106,6 +107,9 @@
         if (rest.length === 0) {
             let e = elts[0];
             if (!e) return undefined;
+            if (name === 'value' && NUMERIC_INPUT_TYPES.has(e.type)) {
+                return e.value === '' ? null : e.valueAsNumber;
+            }
             if (PROPERTY_BINDING_ATTRS.has(name)) return e[name];
             if (BOOLEAN_ATTRS.has(name)) return e.hasAttribute(name);
             let raw = e.getAttribute(name);
