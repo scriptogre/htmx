@@ -22,6 +22,107 @@ The paragraph updates as you type.
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/hx-live.min.js"></script>
 ```
 
+<div class="not-prose flex flex-wrap gap-3 mb-8">
+  <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+    <input id="hyperscript-toggle" type="checkbox" class="sr-only peer">
+    <span class="px-2.5 py-1 text-xs rounded border border-neutral-200 dark:border-neutral-800 peer-checked:bg-amber-100 peer-checked:border-amber-300 dark:peer-checked:bg-amber-900 dark:peer-checked:border-amber-700">I love \_hyperscript</span>
+  </label>
+  <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+    <input id="jquery-toggle" type="checkbox" class="sr-only peer">
+    <span class="px-2.5 py-1 text-xs rounded border border-neutral-200 dark:border-neutral-800 peer-checked:bg-sky-100 peer-checked:border-sky-300 dark:peer-checked:bg-sky-900 dark:peer-checked:border-sky-700">I love jQuery</span>
+  </label>
+</div>
+
+<div data-dollar class="not-prose mb-8 p-3 text-sm bg-sky-50 border border-sky-200 rounded dark:bg-sky-950 dark:border-sky-800">
+  Enable <code>useDollar</code> to use <code>$()</code> as a <code>q()</code> alias:
+
+  <pre class="mt-2"><code>&lt;meta name="htmx-config" content="live.useDollar:true"></code></pre>
+
+  Then write:
+
+  <pre class="mt-2"><code>$('#cart').class.active = true
+$('.row').attr('hidden', true)</code></pre>
+</div>
+
+## Attribute References
+
+Prefix an HTML attribute name with `@` to read or write its typed value.
+
+```html
+<button aria-pressed="false"
+        hx-on:click="@aria-pressed = !@aria-pressed">
+    Mute
+</button>
+
+<div data-count="0">
+    <button hx-on:click="@data-count++">Vote</button>
+</div>
+```
+
+`@` compiles to the same typed proxies as `data.*` and `aria.*`. Choose the spelling you prefer:
+
+<div data-syntax="standard">
+
+```js
+data.count++
+aria.pressed = !aria.pressed
+```
+
+</div>
+
+<div data-syntax="at">
+
+```js
+@data-count++
+@aria-pressed = !@aria-pressed
+```
+
+</div>
+
+`@` works after `q()`:
+
+```js
+q('#cart').@data-count++
+```
+
+For class membership, use `@.name`:
+
+<div data-syntax="standard">
+
+```js
+class.active = !class.active
+```
+
+</div>
+
+<div data-syntax="at">
+
+```js
+@.active = !@.active
+```
+
+</div>
+
+Set several classes at once with `@class = { ... }`, the imperative form of `:class="{ ... }"`:
+
+<div data-syntax="standard">
+
+```html
+<button hx-on:click="class = { active: true, loading: false }">Finish</button>
+```
+
+</div>
+
+<div data-syntax="at">
+
+```html
+<button hx-on:click="@class = { active: true, loading: false }">Finish</button>
+```
+
+</div>
+
+`@` is optional. The `data.*`, `aria.*`, and `class.*` proxies work everywhere with the same typed behavior.
+
 ## Idiomatic hx-live
 
 Keep local UI state in the DOM, close to the elements that use it:
@@ -48,6 +149,15 @@ Use these principles:
 7. **Use `hx-live` last.** Reserve the imperative form for multi-step work, asynchronous work, and side effects that a binding cannot express.
 
 Keep every expression safe to run again. DOM changes, input events, and htmx swaps can all recompute live expressions.
+
+<style>
+  [data-syntax] { display: none; }
+  [data-syntax="standard"] { display: block; }
+  body:has(#hyperscript-toggle:checked) [data-syntax="standard"] { display: none; }
+  body:has(#hyperscript-toggle:checked) [data-syntax="at"] { display: block; }
+  [data-dollar] { display: none; }
+  body:has(#jquery-toggle:checked) [data-dollar] { display: block; }
+</style>
 
 ## Attributes
 
@@ -282,22 +392,42 @@ this.checked = false
 this.value = 'hello'
 ```
 
-Use [`classes.*`](#classes) for class membership and [`aria.*`](#aria) for typed ARIA values.
+Use [`class.*`](#class) for class membership and [`aria.*`](#aria) for typed ARIA values.
 
 ### `toggle(name, values?)`
 
-Toggle (no `values`) or cycle (with `values`) a class or attribute on this element.
+Toggle or cycle a class, ARIA attribute, or attribute on this element.
 
 ```js
 toggle('.active')                      // toggle class
 toggle('aria-expanded')                // flip "true" ↔ "false"
 toggle('hidden')                       // toggle attribute presence
 toggle('data-view', 'grid|list|table') // cycle attribute through values
-toggle('.size', 'sm|md|lg')            // cycle classes (only one at a time)
+toggle('.size', 'sm|md|lg')            // cycle classes (one at a time)
 toggle('data-open', 'on|')             // cycle: 'on' ↔ absent
 ```
 
 `values` accepts a `|`-separated string or an array.
+
+Use `@` sugar to spell the attribute name once:
+
+<div data-syntax="standard">
+
+```js
+toggle('aria-expanded')
+toggle('data-view', 'grid', 'list')
+```
+
+</div>
+
+<div data-syntax="at">
+
+```js
+toggle(@aria-expanded)
+toggle(@data-view, 'grid', 'list')
+```
+
+</div>
 
 ### `take(name, scope?)`
 
@@ -309,44 +439,95 @@ take('aria-current', 'nav a')          // become the current nav item
 take('.active')                        // implicit scope: parent element's subtree
 ```
 
-### `classes`
+Use `@` sugar:
+
+<div data-syntax="standard">
+
+```js
+take('aria-selected')
+take('.active')
+```
+
+</div>
+
+<div data-syntax="at">
+
+```js
+take(@aria-selected)
+take(@.active)
+```
+
+</div>
+
+### `class`
 
 Read and write class membership on this element:
 
 ```html
 <button class="pending"
         hx-on:click="
-            classes.pending = false;
-            classes.done = true
+            class.pending = false;
+            class.done = true
         ">
     Finish
 </button>
 ```
 
-Use bracket notation for class names that are not JavaScript identifiers. Assignment, deletion, `:class`, and `:.<class>` all use the same membership rules:
+Use bracket notation for class names that are not JavaScript identifiers:
 
 ```js
-classes['is-active'] = true
-delete classes.pending
-Object.assign(classes, { loading: true, done: false })
+class['is-active'] = true
+delete class.pending
 ```
 
-The proxy is enumerable, so `Object.keys(classes)` and `{ ...classes }` return the element's current classes with `true` values.
+Set several classes at once with `@class = { ... }` or `class = { ... }`:
+
+<div data-syntax="standard">
+
+```html
+<button hx-on:click="class = { active: true, loading: false }">Finish</button>
+```
+
+</div>
+
+<div data-syntax="at">
+
+```html
+<button hx-on:click="@class = { active: true, loading: false }">Finish</button>
+```
+
+</div>
 
 Use `q()` to access another element:
 
 ```js
-q('#menu').classes.open = true
+q('#menu').class.open = true
 ```
 
-Boolean class values support direct transitions:
+`toggle()` and `take()` work on classes by name:
 
 ```js
-classes.active.toggle()
-classes.selected.take()
+toggle('.active')
+take('.selected')
 ```
 
-`toggle()` flips membership. `take()` removes the class from siblings under the same parent, then adds it to this element.
+Use `@.name` for attribute-shaped spelling:
+
+<div data-syntax="standard">
+
+```js
+toggle('.active')
+```
+
+</div>
+
+<div data-syntax="at">
+
+```js
+toggle(@.active)
+```
+
+</div>
 
 ### `aria`
 
@@ -377,29 +558,53 @@ q(this).aria.busy    // aria-busy on this
 q('#form').aria.busy // aria-busy on the selected form
 ```
 
-Call transitions directly on an existing ARIA value:
+Use `toggle()` and `take()` for transitions:
+
+<div data-syntax="standard">
 
 ```html
 <button aria-pressed="false"
-        hx-on:click="aria.pressed.toggle()">
+        hx-on:click="toggle('aria-pressed')">
     Mute
 </button>
 
 <button aria-sort="ascending"
-        hx-on:click="aria.sort.toggle('ascending', 'descending')">
+        hx-on:click="toggle('aria-sort', 'ascending', 'descending')">
     Name
 </button>
-```
 
-Boolean values flip when `toggle()` has no arguments. With arguments, `toggle()` moves to the next listed value. `take()` writes `"false"` on sibling owners under the same parent, then writes `"true"` on this owner:
-
-```html
 <div role="tablist">
     <button role="tab" aria-selected="true">One</button>
     <button role="tab" aria-selected="false"
-            hx-on:click="aria.selected.take()">Two</button>
+            hx-on:click="take('aria-selected')">Two</button>
 </div>
 ```
+
+</div>
+
+<div data-syntax="at">
+
+```html
+<button aria-pressed="false"
+        hx-on:click="toggle(@aria-pressed)">
+    Mute
+</button>
+
+<button aria-sort="ascending"
+        hx-on:click="toggle(@aria-sort, 'ascending', 'descending')">
+    Name
+</button>
+
+<div role="tablist">
+    <button role="tab" aria-selected="true">One</button>
+    <button role="tab" aria-selected="false"
+            hx-on:click="take(@aria-selected)">Two</button>
+</div>
+```
+
+</div>
+
+`toggle()` flips boolean ARIA between `"true"` and `"false"`. `take()` writes `"false"` on sibling owners, then `"true"` on this owner.
 
 Each form uses the same value rules. You can use these values as booleans, numbers, and arrays:
 
@@ -530,33 +735,55 @@ On write, hx-live converts booleans, numbers, arrays, and objects to JSON. On re
 
 Plain strings that aren't valid JSON are returned as-is.
 
-Call `toggle()` directly on an existing value. A Boolean flips without arguments. Other values cycle through the listed JavaScript values:
+Use `toggle()` and `take()` for transitions:
+
+<div data-syntax="standard">
 
 ```html
-<div data-active="false" data-view="grid">
-    <button hx-on:click="data.active.toggle()">Toggle details</button>
-    <button hx-on:click="data.view.toggle('grid', 'list')">Change view</button>
+<button data-active="false"
+        hx-on:click="toggle('data-active')">Toggle details</button>
+
+<button data-view="grid"
+        hx-on:click="toggle('data-view', 'grid', 'list')">Change view</button>
+```
+
 </div>
+
+<div data-syntax="at">
+
+```html
+<button data-active="false"
+        hx-on:click="toggle(@data-active)">Toggle details</button>
+
+<button data-view="grid"
+        hx-on:click="toggle(@data-view, 'grid', 'list')">Change view</button>
 ```
 
-The first button writes `data-active="true"`. The second writes `data-view="list"`.
+</div>
 
-Explicit cycles preserve types and use the normal data writer:
+Use `take()` to move state between siblings:
 
-```js
-data.active.toggle(true, false, '')
-```
-
-This cycles through `"true"`, `"false"`, and an empty `data-active=""` attribute.
-
-Use `take()` to move attribute presence between siblings:
+<div data-syntax="standard">
 
 ```html
 <div>
     <button data-active="">One</button>
-    <button hx-on:click="data.active.take()" data-active="">Two</button>
+    <button hx-on:click="take('data-active')" data-active="">Two</button>
 </div>
 ```
+
+</div>
+
+<div data-syntax="at">
+
+```html
+<div>
+    <button data-active="">One</button>
+    <button hx-on:click="take(@data-active)" data-active="">Two</button>
+</div>
+```
+
+</div>
 
 Clicking Two removes `data-active` from One and leaves an empty `data-active=""` on Two.
 
@@ -720,7 +947,7 @@ For a single inline section, native [`<details>`](https://developer.mozilla.org/
 
 ```html
 <header>
-    <button hx-on:click="aria.expanded.toggle()" aria-expanded="false">Menu</button>
+    <button hx-on:click="toggle('aria-expanded')" aria-expanded="false">Menu</button>
 </header>
 <aside :hidden="!q('header button').aria.expanded">...</aside>
 ```
@@ -728,7 +955,7 @@ For a single inline section, native [`<details>`](https://developer.mozilla.org/
 **Toggle button.**
 
 ```html
-<button hx-on:click="aria.pressed.toggle()" aria-pressed="false">Bold</button>
+<button hx-on:click="toggle('aria-pressed')" aria-pressed="false">Bold</button>
 ```
 
 ```css
@@ -739,13 +966,13 @@ For a single inline section, native [`<details>`](https://developer.mozilla.org/
 
 ```html
 <div role="tablist">
-    <button role="tab" hx-on:click="aria.selected.take()" aria-selected="true">A</button>
-    <button role="tab" hx-on:click="aria.selected.take()" aria-selected="false">B</button>
-    <button role="tab" hx-on:click="aria.selected.take()" aria-selected="false">C</button>
+    <button role="tab" hx-on:click="take('aria-selected')" aria-selected="true">A</button>
+    <button role="tab" hx-on:click="take('aria-selected')" aria-selected="false">B</button>
+    <button role="tab" hx-on:click="take('aria-selected')" aria-selected="false">C</button>
 </div>
 ```
 
-`aria.selected.take()` writes `"false"` on sibling ARIA owners under the tablist, then writes `"true"` on the clicked tab.
+`take('aria-selected')` writes `"false"` on every other tab, then `"true"` on this one.
 
 **Loading state.**
 
@@ -993,10 +1220,10 @@ Defaults to `false`.
 
 ## Notes
 
-- Fluent `toggle()` and `take()` calls must be chained directly from `aria.*`, `data.*`, or `classes.*`.
-- ARIA and data attributes must already exist before you call a fluent method. Missing values are `null` or `undefined`, which cannot expose methods.
-- Fluent methods are available on Boolean, string, and number values until the next microtask. Read the value again after `await`.
-- `null`, arrays, and objects remain normal JavaScript values without fluent methods.
+- `@` syntax is optional. `data.*`, `aria.*`, and `class.*` proxies work with or without it.
+- `@` compiles to the same typed proxies. `@aria-pressed` and `aria.pressed` are identical at runtime.
+- The `@` scanner runs before `new Function()`. It skips strings, comments, regex literals, and raw template text.
+- `toggle(@aria-pressed)` and `take(@aria-selected)` are recognized by the scanner and emit string arguments. Use `toggle('aria-pressed')` without `@`.
 - Expressions run on any DOM mutation. There is no per-variable tracking. The microtask coalescing keeps this cheap, but expensive expressions should `debounce` or guard themselves.
 - The DOM is the source of truth. To share state between expressions, use ARIA attributes, `data-*` attributes (the `data` proxy makes this ergonomic), or hidden inputs.
 - When using morph swap styles (`innerMorph` / `outerMorph`), server responses will overwrite `data-*` attributes by default. To preserve client-side state during morphs, add a prefix to `morphIgnore` — e.g. `morphIgnore:["data-"]` will protect all `data-*` attributes from being overwritten. Non-morph swaps (`innerHTML`, `outerHTML`) replace the DOM entirely, so state should live on an ancestor element that isn't swapped.
