@@ -159,6 +159,89 @@
         return s.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
     }
 
+    function kebabToCamel(s) {
+        return s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+    }
+
+    let CODE = new RegExp([
+        /\/\/.*/,                                            // line comment
+        /\/\*[\s\S]*?\*\//,                                  // block comment
+        /'(?:[^'\\]|\\.)*'/,                                 // single-quoted string
+        /"(?:[^"\\]|\\.)*"/,                                 // double-quoted string
+        /\/(?:\\.|\[(?:\\.|[^\]])*\]|[^\/\\\n[])+\/[a-z]*/,  // regex literal
+        /@\.?[A-Za-z][\w-]*/,                                // @attribute sigil
+        /[\w$]+/,                                            // identifier or number
+        /\S/                                                 // any other character
+    ].map(part => part.source).join('|'), 'g');
+    let TEMPLATE_TEXT = /(?:\\.|\$(?!\{)|[^`\\$])*(`|\$\{|$)/y;
+    let TOGGLE_OR_TAKE_CALL = /\b(?:toggle|take)\(\s*$/;
+    let CLASS_ACCESS = /^\s*(?:[.[]|=[^=>])/;
+    let DIVIDE_AFTER = /^(?:[\w$]+|[)\]}v])$/;
+    let REGEX_WORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
+
+    function member(key) {
+        return /^[A-Za-z_$][\w$]*$/.test(key) ? '.' + key : `[${JSON.stringify(key)}]`;
+    }
+
+    // '@aria-expanded' -> 'aria.expanded', '@.active' -> '__hxLive.class.active'.
+    // After a dot (q('#x').@hidden) the base is the q() proxy, not this.
+    function sigilCode(name, afterDot) {
+        if (name === 'class') return afterDot ? 'class' : '__hxLive.class';
+        if (name[0] === '.') return (afterDot ? '' : '__hxLive.') + 'class' + member(name.slice(1));
+        if (name.startsWith('aria-')) return 'aria' + member(name.slice(5));
+        if (name.startsWith('data-')) return 'data' + member(kebabToCamel(name.slice(5)));
+        return (afterDot ? '' : 'this.') + (name === 'for' ? 'htmlFor' : kebabToCamel(name));
+    }
+
+    function scanLive(src) {
+        if (!/@|\bclass\b/.test(src)) return src;
+        let out = '';
+        let stack = [];  // '`' template text, '$' inside ${...}, '{' block
+        let prev = '';   // previous token, 'v' for any value
+        let i = 0;
+
+        while (i < src.length) {
+            if (stack.at(-1) === '`') {
+                TEMPLATE_TEXT.lastIndex = i;
+                let [text, stop] = TEMPLATE_TEXT.exec(src);
+                out += text;
+                i += text.length;
+                if (stop === '`') stack.pop();
+                else if (stop) stack.push('$');
+                prev = stop === '`' ? 'v' : '{';
+                continue;
+            }
+
+            CODE.lastIndex = i;
+            let match = CODE.exec(src);
+            if (!match) { out += src.slice(i); break; }
+            let token = match[0];
+            out += src.slice(i, match.index);
+            i = match.index + token.length;
+
+            if (token[0] === '/' && (token[1] === '/' || token[1] === '*')) {
+                out += token;  // comments do not update prev
+            } else if (token[0] === '/' && token.length > 1 && DIVIDE_AFTER.test(prev) && !REGEX_WORDS.has(prev)) {
+                out += '/';  // division, not a regex: re-read from the next character
+                i = match.index + 1;
+                prev = '/';
+            } else if (token[0] === '@') {
+                let name = token.slice(1);
+                out += TOGGLE_OR_TAKE_CALL.test(out) ? `'${name}'` : sigilCode(name, prev === '.');
+                prev = 'v';
+            } else if (token === 'class' && prev !== '.' && CLASS_ACCESS.test(src.slice(i))) {
+                out += '__hxLive.class';
+                prev = 'v';
+            } else {
+                if (token === '`' || token === '{') stack.push(token);
+                else if (token === '}') stack.pop();
+                out += token;
+                prev = /^['"/]/.test(token) ? 'v' : token;
+            }
+        }
+        return out;
+    }
+
     let booleanAria = new Set([
         'atomic',
         'busy',
@@ -208,7 +291,7 @@
         if (!elt.classList.length) elt.removeAttribute('class');
     }
 
-    function makeClassesProxy(elt) {
+    function makeClassProxy(elt) {
         return new Proxy({}, {
             get: (_, name) => typeof name === 'string' ? elt.classList.contains(name) : undefined,
             set: (_, name, value) => {
@@ -353,24 +436,36 @@
         }
     }
 
-    function applyMultiClass(elt, value) {
-        let prop = api.htmxProp(elt);
-        let oldManaged = prop.liveClasses || new Set();
-        let newManaged = new Set();
+    function setClasses(elt, value) {
+        if (!value || typeof value !== 'object') {
+            console.warn(`htmx: class = expects an object, got ${typeof value}. Use attr('class', ...) to replace the attribute.`, { elt });
+            return;
+        }
+        writeClasses(elt, value);
+    }
 
+    function writeClasses(elt, value) {
+        let written = [];
         if (typeof value === 'string') {
             for (let c of value.trim().split(/\s+/).filter(Boolean)) {
-                newManaged.add(c);
+                written.push(c);
                 writeClass(elt, c, true);
             }
         } else if (value && typeof value === 'object') {
             for (let [key, cond] of Object.entries(value)) {
                 for (let c of key.trim().split(/\s+/).filter(Boolean)) {
-                    newManaged.add(c);
+                    written.push(c);
                     writeClass(elt, c, cond);
                 }
             }
         }
+        return written;
+    }
+
+    function applyMultiClass(elt, value) {
+        let prop = api.htmxProp(elt);
+        let oldManaged = prop.liveClasses || new Set();
+        let newManaged = new Set(writeClasses(elt, value));
         for (let c of oldManaged) if (!newManaged.has(c)) writeClass(elt, c, false);
         prop.liveClasses = newManaged;
     }
@@ -583,7 +678,7 @@
                     return proxy;
                 };
                 if (p === 'data') return elts[0] ? makeDataProxy(elts[0], false) : undefined;
-                if (p === 'classes') return elts[0] ? makeClassesProxy(elts[0]) : undefined;
+                if (p === 'class') return elts[0] ? makeClassProxy(elts[0]) : undefined;
                 if (arrayMethods.has(p)) return elts[p].bind(elts);
                 if (p === 'aria') return elts[0] ? makeAriaProxy(elts[0], false) : undefined;
                 let v = elts[0]?.[p];
@@ -592,7 +687,8 @@
                 return v;
             },
             set: (_, p, v) => {
-                elts.forEach(e => e[p] = v);
+                if (p === 'class') elts.forEach(e => setClasses(e, v));
+                else elts.forEach(e => e[p] = v);
                 schedule();
                 return true;
             }
@@ -785,11 +881,15 @@
                 insert: (pos, html) => elt.insertAdjacentHTML(positions[pos], html),
                 matches: (sel) => elt.matches(sel),
                 style: elt.style,
-                classes: makeClassesProxy(elt),
                 data: makeDataProxy(elt),
-                aria: makeAriaProxy(elt)
+                aria: makeAriaProxy(elt),
+                __hxLive: {
+                    get class() { return makeClassProxy(elt); },
+                    set class(value) { setClasses(elt, value); }
+                }
             });
             if (htmx.config.live?.useDollar) detail.scope.$ = detail.scope.q;
+            detail.code = scanLive(detail.code);
         }
     });
 })();
