@@ -191,6 +191,8 @@
         /"(?:[^"\\]|\\.)*"/,                                 // double-quoted string
         /\/(?:\\.|\[(?:\\.|[^\]])*\]|[^\/\\\n[])+\/[a-z]*/,  // regex literal
         /[@^]\.?[A-Za-z][\w-]*\*?/,                          // @ and ^ attribute sigils
+        /<[^<\n]*?\/>/,                                      // query literal
+        /#[A-Za-z_][\w-]*/,                                  // id selector
         /[\w$]+/,                                            // identifier or number
         /\S/                                                 // any other character
     ].map(part => part.source).join('|'), 'g');
@@ -217,7 +219,7 @@
     }
 
     function scanLive(src) {
-        if (!/[@^]|\bclass\b/.test(src)) return src;
+        if (!/[@^#<]|\bclass\b/.test(src)) return src;
         let out = '';
         let stack = [];  // '`' template text, '$' inside ${...}, '{' block
         let prev = '';   // previous token, 'v' for any value
@@ -252,6 +254,19 @@
                 out += '^';
                 i = match.index + 1;
                 prev = '^';
+            } else if (token[0] === '<' && token.length > 1) {
+                // `<` is only ever binary in JS, so a value before it rules out a query literal.
+                if (ENDS_VALUE.test(prev) && !REGEX_WORDS.has(prev)) {
+                    out += '<';
+                    i = match.index + 1;
+                    prev = '<';
+                } else {
+                    out += `__hxLive.find(${JSON.stringify(token.slice(1, -2).trim())})`;
+                    prev = 'v';
+                }
+            } else if (token[0] === '#') {
+                out += `__hxLive.find(${JSON.stringify(token)})`;
+                prev = 'v';
             } else if (token[0] === '@' || token[0] === '^') {
                 let name = token.slice(1);
                 let afterDot = prev === '.' && !out.endsWith('...');
@@ -949,7 +964,7 @@
                 data: makeDataProxy(elt),
                 aria: makeAriaProxy(elt, false),
                 closest: makeClosestScope(elt),
-                __hxLive: { q: qProxy([elt]) }
+                __hxLive: { q: qProxy([elt]), find: makeQ(elt) }
             });
             if (htmx.config.live?.useDollar) detail.scope.$ = detail.scope.q;
             detail.code = scanLive(detail.code);

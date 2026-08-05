@@ -3205,6 +3205,105 @@ describe('hx-live extension', function () {
 
     });
 
+    describe('selector literals', function() {
+
+        it('#id selects by id', function() {
+            playground().innerHTML = `
+                <div id="cart" data-count="1"></div>
+                <button hx-on:click="#cart.@data-count++"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            playground().querySelector('#cart').dataset.count.should.equal('2');
+        });
+
+        it('#id accepts hyphens', function() {
+            playground().innerHTML = `
+                <div id="tab-one"></div>
+                <button hx-on:click="#tab-one.@.active = true"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            playground().querySelector('#tab-one').classList.contains('active').should.equal(true);
+        });
+
+        it('<.class/> selects every match', function() {
+            playground().innerHTML = `
+                <span class="row"></span>
+                <span class="row"></span>
+                <button hx-on:click="<.row/>.@hidden = true"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            [...playground().querySelectorAll('.row')].every(e => e.hidden).should.equal(true);
+        });
+
+        it('<previous input/> resolves htmx relative selectors', function() {
+            playground().innerHTML = `
+                <input value="typed">
+                <button hx-on:click="window.__near = <previous input/>.@value"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__near.should.equal('typed');
+            delete window.__near;
+        });
+
+        it('<...> accepts combinators and attribute selectors', function() {
+            playground().innerHTML = `
+                <div class="a"><b class="c" data-x="1"></b></div>
+                <button hx-on:click="window.__hits = [
+                    <.a > .c/>.count,
+                    <[data-x='1']/>.count
+                ]"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__hits.should.deep.equal([1, 1]);
+            delete window.__hits;
+        });
+
+        it('leaves less-than comparisons alone', function() {
+            let button = createProcessedHTML(`
+                <button hx-on:click="window.__cmp = [1 < 2, 5 < 3, (8) < 9/3]"></button>
+            `);
+            button.click();
+            window.__cmp.should.deep.equal([true, false, false]);
+            delete window.__cmp;
+        });
+
+        it('leaves # and < inside strings, comments and templates alone', function() {
+            let button = createProcessedHTML(`
+                <button hx-on:click="window.__raw = [
+                    '#cart', '<.row/>', \`#a <.b/>\`, /* #c <.d/> */ 1 // #e
+                ]"></button>
+            `);
+            button.click();
+            window.__raw.should.deep.equal(['#cart', '<.row/>', '#a <.b/>', 1]);
+            delete window.__raw;
+        });
+
+        it('works alongside q()', function() {
+            playground().innerHTML = `
+                <div id="cart" data-count="1"></div>
+                <button hx-on:click="#cart.@data-count = q('#cart').@data-count + 4"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            playground().querySelector('#cart').dataset.count.should.equal('5');
+        });
+
+        it('works in :attr bindings', function() {
+            playground().innerHTML = `
+                <div id="src" data-count="3"></div>
+                <output :text="#src.@data-count * 2"></output>
+            `;
+            htmx.process(playground());
+            playground().querySelector('output').textContent.should.equal('6');
+        });
+
+    });
+
     // -------------------------------------------------------------------------
     // Open concerns for the sigil design. Each test asserts the behavior we
     // want, not the behavior we have today. A skipped test here is a known
