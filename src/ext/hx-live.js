@@ -945,7 +945,7 @@
                 matches: (sel) => elt.matches(sel),
                 style: elt.style,
                 data: makeDataProxy(elt),
-                aria: makeAriaProxy(elt),
+                aria: makeAriaProxy(elt, false),
                 closest: makeClosestScope(elt),
                 __hxLive: { q: qProxy([elt]) }
             });

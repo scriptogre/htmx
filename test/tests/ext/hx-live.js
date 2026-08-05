@@ -3083,6 +3083,20 @@ describe('hx-live extension', function () {
             delete window.__spread;
         });
 
+        it('aria is local, data cascades', function() {
+            playground().innerHTML = `
+                <section aria-busy="true" data-count="7">
+                    <button hx-on:click="
+                        window.__defaults = [aria.busy, data.count, ^aria-busy, @data-count]
+                    "></button>
+                </section>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__defaults.should.deep.equal([undefined, 7, true, undefined]);
+            delete window.__defaults;
+        });
+
         it('leaves bitwise XOR alone', function() {
             let button = createProcessedHTML(`
                 <button hx-on:click="window.__xor = [5 ^ 3, (2) ^ 1, 6 ^ ^data-x]" data-x="1"></button>

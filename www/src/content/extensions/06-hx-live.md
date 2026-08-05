@@ -1221,10 +1221,10 @@ Defaults to `false`.
 
 ## Notes
 
-- `@` syntax is optional. `data.*`, `aria.*`, and `class.*` proxies work with or without it.
-- `@` compiles to the same typed proxies. `@aria-pressed` and `aria.pressed` are identical at runtime.
-- The `@` scanner runs before `new Function()`. It skips strings, comments, regex literals, and raw template text.
-- `toggle(@aria-pressed)` and `take(@aria-selected)` are recognized by the scanner and emit string arguments. Use `toggle('aria-pressed')` without `@`.
+- The sigils are optional. Every one has a plain spelling through `q()`.
+- `data.*` is the only namespace that walks up to ancestors. `aria.*`, `class.*`, and `attr.*` read this element, so `@aria-pressed` and `aria.pressed` are identical.
+- The scanner runs before `new Function()`. It skips strings, comments, regex literals, and raw template text, and treats `^` as bitwise XOR when a value precedes it.
+- `toggle(@aria-pressed)` and `take(@aria-selected)` emit string arguments. Without a sigil, write `toggle('aria-pressed')`.
 - Expressions run on any DOM mutation. There is no per-variable tracking. The microtask coalescing keeps this cheap, but expensive expressions should `debounce` or guard themselves.
 - The DOM is the source of truth. To share state between expressions, use ARIA attributes, `data-*` attributes (the `data` proxy makes this ergonomic), or hidden inputs.
 - When using morph swap styles (`innerMorph` / `outerMorph`), server responses will overwrite `data-*` attributes by default. To preserve client-side state during morphs, add a prefix to `morphIgnore` — e.g. `morphIgnore:["data-"]` will protect all `data-*` attributes from being overwritten. Non-morph swaps (`innerHTML`, `outerHTML`) replace the DOM entirely, so state should live on an ancestor element that isn't swapped.
