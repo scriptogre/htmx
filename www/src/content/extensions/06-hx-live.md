@@ -54,6 +54,18 @@ The paragraph updates as you type.
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/hx-live.min.js"></script>
 ```
 
+The sigils (`@`, `^`) and selector literals (`#id`, `<.../>`) are a separate opt-in extension. Add it for the shorter syntax:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/hx-live-hyperscript.min.js"></script>
+```
+
+```html
+<body hx-ext="hx-live,hx-live-hyperscript">
+```
+
+It rewrites expressions into plain `q()` calls before they compile, so it adds syntax and no runtime behavior. Everything on this page works without it, spelled out through [`q()`](#q).
+
 ## Attribute References
 
 State lives in attributes. `@` reads and writes the attribute on this element:
@@ -103,6 +115,35 @@ Without a key, the sigil names the whole namespace:
 ```
 
 `@data` is the literal `data` attribute, which `<object data="...">` has.
+
+### Selector literals
+
+`#id` selects by id without wrapping it in `q()`:
+
+```html
+<div id="cart" data-count="0"></div>
+<button hx-on:click="#cart.@data-count++">Add</button>
+```
+
+For everything else, `<.../>` holds any selector [`q()`](#q) accepts:
+
+```js
+<.row/>.@hidden = true          // q('.row')
+<previous input/>.@value        // q('previous input')
+<.a > .c/>.count                // combinators
+<[data-x='1']/>.count           // attribute selectors
+<.foo in #scope/>               // the selector grammar
+```
+
+Both resolve through `q()`, so they read from the first match and write to all.
+
+| Literal | Plain |
+|---------|-------|
+| `#cart` | `q('#cart')` |
+| `<.row/>` | `q('.row')` |
+| `<previous input/>` | `q('previous input')` |
+
+A value before `<` still means less-than, so `1 < 2` and `count < max` are untouched. `#a-b` is an id, not subtraction.
 
 ### Setting several classes
 
@@ -346,6 +387,8 @@ q('.foo in this')               // restrict to the current element
 ```
 
 `next`, `previous`, and `closest` resolve against `this` (the element that owns the expression). They only work inside `hx-live` / `hx-on` scopes.
+
+With `hx-live-hyperscript`, the same grammar is available as [selector literals](#selector-literals): `q('previous .foo')` can be written `<previous .foo/>`.
 
 **Chaining** 
 
@@ -1130,7 +1173,10 @@ htmx.live.q('.row')
 htmx.live.$('.row')
 htmx.live.attr('.row', 'hidden', true)
 htmx.live.take('.tab.active', '.active', '.tab')
+htmx.live.toggle('.tab', 'data-view', 'grid', 'list')
 ```
+
+Sigils and selector literals are not available here. `htmx.live.*` is plain JavaScript, and the rewrite only runs on attribute expressions.
 
 `htmx.live.refresh()` forces a recompute. Use it when an expression reads from a source the observer cannot see (a JS variable, a getter, an external store) and you've just mutated it.
 
@@ -1228,9 +1274,10 @@ Defaults to `false`.
 
 ## Notes
 
-- The sigils are optional. Every one has a plain spelling through `q()`.
+- The sigils and selector literals live in the separate `hx-live-hyperscript` extension. Every one has a plain spelling through `q()`.
 - `data.*` is the only namespace that walks up to ancestors. `aria.*`, `class.*`, and `attr.*` read this element, so `@aria-pressed` and `aria.pressed` are identical.
-- The scanner runs before `new Function()`. It skips strings, comments, regex literals, and raw template text, and treats `^` as bitwise XOR when a value precedes it.
+- The rewrite runs before `new Function()`. It skips strings, comments, regex literals, and raw template text, and leaves `^` and `<` alone when a value precedes them.
+- The rewrite targets `q()` by name. Shadowing `q` in an expression also shadows the sugar.
 - `toggle(@aria-pressed)` and `take(@aria-selected)` emit string arguments. Without a sigil, write `toggle('aria-pressed')`.
 - Expressions run on any DOM mutation. There is no per-variable tracking. The microtask coalescing keeps this cheap, but expensive expressions should `debounce` or guard themselves.
 - The DOM is the source of truth. To share state between expressions, use ARIA attributes, `data-*` attributes (the `data` proxy makes this ergonomic), or hidden inputs.
