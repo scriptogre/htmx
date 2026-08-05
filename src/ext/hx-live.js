@@ -190,14 +190,14 @@
         /'(?:[^'\\]|\\.)*'/,                                 // single-quoted string
         /"(?:[^"\\]|\\.)*"/,                                 // double-quoted string
         /\/(?:\\.|\[(?:\\.|[^\]])*\]|[^\/\\\n[])+\/[a-z]*/,  // regex literal
-        /@\.?[A-Za-z][\w-]*/,                                // @attribute sigil
+        /[@^]\.?[A-Za-z][\w-]*/,                             // @ and ^ attribute sigils
         /[\w$]+/,                                            // identifier or number
         /\S/                                                 // any other character
     ].map(part => part.source).join('|'), 'g');
     let TEMPLATE_TEXT = /(?:\\.|\$(?!\{)|[^`\\$])*(`|\$\{|$)/y;
     let TOGGLE_OR_TAKE_CALL = /\b(?:toggle|take)\(\s*$/;
     let CLASS_ACCESS = /^\s*(?:[.[]|=[^=>])/;
-    let DIVIDE_AFTER = /^(?:[\w$]+|[)\]}v])$/;
+    let ENDS_VALUE = /^(?:[\w$]+|[)\]}v])$/;
     let REGEX_WORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
 
     function member(key) {
@@ -206,16 +206,18 @@
 
     // '@aria-expanded' -> 'aria.expanded', '@.active' -> '__hxLive.class.active'.
     // After a dot (q('#x').@hidden) the base is the q() proxy, not this.
-    function sigilCode(name, afterDot) {
-        if (name === 'class') return afterDot ? 'class' : '__hxLive.class';
-        if (name[0] === '.') return (afterDot ? '' : '__hxLive.') + 'class' + member(name.slice(1));
-        if (name.startsWith('aria-')) return 'aria' + member(name.slice(5));
-        if (name.startsWith('data-')) return 'data' + member(kebabToCamel(name.slice(5)));
-        return 'attr' + member(name);
+    function sigilCode(name, afterDot, cascades) {
+        let root = cascades ? 'closest.' : '';
+        let bare = !cascades && !afterDot;
+        if (name === 'class') return root + (bare ? '__hxLive.class' : 'class');
+        if (name[0] === '.') return root + (bare ? '__hxLive.' : '') + 'class' + member(name.slice(1));
+        if (name.startsWith('aria-')) return root + 'aria' + member(name.slice(5));
+        if (name.startsWith('data-')) return root + 'data' + member(kebabToCamel(name.slice(5)));
+        return root + 'attr' + member(name);
     }
 
     function scanLive(src) {
-        if (!/@|\bclass\b/.test(src)) return src;
+        if (!/[@^]|\bclass\b/.test(src)) return src;
         let out = '';
         let stack = [];  // '`' template text, '$' inside ${...}, '{' block
         let prev = '';   // previous token, 'v' for any value
@@ -242,13 +244,19 @@
 
             if (token[0] === '/' && (token[1] === '/' || token[1] === '*')) {
                 out += token;  // comments do not update prev
-            } else if (token[0] === '/' && token.length > 1 && DIVIDE_AFTER.test(prev) && !REGEX_WORDS.has(prev)) {
+            } else if (token[0] === '/' && token.length > 1 && ENDS_VALUE.test(prev) && !REGEX_WORDS.has(prev)) {
                 out += '/';  // division, not a regex: re-read from the next character
                 i = match.index + 1;
                 prev = '/';
-            } else if (token[0] === '@') {
+            } else if (token[0] === '^' && ENDS_VALUE.test(prev) && !REGEX_WORDS.has(prev)) {
+                out += '^';
+                i = match.index + 1;
+                prev = '^';
+            } else if (token[0] === '@' || token[0] === '^') {
                 let name = token.slice(1);
-                out += TOGGLE_OR_TAKE_CALL.test(out) ? `'${name}'` : sigilCode(name, prev === '.');
+                out += TOGGLE_OR_TAKE_CALL.test(out)
+                    ? `'${name}'`
+                    : sigilCode(name, prev === '.', token[0] === '^');
                 prev = 'v';
             } else if (token === 'class' && prev !== '.' && CLASS_ACCESS.test(src.slice(i))) {
                 out += '__hxLive.class';
@@ -331,6 +339,42 @@
                 ? { enumerable: true, configurable: true }
                 : undefined
         });
+    }
+
+    function makeClosestClassProxy(elt) {
+        let owner = name => elt.closest('.' + CSS.escape(name));
+        return new Proxy({}, {
+            get: (_, name) => typeof name === 'string' ? !!owner(name) : undefined,
+            set: (_, name, value) => {
+                if (typeof name !== 'string') return false;
+                writeClass(owner(name) || elt, name, value);
+                return true;
+            },
+            deleteProperty: (_, name) => {
+                if (typeof name !== 'string') return false;
+                let found = owner(name);
+                if (found) writeClass(found, name, false);
+                return true;
+            }
+        });
+    }
+
+    function makeClosestAttrProxy(elt) {
+        let owner = name => elt.closest('[' + CSS.escape(name) + ']') || elt;
+        return new Proxy({}, {
+            get: (_, name) => typeof name === 'string' ? applyAttr([owner(name)], name) : undefined,
+            set: (_, name, value) => { applyAttr([owner(name)], name, value); return true; },
+            deleteProperty: (_, name) => { applyAttr([owner(name)], name, null); return true; }
+        });
+    }
+
+    function makeClosestScope(elt) {
+        return {
+            get data() { return makeDataProxy(elt, true); },
+            get aria() { return makeAriaProxy(elt, true); },
+            get class() { return makeClosestClassProxy(elt); },
+            get attr() { return makeClosestAttrProxy(elt); }
+        };
     }
 
     function writeAria(elt, key, value) {
@@ -696,6 +740,7 @@
                 if (p === 'attr') return makeAttrProxy(elts);
                 if (p === 'data') return elts[0] ? makeDataProxy(elts[0], false) : undefined;
                 if (p === 'class') return elts[0] ? makeClassProxy(elts[0]) : undefined;
+                if (p === 'closest') return elts[0] ? makeClosestScope(elts[0]) : undefined;
                 if (arrayMethods.has(p)) return elts[p].bind(elts);
                 if (p === 'aria') return elts[0] ? makeAriaProxy(elts[0], false) : undefined;
                 let v = elts[0]?.[p];
@@ -898,8 +943,9 @@
                 insert: (pos, html) => elt.insertAdjacentHTML(positions[pos], html),
                 matches: (sel) => elt.matches(sel),
                 style: elt.style,
-                data: makeDataProxy(elt),
-                aria: makeAriaProxy(elt),
+                data: makeDataProxy(elt, false),
+                aria: makeAriaProxy(elt, false),
+                closest: makeClosestScope(elt),
                 __hxLive: {
                     get class() { return makeClassProxy(elt); },
                     set class(value) { setClasses(elt, value); }

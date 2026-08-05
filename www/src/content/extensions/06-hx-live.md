@@ -15,6 +15,38 @@ Expressions live in HTML attributes. They read from the page, write to it, and r
 
 The paragraph updates as you type.
 
+<div class="mb-6 flex flex-col gap-8 text-neutral-700 dark:text-neutral-300">
+  <label class="inline-flex items-center gap-5 cursor-pointer select-none">
+    <span class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full bg-neutral-300 has-checked:bg-neutral-600 dark:bg-neutral-700 dark:has-checked:bg-neutral-300">
+      <input id="hyperscript-toggle" type="checkbox" class="peer sr-only">
+      <span class="inline-block size-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 peer-checked:translate-x-5 dark:bg-neutral-900"></span>
+    </span>
+    <span class="grid gap-2">
+      <span class="flex items-center gap-1.5 text-base">
+        <img src="/img/hyperscript-logo-trim.png" class="not-prose h-5 w-auto dark:hidden" alt="" aria-hidden="true">
+        <img src="/img/hyperscript-logo-light-trim.png" class="not-prose h-5 w-auto hidden dark:inline" alt="" aria-hidden="true">
+        <span class="-translate-y-0.5">enjoyer</span>
+      </span>
+      <span class="text-base text-neutral-700 dark:text-neutral-200">Use <code>@attribute</code> syntax</span>
+    </span>
+  </label>
+  <label class="inline-flex items-center gap-5 cursor-pointer select-none">
+    <span class="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full bg-neutral-300 has-checked:bg-neutral-600 dark:bg-neutral-700 dark:has-checked:bg-neutral-300">
+      <input id="jquery-toggle" type="checkbox" class="peer sr-only">
+      <span class="inline-block size-4 rounded-full bg-white shadow-sm transition-transform translate-x-0.5 peer-checked:translate-x-5 dark:bg-neutral-900"></span>
+    </span>
+    <span class="grid gap-2">
+      <span class="flex items-center gap-1.5 text-base">
+        <img src="/img/jquery-logo.svg" class="not-prose h-12 w-auto -my-3" alt="" aria-hidden="true">
+        <span class="-translate-y-0.5">enjoyer</span>
+      </span>
+      <span class="text-base text-neutral-700 dark:text-neutral-200">Use <code>$(...)</code> instead of <code>q(...)</code></span>
+    </span>
+  </label>
+</div>
+
+<hr class="mb-6 border-neutral-200 dark:border-neutral-800">
+
 ## Installing
 
 ```html
@@ -22,88 +54,54 @@ The paragraph updates as you type.
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/hx-live.min.js"></script>
 ```
 
-<div class="not-prose flex flex-wrap gap-3 mb-8">
-  <label class="inline-flex items-center gap-2 cursor-pointer select-none">
-    <input id="hyperscript-toggle" type="checkbox" class="sr-only peer">
-    <span class="px-2.5 py-1 text-xs rounded border border-neutral-200 dark:border-neutral-800 peer-checked:bg-amber-100 peer-checked:border-amber-300 dark:peer-checked:bg-amber-900 dark:peer-checked:border-amber-700">I love \_hyperscript</span>
-  </label>
-  <label class="inline-flex items-center gap-2 cursor-pointer select-none">
-    <input id="jquery-toggle" type="checkbox" class="sr-only peer">
-    <span class="px-2.5 py-1 text-xs rounded border border-neutral-200 dark:border-neutral-800 peer-checked:bg-sky-100 peer-checked:border-sky-300 dark:peer-checked:bg-sky-900 dark:peer-checked:border-sky-700">I love jQuery</span>
-  </label>
-</div>
-
-<div data-dollar class="not-prose mb-8 p-3 text-sm bg-sky-50 border border-sky-200 rounded dark:bg-sky-950 dark:border-sky-800">
-  Enable <code>useDollar</code> to use <code>$()</code> as a <code>q()</code> alias:
-
-  <pre class="mt-2"><code>&lt;meta name="htmx-config" content="live.useDollar:true"></code></pre>
-
-  Then write:
-
-  <pre class="mt-2"><code>$('#cart').class.active = true
-$('.row').attr('hidden', true)</code></pre>
-</div>
-
 ## Attribute References
 
-Prefix an HTML attribute name with `@` to read or write its typed value.
+State lives in attributes. `@` reads and writes the attribute on this element:
 
 ```html
 <button aria-pressed="false"
         hx-on:click="@aria-pressed = !@aria-pressed">
     Mute
 </button>
+```
 
+`^` finds the nearest element that has the attribute, starting at this one:
+
+```html
 <div data-count="0">
-    <button hx-on:click="@data-count++">Vote</button>
+    <button hx-on:click="^data-count++">Vote</button>
 </div>
 ```
 
-`@` compiles to the same typed proxies as `data.*` and `aria.*`. Choose the spelling you prefer:
+The button has no `data-count`, so `^data-count` reads and writes the one on the div.
 
-<div data-syntax="standard">
+Values are typed by attribute name. `aria-pressed` is a boolean, `data-count` is JSON, `tabindex` is a number.
 
-```js
-data.count++
-aria.pressed = !aria.pressed
-```
+### Without the sigils
 
-</div>
+Both sigils are sugar. `@` uses the bare proxy, `^` uses `closest`:
 
-<div data-syntax="at">
+| Sigil | Plain |
+|-------|-------|
+| `@data-count` | `data.count` |
+| `^data-count` | `closest.data.count` |
+| `@aria-pressed` | `aria.pressed` |
+| `^aria-pressed` | `closest.aria.pressed` |
+| `@.active` | `class.active` |
+| `^.active` | `closest.class.active` |
+| `@readonly` | `attr.readonly` |
+| `^readonly` | `closest.attr.readonly` |
 
-```js
-@data-count++
-@aria-pressed = !@aria-pressed
-```
-
-</div>
-
-`@` works after `q()`:
-
-```js
-q('#cart').@data-count++
-```
-
-For class membership, use `@.name`:
-
-<div data-syntax="standard">
+Both work after `q()`:
 
 ```js
-class.active = !class.active
+q('#cart').@data-count++      // data-count on #cart
+q('#cart').^data-count++      // nearest data-count from #cart up
 ```
 
-</div>
+### Setting several classes
 
-<div data-syntax="at">
-
-```js
-@.active = !@.active
-```
-
-</div>
-
-Set several classes at once with `@class = { ... }`, the imperative form of `:class="{ ... }"`:
+`@class = { ... }` writes a group of classes. Each key states its own value, and classes you don't mention are left alone:
 
 <div data-syntax="standard">
 
@@ -121,7 +119,7 @@ Set several classes at once with `@class = { ... }`, the imperative form of `:cl
 
 </div>
 
-`@` is optional. The `data.*`, `aria.*`, and `class.*` proxies work everywhere with the same typed behavior.
+Only the object form is accepted. To replace the whole attribute, use `attr['class'] = 'foo bar'`.
 
 ## Idiomatic hx-live
 
@@ -142,7 +140,7 @@ Use these principles:
 
 1. **Start with the browser.** Prefer native HTML behavior, native DOM properties, and CSS before adding hx-live.
 2. **Choose one state owner.** Store each value in one native property, ARIA attribute, `data-*` attribute, or form control. Derive everything else from it.
-3. **Use the narrowest shared scope.** Put shared `data-*` state on the nearest common ancestor. Bare `data.*` intentionally checks the current element, then its ancestors.
+3. **Use the narrowest shared scope.** Put shared `data-*` state on the nearest common ancestor, then reach it with `^data-*`.
 4. **Read state directly.** Prefer native properties, `aria.*`, and `data.*` over selectors and raw attribute access. Use `q()` when the source is outside the current scope.
 5. **Bind derived state.** Use `:<attr>` for values that follow other DOM state. Use [`hx-on`](/reference/attributes/hx-on) for user actions.
 6. **Let CSS handle presentation.** Style native states and semantic attributes instead of maintaining parallel presentation classes.
@@ -198,7 +196,7 @@ Bind a single class to an expression. Truthy adds it, falsy removes it.
 
 ```html
 <input type="number" value="0">
-<p :.warn="q('previous input').valueAsNumber < 0">Negative balance</p>
+<p :.warn="q('previous input').@value < 0">Negative balance</p>
 ```
 
 ### `:class`
@@ -207,7 +205,7 @@ String form: set the listed classes.
 
 ```html
 <input type="number" value="0">
-<div :class="q('previous input').valueAsNumber < 18 ? 'warn big' : 'ok'"></div>
+<div :class="q('previous input').@value < 18 ? 'warn big' : 'ok'"></div>
 ```
 
 Object form: each key is added or removed by the truthiness of its value.
@@ -215,8 +213,8 @@ Object form: each key is added or removed by the truthiness of its value.
 ```html
 <input type="number" value="0">
 <div :class="{
-    warn: q('previous input').valueAsNumber < 18,
-    ok:   q('previous input').valueAsNumber >= 18
+    warn: q('previous input').@value < 18,
+    ok:   q('previous input').@value >= 18
 }"></div>
 ```
 
@@ -236,7 +234,7 @@ Bind the element's [`textContent`](https://developer.mozilla.org/en-US/docs/Web/
 ```html
 <input type="number" value="2">
 <input type="number" value="3">
-<p :text="q('first input').valueAsNumber * q('last input').valueAsNumber"></p>
+<p :text="q('first input').@value * q('last input').@value"></p>
 ```
 
 Numbers and other non-strings are stringified.
@@ -295,16 +293,16 @@ An escape hatch. Use it when no single `:<attr>` fits, or for multi-step logic a
 The helpers work inside `hx-live` expressions, inside [`hx-on`](/reference/attributes/hx-on) event handlers, and from regular JavaScript via `htmx.live.*`.
 
 ```js
-htmx.live.q('.row').attr('hidden', true);
+htmx.live.q('.row').attr.hidden = true;
 ```
 
 Inside expressions, `this` is the element, the full htmx API is available unprefixed, and `await` works at the top level (expressions are `async` functions).
 
 ```html
 <button hx-on:click="
-    attr('disabled', true);
+    attr.disabled = true;
     await ajax('POST', '/save');
-    attr('disabled', false);
+    delete attr.disabled;
 ">Save</button>
 ```
 
@@ -361,35 +359,41 @@ For plain descendant queries, CSS is shorter: `q('.card .title')` and `q('.card'
 The helpers below also work as methods on the proxy, applying across all matched elements:
 
 ```js
-q('input').attr('disabled', true)        // set attribute on all
+q('input').attr.disabled = true          // set attribute on all
 q('.row').toggle('.selected')            // toggle class on each
 q('.tab.active').take('.active', '.tab') // move a class from peers to self
 q('.tab').trigger('select', { id: 1 })   // CustomEvent on each
 q('.list').insert('end', '<li>new</li>') // before / after / start / end
 ```
 
-### `attr(name, value?)`
+### `attr`
 
-Get or set an HTML attribute on this element. Pass one argument to read, two to write.
+Read and write HTML attributes on this element.
 
 ```js
-attr('hidden')                  // boolean attribute presence
-attr('hidden', true)            // add hidden
-attr('hidden', false)           // remove hidden
-attr('aria-expanded', false)    // write aria-expanded="false"
-attr('contenteditable', false)  // write contenteditable="false"
-attr('class', 'foo bar')        // replace the raw class attribute
-attr('value', 'hello')          // set the value attribute
-attr('data-x', null)            // remove data-x
+attr.hidden                     // boolean attribute presence
+attr.hidden = true              // add hidden
+delete attr.hidden              // remove hidden
+attr['aria-expanded'] = false   // write aria-expanded="false"
+attr.contenteditable = false    // write contenteditable="false"
+attr['class'] = 'foo bar'       // replace the raw class attribute
+attr.value = 'hello'            // set the value
+delete attr['data-x']           // remove data-x
 ```
 
-`checked` and `selected` also return attribute presence. `value` returns the attribute value. `attr()` never reads or writes the current `checked`, `selected`, or `value` properties.
+Use bracket notation for names that are not JavaScript identifiers, and for computed names.
 
-Use native properties for current control state:
+`checked`, `selected`, and `value` read the live control state and write both the property and the attribute, so the two never drift apart.
+
+On `<input type="number">` and `<input type="range">`, `value` reads as a number, and as `null` when the field is empty. Every other control reads as a string, so `<input type="text" value="007">` stays `"007"`.
+
+Numeric attributes (`tabindex`, `colspan`, `rowspan`, `maxlength`, `minlength`, `size`, `span`, `start`, `rows`, `cols`, `width`, `height`) read as numbers.
+
+Use `delete` to remove an attribute. Assigning `false` writes `"false"`.
 
 ```js
-this.checked = false
-this.value = 'hello'
+delete attr['data-x']
+attr['data-x'] = null
 ```
 
 Use [`class.*`](#class) for class membership and [`aria.*`](#aria) for typed ARIA values.
@@ -480,7 +484,7 @@ class['is-active'] = true
 delete class.pending
 ```
 
-Set several classes at once with `@class = { ... }` or `class = { ... }`:
+Set several classes at once with `@class = { ... }` or `class = { ... }`. Only the object form is accepted. To replace the whole attribute, use `attr['class'] = 'foo bar'`:
 
 <div data-syntax="standard">
 
@@ -535,27 +539,20 @@ Read and write ARIA attributes on this element or an ancestor:
 
 ```html
 <div aria-busy="false">
-    <button hx-on:click="aria.busy = !aria.busy">Toggle</button>
-    <output :hidden="!aria.busy">Busy</output>
+    <button hx-on:click="^aria-busy = !^aria-busy">Toggle</button>
+    <output :hidden="!^aria-busy">Busy</output>
 </div>
 ```
 
-Both `aria.busy` expressions use `aria-busy` on the div. If no element has the attribute, a write adds it to the current element:
+Both expressions use `aria-busy` on the div, because neither element has its own.
 
-```html
-<!-- This... -->
-<button hx-on:click="aria.pressed = true">Like</button>
-
-<!-- ...becomes this after click -->
-<button hx-on:click="aria.pressed = true" aria-pressed="true">Like</button>
-```
-
-Use bare `aria` for shared state. Use `q()` for one element:
+`aria.*` reads this element. `closest.aria.*` walks up until it finds the attribute, and a write with no owner adds it to this element:
 
 ```js
-aria.busy            // closest aria-busy, starting at this
-q(this).aria.busy    // aria-busy on this
-q('#form').aria.busy // aria-busy on the selected form
+aria.busy                   // aria-busy on this element
+closest.aria.busy           // nearest aria-busy, starting at this
+q('#form').aria.busy        // aria-busy on the selected form
+q('#form').closest.aria.busy // nearest aria-busy from #form up
 ```
 
 Use `toggle()` and `take()` for transitions:
@@ -703,33 +700,32 @@ Read and write `data-*` attributes as JSON or plain text.
 
 ```html
 <div data-size="medium">
-    <button hx-on:click="data.size = 'small'">S</button>
-    <button hx-on:click="data.size = 'medium'">M</button>
-    <button hx-on:click="data.size = 'large'">L</button>
-    <p :text="`Size: ${data.size}`"></p>
+    <button hx-on:click="^data-size = 'small'">S</button>
+    <button hx-on:click="^data-size = 'medium'">M</button>
+    <button hx-on:click="^data-size = 'large'">L</button>
+    <p :text="`Size: ${^data-size}`"></p>
 </div>
 ```
 
-Use bare `data` for shared state. Use `q()` for one element:
+`data.*` reads this element. `closest.data.*` walks up until it finds the attribute:
 
 ```js
-data.count            // closest data-count, starting at this
-q(this).data.count    // data-count on this
-q('#cart').data.count // data-count on the selected cart
+data.count                    // data-count on this element
+closest.data.count            // nearest data-count, starting at this
+q('#cart').data.count         // data-count on the selected cart
+q('#cart').closest.data.count // nearest data-count from #cart up
 ```
-
-`data.*` checks the current element, then each ancestor. `q(...).data` checks the selected element only.
 
 On write, hx-live converts booleans, numbers, arrays, and objects to JSON. On read, it converts the JSON back to JavaScript values:
 
 ```html
 <div data-count="1" data-active="false" data-cart="[]">
     <input id="sku" placeholder="Product code">
-    <button hx-on:click="data.cart = [...data.cart, {sku: q('#sku').value, qty: data.count}]">Add to cart</button>
-    <button hx-on:click="data.count++">+</button>
-    <button hx-on:click="data.count--">−</button>
-    <button hx-on:click="data.active = !data.active">Toggle details</button>
-    <p :text="`Qty: ${data.count} | ${data.cart.length} items in cart`"></p>
+    <button hx-on:click="^data-cart = [...^data-cart, {sku: q('#sku').value, qty: ^data-count}]">Add to cart</button>
+    <button hx-on:click="^data-count++">+</button>
+    <button hx-on:click="^data-count--">−</button>
+    <button hx-on:click="^data-active = !^data-active">Toggle details</button>
+    <p :text="`Qty: ${^data-count} | ${^data-cart.length} items in cart`"></p>
 </div>
 ```
 
@@ -804,10 +800,10 @@ Here, `hx-vals` receives `{ x: 1, y: 3 }`.
 Delete a value or assign `undefined` to remove its attribute:
 
 ```js
-data.count = undefined       // remove the closest data-count
-delete data.count            // remove the closest data-count
-delete q(this).data.count    // remove data-count from this
-delete q('#cart').data.count // remove data-count from the selected cart
+data.count = undefined         // remove data-count from this element
+delete data.count              // remove data-count from this element
+delete closest.data.count      // remove the nearest data-count
+delete q('#cart').data.count   // remove data-count from the selected cart
 ```
 
 `data.count = null` writes `data-count="null"`. `data.count = ''` writes an empty `data-count=""` attribute.
@@ -824,7 +820,7 @@ Because `:<attr>` works on `data-*`, you can also store derived values in the DO
 ```html
 <div data-first="Ada" data-last="Lovelace"
      :data-full="data.first + ' ' + data.last">
-    <span :text="data.full"></span>
+    <span :text="^data-full"></span>
 </div>
 ```
 
@@ -992,7 +988,7 @@ For a single inline section, native [`<details>`](https://developer.mozilla.org/
 ```html
 <a :aria-current="location.pathname === '/home' ? 'page' : false" href="/home">Home</a>
 <button :aria-pressed="state.bold ? 'mixed' : !!state.bold">Bold</button>
-<div role="slider" :aria-valuenow="q('#slider').valueAsNumber"></div>
+<div role="slider" :aria-valuenow="q('#slider').@value"></div>
 ```
 
 ## Advanced Examples
@@ -1104,12 +1100,12 @@ When an `hx-live` element is removed, its expression drops out on the next sched
 <input :value="'hello'">                    <!-- .value = "hello", value="hello"     -->
 ```
 
-**Anything else.** Stringify the value. `null`, `undefined`, or `false` remove the attribute.
+**Anything else.** Stringify the value. `null` or `undefined` remove the attribute.
 
 ```html
 <a :href="'/profile'">    <!-- <a href="/profile"> -->
 <a :href="null">          <!-- <a>                 -->
-<a :href="false">         <!-- <a>                 -->
+<a :href="false">         <!-- <a href="false">    -->
 <a :href="''">            <!-- <a href="">         -->
 ```
 

@@ -1379,7 +1379,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section aria-busy="true">
                 <form aria-busy="false">
-                    <button :disabled="aria.busy" hx-on:click="aria.busy = !aria.busy">Save</button>
+                    <button :disabled="closest.aria.busy" hx-on:click="closest.aria.busy = !closest.aria.busy">Save</button>
                 </form>
             </section>
         `;
@@ -1583,9 +1583,9 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <div aria-valuenow="50" aria-current="page">
                 <button hx-on:click="
-                    aria.valueNow = 51;
-                    aria.label = 'Save';
-                    delete aria.current
+                    closest.aria.valueNow = 51;
+                    closest.aria.label = 'Save';
+                    delete closest.aria.current
                 ">change</button>
             </div>
         `;
@@ -1601,7 +1601,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section aria-busy="true">
                 <button type="button" hx-on:click="
-                    window.__localState = [q(this).aria.busy, aria.busy];
+                    window.__localState = [q(this).aria.busy, closest.aria.busy];
                     q(this).aria.busy = false;
                     window.__localAfter = q(this).aria.busy
                 ">change</button>
@@ -1684,7 +1684,7 @@ describe('hx-live extension', function () {
 
     it('data.active = undefined removes the attribute', function() {
         let button = createProcessedHTML(`
-            <button data-active="true" hx-on:click="data.active = undefined"></button>
+            <button data-active="true" hx-on:click="closest.data.active = undefined"></button>
         `);
         button.click();
         button.hasAttribute('data-active').should.equal(false);
@@ -1798,7 +1798,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section data-count="1">
                 <button hx-on:click="
-                    window.__dataState = [q(this).data.count, data.count];
+                    window.__dataState = [q(this).data.count, closest.data.count];
                     await timeout(5);
                     q(this).data.count = 2
                 ">change</button>
@@ -1828,7 +1828,7 @@ describe('hx-live extension', function () {
     it('delete data.foo removes the closest matching attribute', function() {
         playground().innerHTML = `
             <section data-state="active">
-                <button hx-on:click="delete data.state">clear</button>
+                <button hx-on:click="delete closest.data.state">clear</button>
             </section>
         `;
         htmx.process(playground());
@@ -1839,7 +1839,7 @@ describe('hx-live extension', function () {
     it('data.foo reads this.dataset.foo when present locally', async function() {
         playground().innerHTML = `
             <div id="me" data-foo="local"
-                 hx-on:click="this.dataset.v = data.foo">x</div>
+                 hx-on:click="this.dataset.v = closest.data.foo">x</div>
         `;
         htmx.process(playground());
         let elt = playground().querySelector('#me');
@@ -1851,7 +1851,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section data-currency="USD">
                 <article>
-                    <span id="me" hx-on:click="this.dataset.v = data.currency">x</span>
+                    <span id="me" hx-on:click="this.dataset.v = closest.data.currency">x</span>
                 </article>
             </section>
         `;
@@ -1863,7 +1863,7 @@ describe('hx-live extension', function () {
 
     it('data.foo returns undefined when no ancestor has it', async function() {
         playground().innerHTML = `
-            <div id="me" hx-on:click="this.dataset.v = (data.nonexistent === undefined ? 'undef' : 'set')">x</div>
+            <div id="me" hx-on:click="this.dataset.v = (closest.data.nonexistent === undefined ? 'undef' : 'set')">x</div>
         `;
         htmx.process(playground());
         let elt = playground().querySelector('#me');
@@ -1875,7 +1875,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section data-mode="outer">
                 <article data-mode="inner">
-                    <span id="me" hx-on:click="this.dataset.v = data.mode">x</span>
+                    <span id="me" hx-on:click="this.dataset.v = closest.data.mode">x</span>
                 </article>
             </section>
         `;
@@ -1889,7 +1889,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section data-counter="0">
                 <article>
-                    <button id="me" hx-on:click="data.counter = +data.counter + 1">+</button>
+                    <button id="me" hx-on:click="closest.data.counter = +closest.data.counter + 1">+</button>
                 </article>
             </section>
         `;
@@ -1904,7 +1904,7 @@ describe('hx-live extension', function () {
 
     it('data.foo = "x" writes to this when no ancestor has data-foo', async function() {
         playground().innerHTML = `
-            <button id="me" hx-on:click="data.fresh = 'created'">x</button>
+            <button id="me" hx-on:click="closest.data.fresh = 'created'">x</button>
         `;
         htmx.process(playground());
         let btn = playground().querySelector('#me');
@@ -1915,7 +1915,7 @@ describe('hx-live extension', function () {
     it('data.foo++ works (auto-coerces to number)', async function() {
         playground().innerHTML = `
             <section data-counter="5">
-                <button id="me" hx-on:click="data.counter++">+</button>
+                <button id="me" hx-on:click="closest.data.counter++">+</button>
             </section>
         `;
         htmx.process(playground());
@@ -1928,7 +1928,7 @@ describe('hx-live extension', function () {
     it('data proxy: boolean round-trips through JSON', async function() {
         playground().innerHTML = `
             <section data-active="false">
-                <button id="me" hx-on:click="data.active = !data.active">toggle</button>
+                <button id="me" hx-on:click="closest.data.active = !closest.data.active">toggle</button>
             </section>
         `;
         htmx.process(playground());
@@ -1943,7 +1943,7 @@ describe('hx-live extension', function () {
     it('data proxy: number round-trips through JSON', async function() {
         playground().innerHTML = `
             <section data-count="0">
-                <button id="me" hx-on:click="data.count = data.count + 1">+</button>
+                <button id="me" hx-on:click="closest.data.count = closest.data.count + 1">+</button>
             </section>
         `;
         htmx.process(playground());
@@ -1959,8 +1959,8 @@ describe('hx-live extension', function () {
     it('data proxy: object round-trips through JSON', async function() {
         playground().innerHTML = `
             <section data-user='{"name":"alice","age":30}'>
-                <button id="me" hx-on:click="data.user = {...data.user, age: data.user.age + 1}">bday</button>
-                <span id="out" hx-on:click="this.dataset.v = data.user.name + ':' + data.user.age">read</span>
+                <button id="me" hx-on:click="closest.data.user = {...closest.data.user, age: closest.data.user.age + 1}">bday</button>
+                <span id="out" hx-on:click="this.dataset.v = closest.data.user.name + ':' + closest.data.user.age">read</span>
             </section>
         `;
         htmx.process(playground());
@@ -1978,8 +1978,8 @@ describe('hx-live extension', function () {
     it('data proxy: array round-trips through JSON', async function() {
         playground().innerHTML = `
             <section data-items='[]'>
-                <button id="add" hx-on:click="data.items = [...data.items, data.items.length]">add</button>
-                <span id="out" hx-on:click="this.dataset.v = data.items.length">count</span>
+                <button id="add" hx-on:click="closest.data.items = [...closest.data.items, closest.data.items.length]">add</button>
+                <span id="out" hx-on:click="this.dataset.v = closest.data.items.length">count</span>
             </section>
         `;
         htmx.process(playground());
@@ -1999,7 +1999,7 @@ describe('hx-live extension', function () {
     it('data proxy: plain string stays as string', async function() {
         playground().innerHTML = `
             <div data-label="hello">
-                <span id="me" hx-on:click="this.dataset.v = typeof data.label + ':' + data.label">x</span>
+                <span id="me" hx-on:click="this.dataset.v = typeof closest.data.label + ':' + closest.data.label">x</span>
             </div>
         `;
         htmx.process(playground());
@@ -2011,7 +2011,7 @@ describe('hx-live extension', function () {
     it('data proxy: null round-trips through JSON', async function() {
         playground().innerHTML = `
             <section data-val="null">
-                <span id="me" hx-on:click="this.dataset.v = (data.val === null ? 'is-null' : 'not-null')">x</span>
+                <span id="me" hx-on:click="this.dataset.v = (closest.data.val === null ? 'is-null' : 'not-null')">x</span>
             </section>
         `;
         htmx.process(playground());
@@ -2023,7 +2023,7 @@ describe('hx-live extension', function () {
     it('with (data) { foo++ } increments cascading value', async function() {
         playground().innerHTML = `
             <section data-counter="10">
-                <button id="me" hx-on:click="with (data) { counter++ }">+</button>
+                <button id="me" hx-on:click="with (closest.data) { counter++ }">+</button>
             </section>
         `;
         htmx.process(playground());
@@ -2037,7 +2037,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section data-x="5" data-y="3">
                 <button id="me" hx-on:click="
-                    with (data) {
+                    with (closest.data) {
                         this.dataset.sum = +x + +y;
                     }
                 ">x</button>
@@ -2052,7 +2052,7 @@ describe('hx-live extension', function () {
     it('data.kebabKey camelCase translation works', async function() {
         playground().innerHTML = `
             <div data-my-value="hello">
-                <span id="me" hx-on:click="this.dataset.v = data.myValue">x</span>
+                <span id="me" hx-on:click="this.dataset.v = closest.data.myValue">x</span>
             </div>
         `;
         htmx.process(playground());
@@ -2065,7 +2065,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section data-x="1" data-y="2" data-user='{"name":"alice"}'>
                 <article data-y="3">
-                    <button id="me" hx-on:click="window.__spreadDataLive = { ...data }">x</button>
+                    <button id="me" hx-on:click="window.__spreadDataLive = { ...closest.data }">x</button>
                 </article>
             </section>
         `;
@@ -2083,7 +2083,7 @@ describe('hx-live extension', function () {
             <section data-x="1" data-y="2">
                 <button data-y="3"
                         hx-post="/cursor"
-                        hx-vals="js:{ ...data }">
+                        hx-vals="js:{ ...closest.data }">
                     Send cursor
                 </button>
             </section>
@@ -2102,9 +2102,9 @@ describe('hx-live extension', function () {
             <section data-x="1" data-y="2">
                 <article data-y="3" data-z="4">
                     <button id="me" hx-on:click="
-                        window.__keysDataLive = Object.keys(data);
-                        window.__valuesDataLive = Object.values(data);
-                        window.__entriesDataLive = Object.entries(data);
+                        window.__keysDataLive = Object.keys(closest.data);
+                        window.__valuesDataLive = Object.values(closest.data);
+                        window.__entriesDataLive = Object.entries(closest.data);
                     ">x</button>
                 </article>
             </section>
@@ -2121,7 +2121,7 @@ describe('hx-live extension', function () {
         playground().innerHTML = `
             <section data-x="1" data-y="2" data-z="3">
                 <button id="me" hx-on:click="
-                    let { x, ...rest } = data;
+                    let { x, ...rest } = closest.data;
                     window.__restDataLive = rest;
                 ">x</button>
             </section>
@@ -2137,7 +2137,7 @@ describe('hx-live extension', function () {
     it('data is reactive in :attr expressions (re-runs on ancestor data change)', async function() {
         playground().innerHTML = `
             <section data-mode="light">
-                <div :class="{ darkmode: data.mode === 'dark' }"></div>
+                <div :class="{ darkmode: closest.data.mode === 'dark' }"></div>
             </section>
         `;
         htmx.process(playground());
@@ -2159,12 +2159,12 @@ describe('hx-live extension', function () {
                 <div id="flash"
                      data-message=""
                      data-level=""
-                     hx-on="flash -> data.message = message; data.level = level;
+                     hx-on="flash -> closest.data.message = message; closest.data.level = level;
                                      await timeout(3000);
-                                     data.message = ''"
-                     :text="data.message"
-                     :.success="data.level === 'success'"
-                     :.error="data.level === 'error'"></div>
+                                     closest.data.message = ''"
+                     :text="closest.data.message"
+                     :.success="closest.data.level === 'success'"
+                     :.error="closest.data.level === 'error'"></div>
             `;
             htmx.process(playground());
             let source = playground().querySelector('#source');
@@ -2418,7 +2418,7 @@ describe('hx-live extension', function () {
 
     it(':style replaces an old shorthand with a new longhand', async function() {
         playground().innerHTML = `
-            <div data-all="true" :style="data.all
+            <div data-all="true" :style="closest.data.all
                 ? 'border: 1px solid red'
                 : 'border-left-color: green'"></div>
         `;
@@ -2739,10 +2739,10 @@ describe('hx-live extension', function () {
             button.getAttribute('aria-pressed').should.equal('false');
         });
 
-        it('cascades @aria-name to the closest owner', function() {
+        it('^aria-name finds the closest owner', function() {
             playground().innerHTML = `
                 <div aria-busy="false">
-                    <button hx-on:click="@aria-busy = !@aria-busy">Go</button>
+                    <button hx-on:click="^aria-busy = !^aria-busy">Go</button>
                 </div>
             `;
             htmx.process(playground());
@@ -2750,10 +2750,10 @@ describe('hx-live extension', function () {
             playground().querySelector('div').getAttribute('aria-busy').should.equal('true');
         });
 
-        it('reads and writes typed JSON through @data-name', function() {
+        it('reads and writes typed JSON through ^data-name', function() {
             playground().innerHTML = `
                 <div data-count="0">
-                    <button hx-on:click="@data-count++">Vote</button>
+                    <button hx-on:click="^data-count++">Vote</button>
                 </div>
             `;
             htmx.process(playground());
@@ -2991,6 +2991,88 @@ describe('hx-live extension', function () {
             playground().querySelector('button').click();
             playground().querySelector('#cart').dataset.count.should.equal('2');
             playground().querySelector('.row').hasAttribute('hidden').should.equal(true);
+        });
+
+        it('@ reads this element only, ^ walks up', function() {
+            playground().innerHTML = `
+                <section data-count="7">
+                    <button hx-on:click="window.__both = [@data-count, ^data-count]"></button>
+                </section>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__both.should.deep.equal([undefined, 7]);
+            delete window.__both;
+        });
+
+        it('^ writes to the owner, @ writes to this element', function() {
+            playground().innerHTML = `
+                <section data-count="1">
+                    <button hx-on:click="^data-count++; @data-count = 'mine'"></button>
+                </section>
+            `;
+            htmx.process(playground());
+            let button = playground().querySelector('button');
+            button.click();
+            playground().querySelector('section').dataset.count.should.equal('2');
+            button.dataset.count.should.equal('mine');
+        });
+
+        it('^.name finds a class on an ancestor', function() {
+            playground().innerHTML = `
+                <section class="active">
+                    <button hx-on:click="window.__cls = [@.active, ^.active]"></button>
+                </section>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__cls.should.deep.equal([false, true]);
+            delete window.__cls;
+        });
+
+        it('^name finds a plain attribute on an ancestor', function() {
+            playground().innerHTML = `
+                <fieldset my-flag="on">
+                    <button hx-on:click="window.__flag = [@my-flag, ^my-flag]"></button>
+                </fieldset>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__flag.should.deep.equal([null, 'on']);
+            delete window.__flag;
+        });
+
+        it('^ works after q()', function() {
+            playground().innerHTML = `
+                <section data-count="4">
+                    <span id="inner"></span>
+                </section>
+                <button hx-on:click="q('#inner').^data-count++"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            playground().querySelector('section').dataset.count.should.equal('5');
+        });
+
+        it('^name and closest.* are the same thing', function() {
+            playground().innerHTML = `
+                <section data-count="9">
+                    <button hx-on:click="window.__same = [^data-count, closest.data.count]"></button>
+                </section>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__same.should.deep.equal([9, 9]);
+            delete window.__same;
+        });
+
+        it('leaves bitwise XOR alone', function() {
+            let button = createProcessedHTML(`
+                <button hx-on:click="window.__xor = [5 ^ 3, (2) ^ 1, 6 ^ ^data-x]" data-x="1"></button>
+            `);
+            button.click();
+            window.__xor.should.deep.equal([6, 3, 7]);
+            delete window.__xor;
         });
 
         it('leaves strings, comments, regex, and template text alone', function() {
