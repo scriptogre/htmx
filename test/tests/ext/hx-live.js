@@ -13,15 +13,17 @@ describe('hx-live extension', function () {
         liveConfigBackup = htmx.config.live;
         htmx.config.live = { ...liveConfigBackup, inputDebounce: 0 };
         clearExtensions();
-        htmx.config.extensions = 'hx-live';
-        htmx.__approvedExt = 'hx-live';
+        htmx.config.extensions = 'hx-live,hx-live-hyperscript';
+        htmx.__approvedExt = 'hx-live,hx-live-hyperscript';
 
-        let script = document.createElement('script');
-        script.src = '../src/ext/hx-live.js';
-        await new Promise(resolve => {
-            script.onload = resolve;
-            document.head.appendChild(script);
-        });
+        for (let src of ['../src/ext/hx-live.js', '../src/ext/hx-live-hyperscript.js']) {
+            let script = document.createElement('script');
+            script.src = src;
+            await new Promise(resolve => {
+                script.onload = resolve;
+                document.head.appendChild(script);
+            });
+        }
     });
 
     after(() => {
