@@ -1018,9 +1018,9 @@ describe('hx-live extension', function () {
         delete window.__classState;
     });
 
-    it('classes.active.toggle() toggles membership', function() {
+    it("toggle('.name') toggles membership", function() {
         let button = createProcessedHTML(`
-            <button hx-on:click="classes.active.toggle()">Go</button>
+            <button hx-on:click="toggle('.active')">Go</button>
         `);
         button.click();
         button.classList.contains('active').should.equal(true);
@@ -1028,11 +1028,11 @@ describe('hx-live extension', function () {
         button.classList.contains('active').should.equal(false);
     });
 
-    it('classes.active.take() moves membership between siblings', function() {
+    it("take('.name') moves membership between siblings", function() {
         playground().innerHTML = `
             <div>
                 <button class="active">One</button>
-                <button hx-on:click="classes.active.take()">Two</button>
+                <button hx-on:click="take('.active')">Two</button>
             </div>
         `;
         htmx.process(playground());
@@ -1396,10 +1396,10 @@ describe('hx-live extension', function () {
         playground().querySelector('section').getAttribute('aria-busy').should.equal('true');
     });
 
-    it('aria.sort.toggle() cycles explicit values', function() {
+    it("toggle('aria-name', values) cycles explicit values", function() {
         playground().innerHTML = `
             <div aria-sort="ascending">
-                <button hx-on:click="aria.sort.toggle('ascending', 'descending', 'other')">Sort</button>
+                <button hx-on:click="q('closest [aria-sort]').toggle('aria-sort', 'ascending|descending|other')">Sort</button>
             </div>
         `;
         htmx.process(playground());
@@ -1411,12 +1411,12 @@ describe('hx-live extension', function () {
         owner.getAttribute('aria-sort').should.equal('other');
     });
 
-    it('aria.selected.take() claims sibling state', function() {
+    it("take('aria-name') claims sibling state", function() {
         playground().innerHTML = `
             <div role="tablist">
                 <button role="tab" aria-selected="true">One</button>
                 <button role="tab" aria-selected="false"
-                        hx-on:click="aria.selected.take()">Two</button>
+                        hx-on:click="take('aria-selected')">Two</button>
             </div>
         `;
         htmx.process(playground());
@@ -1424,16 +1424,6 @@ describe('hx-live extension', function () {
         tabs[1].click();
         tabs[0].getAttribute('aria-selected').should.equal('false');
         tabs[1].getAttribute('aria-selected').should.equal('true');
-    });
-
-    it('state methods stay bound while their arguments read other state', function() {
-        let button = createProcessedHTML(`
-            <button aria-sort="ascending" aria-current="other"
-                    hx-on:click="aria.sort.toggle('ascending', 'descending', aria.current)">Sort</button>
-        `);
-        button.click();
-        button.getAttribute('aria-sort').should.equal('descending');
-        button.getAttribute('aria-current').should.equal('other');
     });
 
     it('q().aria uses only its first match', function() {
@@ -1660,10 +1650,10 @@ describe('hx-live extension', function () {
     // cascading data proxy
     // -------------------------------------------------------------------------
 
-    it('data.view.toggle() cycles explicit values', function() {
+    it("toggle('data-name', values) cycles explicit values", function() {
         playground().innerHTML = `
             <div data-view="grid">
-                <button hx-on:click="data.view.toggle('grid', 'list')">View</button>
+                <button hx-on:click="q('closest [data-view]').toggle('data-view', 'grid|list')">View</button>
             </div>
         `;
         htmx.process(playground());
@@ -1675,27 +1665,24 @@ describe('hx-live extension', function () {
         owner.dataset.view.should.equal('grid');
     });
 
-    it('data.active.toggle() flips a typed boolean', function() {
+    it("toggle('data-name') toggles attribute presence", function() {
         let button = createProcessedHTML(`
-            <button data-active="false" hx-on:click="data.active.toggle()"></button>
+            <button data-active="" hx-on:click="toggle('data-active')"></button>
         `);
         button.click();
-        button.dataset.active.should.equal('true');
-        button.click();
-        button.dataset.active.should.equal('false');
-    });
-
-    it('data.active.toggle() cycles typed values through the data writer', function() {
-        let button = createProcessedHTML(`
-            <button data-active="true"
-                    hx-on:click="data.active.toggle(true, false, '')"></button>
-        `);
-        button.click();
-        button.dataset.active.should.equal('false');
+        button.hasAttribute('data-active').should.equal(false);
         button.click();
         button.dataset.active.should.equal('');
+    });
+
+    it('data.active = !data.active flips a typed boolean', function() {
+        let button = createProcessedHTML(`
+            <button data-active="false" hx-on:click="data.active = !data.active"></button>
+        `);
         button.click();
         button.dataset.active.should.equal('true');
+        button.click();
+        button.dataset.active.should.equal('false');
     });
 
     it('data.active = undefined removes the attribute', function() {
@@ -1706,11 +1693,11 @@ describe('hx-live extension', function () {
         button.hasAttribute('data-active').should.equal(false);
     });
 
-    it('data.active.take() moves sibling state', function() {
+    it("take('data-name') moves sibling state", function() {
         playground().innerHTML = `
             <div>
                 <button data-active="true">One</button>
-                <button data-active="false" hx-on:click="data.active.take()">Two</button>
+                <button data-active="false" hx-on:click="take('data-active')">Two</button>
             </div>
         `;
         htmx.process(playground());
@@ -1718,16 +1705,6 @@ describe('hx-live extension', function () {
         buttons[1].click();
         buttons[0].hasAttribute('data-active').should.equal(false);
         buttons[1].hasAttribute('data-active').should.equal(true);
-    });
-
-    it('removes primitive methods after the current microtask', async function() {
-        let button = createProcessedHTML(`
-            <button aria-selected="false" hx-on:click="aria.selected.take()"></button>
-        `);
-        button.click();
-        await flushMicrotasks();
-        assert.isUndefined(Object.getOwnPropertyDescriptor(Boolean.prototype, 'take'));
-        assert.isUndefined(Object.getOwnPropertyDescriptor(Boolean.prototype, 'toggle'));
     });
 
     it('reads valid JSON values and preserves other data attribute text', function() {

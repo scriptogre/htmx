@@ -203,46 +203,6 @@
         'owns',
         'relevant'
     ]);
-    let stateGetter = Symbol();
-
-    function exposeValue(value, owner, name, write) {
-        if (value == null || !['boolean', 'string', 'number'].includes(typeof value)) return value;
-        let prototype = Object.getPrototypeOf(Object(value));
-        let installed = [];
-        let methods = {
-            toggle: (...values) => {
-                if (!values.length) {
-                    if (typeof value === 'boolean') write(!value);
-                    else applyToggle(name, undefined, owner);
-                    return;
-                }
-                let sequence = values.length === 1 && Array.isArray(values[0])
-                    ? values[0]
-                    : values.length === 1 && typeof values[0] === 'string' && values[0].includes('|')
-                        ? values[0].split('|').map(item => item.trim())
-                        : values;
-                let current = sequence.findIndex(item => Object.is(item, value));
-                write(sequence[(current + 1) % sequence.length]);
-            },
-            take: () => applyTake([owner], name)
-        };
-        for (let [method, run] of Object.entries(methods)) {
-            let current = Object.getOwnPropertyDescriptor(prototype, method);
-            // Leave native or application methods untouched.
-            if (current && !current.get?.[stateGetter]) continue;
-            let getter = function() {
-                if (Object.is(this.valueOf(), value)) return run;
-            };
-            getter[stateGetter] = true;
-            Object.defineProperty(prototype, method, { configurable: true, get: getter });
-            installed.push([method, getter]);
-        }
-        queueMicrotask(() => installed.forEach(([method, getter]) => {
-            if (Object.getOwnPropertyDescriptor(prototype, method)?.get === getter) delete prototype[method];
-        }));
-        return value;
-    }
-
     function writeClass(elt, name, value) {
         elt.classList.toggle(name, !!value);
         if (!elt.classList.length) elt.removeAttribute('class');
@@ -250,9 +210,7 @@
 
     function makeClassesProxy(elt) {
         return new Proxy({}, {
-            get: (_, name) => typeof name === 'string'
-                ? exposeValue(elt.classList.contains(name), elt, '.' + name, value => writeClass(elt, name, value))
-                : undefined,
+            get: (_, name) => typeof name === 'string' ? elt.classList.contains(name) : undefined,
             set: (_, name, value) => {
                 if (typeof name !== 'string') return false;
                 writeClass(elt, name, value);
@@ -288,18 +246,12 @@
                 let name = 'aria-' + key;
                 let owner = findOwner(name);
                 let value = owner?.getAttribute(name);
-                if (booleanAria.has(key) && (value === 'true' || value === 'false')) {
-                    return exposeValue(value === 'true', owner, name, value => writeAria(owner, key, value));
-                }
+                if (booleanAria.has(key) && (value === 'true' || value === 'false')) return value === 'true';
                 let number = Number(value);
                 let validNumber = numberAria.has(key) || (integerAria.has(key) && Number.isInteger(number));
-                if (validNumber && value?.trim() && Number.isFinite(number)) {
-                    return exposeValue(number, owner, name, value => writeAria(owner, key, value));
-                }
-                if (listAria.has(key) && value != null) {
-                    return exposeValue(value.trim() ? value.trim().split(/\s+/) : [], owner, name, value => writeAria(owner, key, value));
-                }
-                return exposeValue(value, owner, name, value => writeAria(owner, key, value));
+                if (validNumber && value?.trim() && Number.isFinite(number)) return number;
+                if (listAria.has(key) && value != null) return value.trim() ? value.trim().split(/\s+/) : [];
+                return value;
             },
             set: (_, prop, value) => {
                 if (typeof prop !== 'string') return false;
@@ -336,10 +288,7 @@
                 let ancestor = findOwner(kebab);
                 if (!ancestor) return undefined;
                 let raw = ancestor.dataset[prop];
-                let value;
-                try { value = JSON.parse(raw); } catch { value = raw; }
-                let name = 'data-' + kebab;
-                return exposeValue(value, ancestor, name, value => writeData(ancestor, name, value));
+                try { return JSON.parse(raw); } catch { return raw; }
             },
             set: (_, prop, val) => {
                 if (typeof prop !== 'string') return false;
