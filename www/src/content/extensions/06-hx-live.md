@@ -79,25 +79,30 @@ Values are typed by attribute name. `aria-pressed` is a boolean, `data-count` is
 
 ### Without the sigils
 
-Both sigils are sugar. `@` uses the bare proxy, `^` uses `closest`:
+A sigil is a property access on a [`q()`](#q) proxy. With no explicit `q()`, it uses `q(this)`:
 
 | Sigil | Plain |
 |-------|-------|
-| `@data-count` | `data.count` |
-| `^data-count` | `closest.data.count` |
-| `@aria-pressed` | `aria.pressed` |
-| `^aria-pressed` | `closest.aria.pressed` |
-| `@.active` | `class.active` |
-| `^.active` | `closest.class.active` |
-| `@readonly` | `attr.readonly` |
-| `^readonly` | `closest.attr.readonly` |
+| `@data-count` | `q(this).data.count` |
+| `^data-count` | `q(this).closest.data.count` |
+| `@.active` | `q(this).class.active` |
+| `^readonly` | `q(this).closest.attr.readonly` |
 
-Both work after `q()`:
+So the two read the same with or without a `q()` in front:
 
 ```js
 q('#cart').@data-count++      // data-count on #cart
 q('#cart').^data-count++      // nearest data-count from #cart up
 ```
+
+Without a key, the sigil names the whole namespace:
+
+```js
+{ ...@data-* }     // this element's data-*
+{ ...^data-* }     // plus everything inherited from ancestors
+```
+
+`@data` is the literal `data` attribute, which `<object data="...">` has.
 
 ### Setting several classes
 
@@ -707,11 +712,11 @@ Read and write `data-*` attributes as JSON or plain text.
 </div>
 ```
 
-`data.*` reads this element. `closest.data.*` walks up until it finds the attribute:
+`data-*` holds state shared by a subtree, so `data.*` walks up to the nearest element that has the attribute. Every other namespace reads this element:
 
 ```js
-data.count                    // data-count on this element
-closest.data.count            // nearest data-count, starting at this
+data.count                    // nearest data-count, starting at this
+q(this).data.count            // data-count on this element only
 q('#cart').data.count         // data-count on the selected cart
 q('#cart').closest.data.count // nearest data-count from #cart up
 ```
@@ -783,13 +788,13 @@ Use `take()` to move state between siblings:
 
 Clicking Two removes `data-active` from One and leaves an empty `data-active=""` on Two.
 
-Both proxies are enumerable, so object spread, rest destructuring, and `Object.keys()`/`Object.entries()` work. Without a key, `@data` is this element's `data-*` and `^data` is everything inherited from ancestors too:
+The `data` proxy is enumerable, so object spread, rest destructuring, and `Object.keys()`/`Object.entries()` work:
 
 ```html
 <section data-x="1" data-y="2">
     <button data-y="3"
             hx-post="/cursor"
-            hx-vals="js:{ ...^data }">
+            hx-vals="js:{ ...data }">
         Send cursor
     </button>
 </section>

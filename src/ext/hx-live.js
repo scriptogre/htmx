@@ -190,7 +190,7 @@
         /'(?:[^'\\]|\\.)*'/,                                 // single-quoted string
         /"(?:[^"\\]|\\.)*"/,                                 // double-quoted string
         /\/(?:\\.|\[(?:\\.|[^\]])*\]|[^\/\\\n[])+\/[a-z]*/,  // regex literal
-        /[@^]\.?[A-Za-z][\w-]*/,                             // @ and ^ attribute sigils
+        /[@^]\.?[A-Za-z][\w-]*\*?/,                          // @ and ^ attribute sigils
         /[\w$]+/,                                            // identifier or number
         /\S/                                                 // any other character
     ].map(part => part.source).join('|'), 'g');
@@ -207,11 +207,10 @@
     // '@aria-expanded' -> 'aria.expanded', '@.active' -> '__hxLive.class.active'.
     // After a dot (q('#x').@hidden) the base is the q() proxy, not this.
     function sigilCode(name, afterDot, cascades) {
-        let root = cascades ? 'closest.' : '';
-        let bare = !cascades && !afterDot;
-        if (name === 'class') return root + (bare ? '__hxLive.class' : 'class');
-        if (name === 'data' || name === 'aria' || name === 'attr') return root + name;
-        if (name[0] === '.') return root + (bare ? '__hxLive.' : '') + 'class' + member(name.slice(1));
+        let root = (afterDot ? '' : '__hxLive.q.') + (cascades ? 'closest.' : '');
+        if (name === 'class') return root + 'class';
+        if (name[0] === '.') return root + 'class' + member(name.slice(1));
+        if (name.endsWith('-*')) return root + name.slice(0, -2);
         if (name.startsWith('aria-')) return root + 'aria' + member(name.slice(5));
         if (name.startsWith('data-')) return root + 'data' + member(kebabToCamel(name.slice(5)));
         return root + 'attr' + member(name);
@@ -255,12 +254,13 @@
                 prev = '^';
             } else if (token[0] === '@' || token[0] === '^') {
                 let name = token.slice(1);
+                let afterDot = prev === '.' && !out.endsWith('...');
                 out += TOGGLE_OR_TAKE_CALL.test(out)
                     ? `'${name}'`
-                    : sigilCode(name, prev === '.', token[0] === '^');
+                    : sigilCode(name, afterDot, token[0] === '^');
                 prev = 'v';
             } else if (token === 'class' && prev !== '.' && CLASS_ACCESS.test(src.slice(i))) {
-                out += '__hxLive.class';
+                out += '__hxLive.q.class';
                 prev = 'v';
             } else {
                 if (token === '`' || token === '{') stack.push(token);
@@ -944,13 +944,10 @@
                 insert: (pos, html) => elt.insertAdjacentHTML(positions[pos], html),
                 matches: (sel) => elt.matches(sel),
                 style: elt.style,
-                data: makeDataProxy(elt, false),
-                aria: makeAriaProxy(elt, false),
+                data: makeDataProxy(elt),
+                aria: makeAriaProxy(elt),
                 closest: makeClosestScope(elt),
-                __hxLive: {
-                    get class() { return makeClassProxy(elt); },
-                    set class(value) { setClasses(elt, value); }
-                }
+                __hxLive: { q: qProxy([elt]) }
             });
             if (htmx.config.live?.useDollar) detail.scope.$ = detail.scope.q;
             detail.code = scanLive(detail.code);

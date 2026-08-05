@@ -3066,11 +3066,11 @@ describe('hx-live extension', function () {
             delete window.__same;
         });
 
-        it('spreads a whole namespace with @data and ^data', function() {
+        it('spreads a whole namespace with @data-* and ^data-*', function() {
             playground().innerHTML = `
                 <section data-x="1" data-y="2">
                     <button data-y="3" hx-on:click="
-                        window.__spread = [JSON.stringify({...@data}), JSON.stringify({...^data})]
+                        window.__spread = [JSON.stringify({...@data-*}), JSON.stringify({...^data-*})]
                     "></button>
                 </section>
             `;
