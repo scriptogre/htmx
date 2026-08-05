@@ -469,7 +469,7 @@ describe('hx-live extension', function () {
                 <div class="x"></div>
                 <output id="body" hx-live="this.dataset.count = $('.x').count"></output>
                 <output id="binding" :text="$('.x').count"></output>
-                <button hx-on:click="$('.x').attr('data-hit', 'yes')">change</button>
+                <button hx-on:click="$('.x').attr['data-hit'] = 'yes'">change</button>
             `;
             htmx.process(playground());
 
@@ -1199,18 +1199,18 @@ describe('hx-live extension', function () {
         assert.isNull(htmx.live.attr('#b', 'data-x'));
     });
 
-    it('attr() getter: checked returns attribute presence', function() {
+    it('attr() getter: checked returns live state', function() {
         playground().innerHTML = '<input id="a" type="checkbox">';
         let inp = playground().querySelector('#a');
         inp.checked = true;
-        htmx.live.attr('#a', 'checked').should.equal(false);
+        htmx.live.attr('#a', 'checked').should.equal(true);
     });
 
-    it('attr() getter: value returns the attribute value', function() {
+    it('attr() getter: value returns live state', function() {
         playground().innerHTML = '<input id="a" value="hello">';
         let inp = playground().querySelector('#a');
         inp.value = 'world';
-        htmx.live.attr('#a', 'value').should.equal('hello');
+        htmx.live.attr('#a', 'value').should.equal('world');
     });
 
     it('attr() setter: boolean attr truthy sets, falsy removes', function() {
@@ -1251,25 +1251,25 @@ describe('hx-live extension', function () {
         div.getAttribute('class').should.equal('foo bar');
     });
 
-    it('attr() setter: checked changes attribute presence, not live state', function() {
+    it('attr() setter: checked changes attribute and live state together', function() {
         playground().innerHTML = '<input id="a" type="checkbox">';
         let inp = playground().querySelector('#a');
         inp.checked = false;
         htmx.live.attr('#a', 'checked', true);
         inp.hasAttribute('checked').should.equal(true);
-        inp.checked.should.equal(false);
+        inp.checked.should.equal(true);
     });
 
-    it('attr() setter: value changes the attribute, not live state', function() {
+    it('attr() setter: value changes the attribute and live state together', function() {
         playground().innerHTML = '<input id="a" type="text" value="initial">';
         let inp = playground().querySelector('#a');
         inp.value = 'live';
-        htmx.live.attr('#a', 'value', 'default');
-        inp.getAttribute('value').should.equal('default');
-        inp.value.should.equal('live');
+        htmx.live.attr('#a', 'value', 'set');
+        inp.getAttribute('value').should.equal('set');
+        inp.value.should.equal('set');
         htmx.live.attr('#a', 'value', null);
         inp.hasAttribute('value').should.equal(false);
-        inp.value.should.equal('live');
+        inp.value.should.equal('');
     });
 
     it('attr() setter: regular attr null removes', function() {
@@ -1308,38 +1308,35 @@ describe('hx-live extension', function () {
         playground().querySelector('#a').hasAttribute('contenteditable').should.equal(false);
     });
 
-    it('q().attr() applies setter to all matched elements', function() {
+    it('q().attr applies setter to all matched elements', function() {
         playground().innerHTML = '<input class="x"><input class="x"><input class="x">';
-        htmx.live.q('.x').attr('disabled', true);
+        htmx.live.q('.x').attr.disabled = true;
         let inputs = playground().querySelectorAll('.x');
         for (let inp of inputs) inp.hasAttribute('disabled').should.equal(true);
     });
 
-    it('q().attr() getter returns from first matched element', function() {
+    it('q().attr getter returns from first matched element', function() {
         playground().innerHTML = '<div class="x" data-i="a"></div><div class="x" data-i="b"></div>';
-        htmx.live.q('.x').attr('data-i').should.equal('a');
+        htmx.live.q('.x').attr['data-i'].should.equal('a');
     });
 
-    it('q().attr() returns proxy for chaining', function() {
-        playground().innerHTML = '<button class="x"></button>';
-        let r = htmx.live.q('.x').attr('role', 'button').attr('title', 'Go');
-        r.count.should.equal(1);
-        let btn = playground().querySelector('.x');
-        btn.getAttribute('role').should.equal('button');
-        btn.getAttribute('title').should.equal('Go');
+    it('q().attr removes an attribute with delete', function() {
+        playground().innerHTML = '<button class="x" role="button"></button>';
+        delete htmx.live.q('.x').attr.role;
+        playground().querySelector('.x').hasAttribute('role').should.equal(false);
     });
 
-    it('attr() is available in hx-on scope bound to element', function() {
-        playground().innerHTML = '<button hx-on:click="attr(\'data-clicked\', \'yes\')">x</button>';
+    it('attr is available in hx-on scope bound to element', function() {
+        playground().innerHTML = '<button hx-on:click="attr[\'data-clicked\'] = \'yes\'">x</button>';
         htmx.process(playground());
         let btn = playground().querySelector('button');
         btn.click();
         btn.getAttribute('data-clicked').should.equal('yes');
     });
 
-    it('attr() in hx-live expression operates on current element', async function() {
+    it('attr in hx-live expression operates on current element', async function() {
         let elt = createProcessedHTML(
-            `<output hx-live="!this.dataset.s && (this.dataset.s='1', attr('data-flipped', true))"></output>`
+            `<output hx-live="!this.dataset.s && (this.dataset.s='1', attr['data-flipped'] = true)"></output>`
         );
         await htmx.timeout(5);
         elt.hasAttribute('data-flipped').should.equal(true);
@@ -2829,6 +2826,101 @@ describe('hx-live extension', function () {
             warnings[0].should.contain("class = expects an object");
         });
 
+        it('reaches attributes that have no matching DOM property', function() {
+            let input = createProcessedHTML(`
+                <input hx-on:click="@readonly = true">
+            `);
+            input.click();
+            input.hasAttribute('readonly').should.equal(true);
+            input.readOnly.should.equal(true);
+        });
+
+        it('reads attributes that have no matching DOM property', function() {
+            let input = createProcessedHTML(`
+                <input readonly tabindex="3" hx-on:click="window.__attrRead = [@readonly, @tabindex]">
+            `);
+            input.click();
+            window.__attrRead.should.deep.equal([true, 3]);
+            delete window.__attrRead;
+        });
+
+        it('types numeric attributes as numbers', function() {
+            let div = createProcessedHTML(`
+                <div colspan="3" tabindex="2" hx-on:click="window.__nums = [@colspan, @tabindex, @colspan + 1]"></div>
+            `);
+            div.click();
+            window.__nums.should.deep.equal([3, 2, 4]);
+            delete window.__nums;
+        });
+
+        it('leaves non-numeric text in a numeric attribute alone', function() {
+            let div = createProcessedHTML(`
+                <div colspan="auto" hx-on:click="window.__num = @colspan"></div>
+            `);
+            div.click();
+            window.__num.should.equal('auto');
+            delete window.__num;
+        });
+
+        it('writes false rather than removing the attribute', function() {
+            let div = createProcessedHTML(`
+                <div my-flag="on" hx-on:click="@my-flag = false"></div>
+            `);
+            div.click();
+            div.getAttribute('my-flag').should.equal('false');
+        });
+
+        it('removes an attribute with delete', function() {
+            let div = createProcessedHTML(`
+                <div my-flag="on" hx-on:click="delete @my-flag"></div>
+            `);
+            div.click();
+            div.hasAttribute('my-flag').should.equal(false);
+        });
+
+        it('reaches custom attributes', function() {
+            let div = createProcessedHTML(`
+                <div hx-on:click="@my-attr = 'on'; window.__custom = @my-attr"></div>
+            `);
+            div.click();
+            div.getAttribute('my-attr').should.equal('on');
+            window.__custom.should.equal('on');
+            delete window.__custom;
+        });
+
+        it('keeps property and attribute in sync for checked', function() {
+            let box = createProcessedHTML(`
+                <input type="checkbox" hx-on:click="@checked = true">
+            `);
+            box.checked = false;
+            box.removeAttribute('checked');
+            box.click();
+            box.checked.should.equal(true);
+            box.hasAttribute('checked').should.equal(true);
+        });
+
+        it('reads the live value, not the default attribute', function() {
+            playground().innerHTML = `
+                <input id="field" value="default">
+                <button hx-on:click="window.__liveValue = q('#field').@value"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('#field').value = 'typed';
+            playground().querySelector('button').click();
+            window.__liveValue.should.equal('typed');
+            delete window.__liveValue;
+        });
+
+        it('writes value to both property and attribute', function() {
+            let input = createProcessedHTML(`
+                <input value="default" hx-on:click="@value = 'set'">
+            `);
+            input.value = 'dirty';
+            input.click();
+            input.value.should.equal('set');
+            input.getAttribute('value').should.equal('set');
+        });
+
         it('writes native reflected properties', function() {
             let button = createProcessedHTML(`
                 <button hx-on:click="@hidden = true"></button>
@@ -2905,6 +2997,49 @@ describe('hx-live extension', function () {
             elt.textContent.should.equal('6');
         });
 
+    });
+
+    // -------------------------------------------------------------------------
+    // Open concerns for the sigil design. Each test asserts the behavior we
+    // want, not the behavior we have today. A skipped test here is a known
+    // gap, not a regression. Never assert against a function value directly:
+    // the test runner cannot serialize a function in a failure message and the
+    // session hangs. Compare identity as a boolean instead.
+    // -------------------------------------------------------------------------
+
+    describe('open concerns', function() {
+
+        it.skip('attr() updater receives the typed ARIA value, not a boolean', function() {
+            playground().innerHTML = '<nav id="n"><a aria-current="page">Home</a></nav>';
+            let seen;
+            htmx.live.attr('#n a', 'aria-current', c => { seen = c; return c; });
+            seen.should.equal('page');
+        });
+
+        it.skip('setting value does not change what form.reset() restores', function() {
+            playground().innerHTML = '<form id="f"><input id="i" name="i" value="original"></form>';
+            let form = playground().querySelector('#f');
+            let input = playground().querySelector('#i');
+            htmx.live.attr('#i', 'value', 'edited');
+            input.value.should.equal('edited');
+            form.reset();
+            input.value.should.equal('original');
+        });
+
+        it.skip('setting checked does not make an unchecked box match :default', function() {
+            playground().innerHTML = '<input id="c" type="checkbox">';
+            let box = playground().querySelector('#c');
+            htmx.live.attr('#c', 'checked', true);
+            box.checked.should.equal(true);
+            box.matches(':default').should.equal(false);
+        });
+
+        it.skip('data-* round trip preserves a trailing zero decimal', function() {
+            playground().innerHTML = '<div id="p" data-price="19.90"></div>';
+            let el = playground().querySelector('#p');
+            htmx.live.q('#p').data.price = p => p;
+            el.dataset.price.should.equal('19.90');
+        });
     });
 
 });

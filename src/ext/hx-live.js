@@ -78,6 +78,10 @@
     ]);
     let PROPERTY_BINDING_ATTRS = new Set(['checked','value','selected']);
     let STRINGY_BOOLEAN_ATTRS = new Set(['contenteditable','draggable','spellcheck']);
+    let NUMERIC_ATTRS = new Set([
+        'tabindex','colspan','rowspan','maxlength','minlength',
+        'size','span','start','rows','cols','width','height'
+    ]);
 
     /**
      * Get or set an attribute or property-backed value on one or more elements.
@@ -102,8 +106,11 @@
         if (rest.length === 0) {
             let e = elts[0];
             if (!e) return undefined;
+            if (PROPERTY_BINDING_ATTRS.has(name)) return e[name];
             if (BOOLEAN_ATTRS.has(name)) return e.hasAttribute(name);
-            return e.getAttribute(name);
+            let raw = e.getAttribute(name);
+            if (NUMERIC_ATTRS.has(name) && raw?.trim() && Number.isFinite(Number(raw))) return Number(raw);
+            return raw;
         }
 
         let value = rest[0];
@@ -111,6 +118,8 @@
             if (isAria) {
                 if (value == null) e.removeAttribute(name);
                 else e.setAttribute(name, String(value));
+            } else if (PROPERTY_BINDING_ATTRS.has(name)) {
+                applyPropertyBinding(e, name, value);
             } else if (BOOLEAN_ATTRS.has(name)) {
                 if (value) e.setAttribute(name, '');
                 else e.removeAttribute(name);
@@ -120,10 +129,18 @@
                 else if (value === false) e.setAttribute(name, 'false');
                 else e.setAttribute(name, String(value));
             } else {
-                if (value === null || value === undefined || value === false) e.removeAttribute(name);
+                if (value === null || value === undefined) e.removeAttribute(name);
                 else e.setAttribute(name, value === true ? '' : String(value));
             }
         }
+    }
+
+    function makeAttrProxy(elts) {
+        return new Proxy({}, {
+            get: (_, name) => typeof name === 'string' ? applyAttr(elts, name) : undefined,
+            set: (_, name, value) => { applyAttr(elts, name, value); return true; },
+            deleteProperty: (_, name) => { applyAttr(elts, name, null); return true; }
+        });
     }
 
     function applyStyleBinding(elt, value) {
@@ -190,7 +207,7 @@
         if (name[0] === '.') return (afterDot ? '' : '__hxLive.') + 'class' + member(name.slice(1));
         if (name.startsWith('aria-')) return 'aria' + member(name.slice(5));
         if (name.startsWith('data-')) return 'data' + member(kebabToCamel(name.slice(5)));
-        return (afterDot ? '' : 'this.') + (name === 'for' ? 'htmlFor' : kebabToCamel(name));
+        return 'attr' + member(name);
     }
 
     function scanLive(src) {
@@ -672,11 +689,7 @@
                 if (p === 'insert') return (pos, s) => { elts.forEach(e => e.insertAdjacentHTML(positions[pos], s)); return proxy; };
                 if (p === 'take') return (name, scope) => { applyTake(elts, name, scope); return proxy; };
                 if (p === 'toggle') return (name, values) => { elts.forEach(e => applyToggle(name, values, e)); return proxy; };
-                if (p === 'attr') return (name, ...rest) => {
-                    if (rest.length === 0) return applyAttr(elts, name);
-                    applyAttr(elts, name, ...rest);
-                    return proxy;
-                };
+                if (p === 'attr') return makeAttrProxy(elts);
                 if (p === 'data') return elts[0] ? makeDataProxy(elts[0], false) : undefined;
                 if (p === 'class') return elts[0] ? makeClassProxy(elts[0]) : undefined;
                 if (arrayMethods.has(p)) return elts[p].bind(elts);
@@ -877,7 +890,7 @@
                 debounce: getDebounce(elt),
                 take: (name, scope) => applyTake([elt], name, scope),
                 toggle: (name, values) => applyToggle(name, values, elt),
-                attr: (name, ...rest) => applyAttr([elt], name, ...rest),
+                attr: makeAttrProxy([elt]),
                 insert: (pos, html) => elt.insertAdjacentHTML(positions[pos], html),
                 matches: (sel) => elt.matches(sel),
                 style: elt.style,
