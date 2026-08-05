@@ -3066,6 +3066,23 @@ describe('hx-live extension', function () {
             delete window.__same;
         });
 
+        it('spreads a whole namespace with @data and ^data', function() {
+            playground().innerHTML = `
+                <section data-x="1" data-y="2">
+                    <button data-y="3" hx-on:click="
+                        window.__spread = [JSON.stringify({...@data}), JSON.stringify({...^data})]
+                    "></button>
+                </section>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__spread[0].should.equal('{"y":3}');
+            let all = JSON.parse(window.__spread[1]);
+            all.y.should.equal(3);
+            all.x.should.equal(1);
+            delete window.__spread;
+        });
+
         it('leaves bitwise XOR alone', function() {
             let button = createProcessedHTML(`
                 <button hx-on:click="window.__xor = [5 ^ 3, (2) ^ 1, 6 ^ ^data-x]" data-x="1"></button>

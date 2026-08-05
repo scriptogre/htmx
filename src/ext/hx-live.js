@@ -210,6 +210,7 @@
         let root = cascades ? 'closest.' : '';
         let bare = !cascades && !afterDot;
         if (name === 'class') return root + (bare ? '__hxLive.class' : 'class');
+        if (name === 'data' || name === 'aria' || name === 'attr') return root + name;
         if (name[0] === '.') return root + (bare ? '__hxLive.' : '') + 'class' + member(name.slice(1));
         if (name.startsWith('aria-')) return root + 'aria' + member(name.slice(5));
         if (name.startsWith('data-')) return root + 'data' + member(kebabToCamel(name.slice(5)));

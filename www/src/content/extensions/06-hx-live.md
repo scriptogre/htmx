@@ -783,13 +783,13 @@ Use `take()` to move state between siblings:
 
 Clicking Two removes `data-active` from One and leaves an empty `data-active=""` on Two.
 
-The `data` proxy is enumerable. Object spread, rest destructuring, and `Object.keys()`/`Object.entries()` use the same cascading lookup rules:
+Both proxies are enumerable, so object spread, rest destructuring, and `Object.keys()`/`Object.entries()` work. Without a key, `@data` is this element's `data-*` and `^data` is everything inherited from ancestors too:
 
 ```html
 <section data-x="1" data-y="2">
     <button data-y="3"
             hx-post="/cursor"
-            hx-vals="js:{ ...data }">
+            hx-vals="js:{ ...^data }">
         Send cursor
     </button>
 </section>
