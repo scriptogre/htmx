@@ -99,30 +99,31 @@
      * attr('contenteditable', false)  // "false", not removed
      * attr('data-x', null)            // remove attribute
      */
+
     function applyAttr(elts, name, ...rest) {
         let isClass = name.startsWith('.');
         let isMultiClass = name === 'class';
         let isAria = name.startsWith('aria-');
         let isPropAttr = PROPERTY_ATTRS.has(name);
 
+        let read = elt => isClass ? elt.classList.contains(name.slice(1))
+            : isMultiClass ? elt.getAttribute('class')
+            : isAria ? elt.getAttribute(name) === 'true'
+            : isPropAttr ? elt[name]
+            : BOOLEAN_ATTRS.has(name) ? elt.hasAttribute(name)
+            : elt.getAttribute(name);
+
         if (rest.length === 0) {
-            let e = elts[0];
-            if (!e) return undefined;
-            if (isClass) return e.classList.contains(name.slice(1));
-            if (isMultiClass) return e.getAttribute('class');
-            if (isAria) return e.getAttribute(name) === 'true';
-            if (BOOLEAN_ATTRS.has(name)) return e.hasAttribute(name);
-            if (isPropAttr) return e[name];
-            return e.getAttribute(name);
+            return elts[0] ? read(elts[0]) : undefined;
         }
 
-        let value = rest[0];
-        for (let e of elts) {
+        for (let elt of elts) {
+            let value = maybeCall(rest[0], read(elt));
             if (isClass) {
-                e.classList.toggle(name.slice(1), !!value);
-                if (e.classList.length === 0) e.removeAttribute('class');
+                elt.classList.toggle(name.slice(1), !!value);
+                if (elt.classList.length === 0) elt.removeAttribute('class');
             } else if (isMultiClass) {
-                applyMultiClass(e, value);
+                applyMultiClass(elt, value);
             } else if (isAria) {
                 // Strings and numbers pass through (e.g. aria-current="page",
                 // aria-pressed="mixed", aria-valuenow="50"). Other values coerce
@@ -130,33 +131,33 @@
                 let attrVal = (typeof value === 'string' || typeof value === 'number')
                     ? String(value)
                     : (value ? 'true' : 'false');
-                e.setAttribute(name, attrVal);
+                elt.setAttribute(name, attrVal);
             } else if (isPropAttr) {
                 if (name === 'checked' || name === 'selected') {
                     let present = !!value;
-                    e[name] = present;
-                    e.toggleAttribute(name, present);
+                    elt[name] = present;
+                    elt.toggleAttribute(name, present);
                 } else if (value === false || value == null) {
-                    e[name] = (typeof e[name] === 'boolean') ? false : '';
-                    e.removeAttribute(name);
+                    elt[name] = (typeof elt[name] === 'boolean') ? false : '';
+                    elt.removeAttribute(name);
                 } else if (value === true) {
-                    e[name] = true;
-                    e.setAttribute(name, '');
+                    elt[name] = true;
+                    elt.setAttribute(name, '');
                 } else {
-                    e[name] = value;
-                    e.setAttribute(name, String(value));
+                    elt[name] = value;
+                    elt.setAttribute(name, String(value));
                 }
             } else if (BOOLEAN_ATTRS.has(name)) {
-                if (value) e.setAttribute(name, '');
-                else e.removeAttribute(name);
+                if (value) elt.setAttribute(name, '');
+                else elt.removeAttribute(name);
             } else if (STRINGY_BOOLEAN_ATTRS.has(name)) {
-                if (value === null || value === undefined) e.removeAttribute(name);
-                else if (value === true) e.setAttribute(name, 'true');
-                else if (value === false) e.setAttribute(name, 'false');
-                else e.setAttribute(name, String(value));
+                if (value === null || value === undefined) elt.removeAttribute(name);
+                else if (value === true) elt.setAttribute(name, 'true');
+                else if (value === false) elt.setAttribute(name, 'false');
+                else elt.setAttribute(name, String(value));
             } else {
-                if (value === null || value === undefined || value === false) e.removeAttribute(name);
-                else e.setAttribute(name, value === true ? '' : String(value));
+                if (value === null || value === undefined || value === false) elt.removeAttribute(name);
+                else elt.setAttribute(name, value === true ? '' : String(value));
             }
         }
     }
@@ -194,6 +195,18 @@
         return s.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
     }
 
+    function maybeCall(value, current) {
+        if (typeof value !== 'function') return value;
+        let next = value(current);
+        if (typeof next?.then === 'function') throw new TypeError('assigned function must return a value, not a promise');
+        return next;
+    }
+
+    function readData(elt, prop) {
+        let raw = elt.dataset[prop];
+        try { return JSON.parse(raw); } catch { return raw; }
+    }
+
     // `data.foo` reads/writes to closest ancestor with `data-foo`.
     // `has` trap lets `hx-on:click="with (data) { x++; y-- }"` work: data-* keys
     // bind to the proxy, all other identifiers fall through to outer scope.
@@ -204,13 +217,13 @@
                 let kebab = camelToKebab(prop);
                 let ancestor = elt.closest('[data-' + kebab + ']');
                 if (!ancestor) return undefined;
-                let raw = ancestor.dataset[prop];
-                try { return JSON.parse(raw); } catch { return raw; }
+                return readData(ancestor, prop);
             },
             set: (_, prop, val) => {
                 if (typeof prop !== 'string') return false;
                 let kebab = camelToKebab(prop);
                 let target = elt.closest('[data-' + kebab + ']') || elt;
+                val = maybeCall(val, readData(target, prop));
                 target.dataset[prop] = typeof val === 'string' ? val : JSON.stringify(val);
                 return true;
             },
@@ -477,8 +490,12 @@
                 if (v && typeof v === 'object') return qProxy(elts.map(e => e[p]));
                 return v;
             },
-            set: (_, p, v) => {
-                elts.forEach(e => e[p] = v);
+            set: (_, prop, value) => {
+                elts.forEach(elt => {
+                    let current = elt[prop];
+                    if (current == null || typeof current === 'function') elt[prop] = value;
+                    else elt[prop] = maybeCall(value, current);
+                });
                 schedule();
                 return true;
             }

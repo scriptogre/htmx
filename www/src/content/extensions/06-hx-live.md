@@ -323,6 +323,41 @@ q('#cart-panel').data.items              // read: JSON-parsed value from closest
 q('#cart-panel').data.items = [{id: 1}]  // write: JSON-stringified to that ancestor
 ```
 
+#### Assign a Function
+
+Updating a selected owner's value would normally repeat its query:
+
+```html
+<section data-items='[{"id":"1"}]'>
+    <button value="2" hx-on:click="
+        q('closest [data-items]').data.items = [
+            ...q('closest [data-items]').data.items,
+            { id: this.value }
+        ]
+    ">Add</button>
+</section>
+```
+
+Assign a function to receive the current parsed value instead:
+
+```html
+<section data-items='[{"id":"1"}]'>
+    <button value="2" hx-on:click="
+        q('closest [data-items]').data.items = items =>
+            [...items, { id: this.value }]
+    ">Add</button>
+</section>
+```
+
+After the click, `data-items` contains `[{"id":"1"},{"id":"2"}]`. The function must return a value, not a promise. Async functions throw.
+
+This works the same way on `q()` properties and `attr()`:
+
+```js
+q('#panel').hidden = hidden => !hidden
+attr('data-count', count => count + 1)
+```
+
 For direct, this-only access, use `this.dataset` instead (note: `this.dataset` is always strings). For per-element writes across a set, use `q('.row').dataset.state = 'on'`.
 
 Because `:<attr>` works on `data-*`, you can also store derived values in the DOM:
