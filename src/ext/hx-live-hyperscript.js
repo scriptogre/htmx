@@ -19,6 +19,7 @@
     let TOGGLE_OR_TAKE_CALL = /\b(?:toggle|take)\(\s*$/;
     let CLASS_ACCESS = /^\s*(?:[.[]|=[^=>])/;
     let ENDS_VALUE = /^(?:[\w$]+|[)\]}v])$/;
+    let POSSESSIVE = /^'s[\s@]/;
     let REGEX_WORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
 
     // The rewrite targets public hx-live surface only, so `q` must resolve to
@@ -50,7 +51,7 @@
     }
 
     function rewrite(src) {
-        if (!/[@^#<]|\bclass\b/.test(src)) return src;
+        if (!/[@^#<]|'s|\bclass\b/.test(src)) return src;
         let out = '';
         let stack = [];  // '`' template text, '$' inside ${...}, '{' block
         let prev = '';   // previous token, 'v' for any value
@@ -77,6 +78,11 @@
 
             if (token[0] === '/' && (token[1] === '/' || token[1] === '*')) {
                 out += token;  // comments do not update prev
+            } else if (POSSESSIVE.test(src.slice(match.index, match.index + 3)) && ENDS_VALUE.test(prev) && !REGEX_WORDS.has(prev)) {
+                // A string never follows a value in valid JS, so this `'s` is possessive.
+                out += '.';
+                i = match.index + 2;
+                prev = '.';
             } else if (token[0] === '/' && token.length > 1 && ENDS_VALUE.test(prev) && !REGEX_WORDS.has(prev)) {
                 out += '/';  // division, not a regex: re-read from the next character
                 i = match.index + 1;

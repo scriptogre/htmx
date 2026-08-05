@@ -3285,6 +3285,47 @@ describe('hx-live extension', function () {
             delete window.__raw;
         });
 
+        it("'s reads a property from a selector literal", function() {
+            playground().innerHTML = `
+                <div id="cart" data-count="1"></div>
+                <button hx-on:click="#cart's @data-count++"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            playground().querySelector('#cart').dataset.count.should.equal('2');
+        });
+
+        it("'s works after <.../> and chains", function() {
+            playground().innerHTML = `
+                <input class="f" value="typed">
+                <button hx-on:click="window.__poss = <.f/>'s @value"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__poss.should.equal('typed');
+            delete window.__poss;
+        });
+
+        it("'s reaches native properties too", function() {
+            playground().innerHTML = `
+                <div id="box" class="a b"></div>
+                <button hx-on:click="window.__n = #box's className"></button>
+            `;
+            htmx.process(playground());
+            playground().querySelector('button').click();
+            window.__n.should.equal('a b');
+            delete window.__n;
+        });
+
+        it("leaves ordinary strings starting with s alone", function() {
+            let button = createProcessedHTML(`
+                <button hx-on:click="window.__s = ['s x', 'submit', 'so', ['s a'].join('')]"></button>
+            `);
+            button.click();
+            window.__s.should.deep.equal(['s x', 'submit', 'so', 's a']);
+            delete window.__s;
+        });
+
         it('works alongside q()', function() {
             playground().innerHTML = `
                 <div id="cart" data-count="1"></div>

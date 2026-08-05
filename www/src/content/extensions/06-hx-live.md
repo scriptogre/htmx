@@ -145,6 +145,18 @@ Both resolve through `q()`, so they read from the first match and write to all.
 
 A value before `<` still means less-than, so `1 < 2` and `count < max` are untouched. `#a-b` is an id, not subtraction.
 
+### Possessives
+
+`'s` reads through to whatever follows, as an alternative to `.`:
+
+```js
+#cart's @data-count++       // #cart.@data-count++
+<.f/>'s @value              // <.f/>.@value
+#box's className            // native properties too
+```
+
+A string literal never directly follows a value in JavaScript, so `'s` after one can only be possessive. Ordinary strings are untouched: `x = 's foo'` stays a string.
+
 ### Setting several classes
 
 `@class = { ... }` writes a group of classes. Each key states its own value, and classes you don't mention are left alone:
