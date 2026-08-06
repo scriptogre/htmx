@@ -17,7 +17,10 @@
     ].map(part => part.source).join('|'), 'g');
     let TEMPLATE_TEXT = /(?:\\.|\$(?!\{)|[^`\\$])*(`|\$\{|$)/y;
     let TOGGLE_OR_TAKE_CALL = /\b(?:toggle|take)\(\s*$/;
-    let CLASS_ACCESS = /^\s*(?:[.[]|=[^=>])/;
+    // `class` is a reserved word, so only property access on it is rewritten.
+    // The bare `class = {...}` object-assignment form was removed in favor of
+    // class.assign({...}); it now stays a reserved word and fails to parse.
+    let CLASS_ACCESS = /^\s*[.[]/;
     let ENDS_VALUE = /^(?:[\w$]+|[)\]}v])$/;
     let POSSESSIVE = /^'s[\s@]/;
     let REGEX_WORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
