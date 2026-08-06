@@ -229,22 +229,44 @@
         if (!elt.classList.length) elt.removeAttribute('class');
     }
 
-    function makeClassProxy(elt) {
+    let CLASS_WRITE_METHODS = new Set(['add', 'remove', 'toggle', 'replace']);
+
+    function makeClassProxy(elts) {
+        let first = elts[0];
+        let write = (name, value) => { for (let e of elts) writeClass(e, name, value); };
         return new Proxy({}, {
-            get: (_, name) => typeof name === 'string' ? elt.classList.contains(name) : undefined,
+            get: (_, name) => {
+                if (typeof name !== 'string' || !first) return undefined;
+                if (name === 'assign') {
+                    return value => {
+                        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                            console.warn(`htmx: class.assign expects an object, got ${Array.isArray(value) ? 'array' : typeof value}.`, { elts });
+                            return;
+                        }
+                        for (let e of elts) writeClasses(e, value);
+                    };
+                }
+                let m = first.classList[name];
+                if (typeof m === 'function') {
+                    return elts.length === 1 || !CLASS_WRITE_METHODS.has(name)
+                        ? m.bind(first.classList)
+                        : (...args) => { for (let e of elts) e.classList[name](...args); };
+                }
+                return first.classList.contains(name);
+            },
             set: (_, name, value) => {
                 if (typeof name !== 'string') return false;
-                writeClass(elt, name, value);
+                write(name, value);
                 return true;
             },
             deleteProperty: (_, name) => {
                 if (typeof name !== 'string') return false;
-                writeClass(elt, name, false);
+                write(name, false);
                 return true;
             },
-            has: (_, name) => typeof name === 'string' && elt.classList.contains(name),
-            ownKeys: () => [...elt.classList],
-            getOwnPropertyDescriptor: (_, name) => elt.classList.contains(name)
+            has: (_, name) => typeof name === 'string' && !!first && first.classList.contains(name),
+            ownKeys: () => first ? [...first.classList] : [],
+            getOwnPropertyDescriptor: (_, name) => first && first.classList.contains(name)
                 ? { enumerable: true, configurable: true }
                 : undefined
         });
@@ -408,14 +430,6 @@
         } else {
             writeClass(elt, name.slice(1), value);
         }
-    }
-
-    function setClasses(elt, value) {
-        if (!value || typeof value !== 'object') {
-            console.warn(`htmx: class = expects an object, got ${typeof value}. Use attr('class', ...) to replace the attribute.`, { elt });
-            return;
-        }
-        writeClasses(elt, value);
     }
 
     function writeClasses(elt, value) {
@@ -650,7 +664,7 @@
                 if (p === 'toggle') return (name, ...values) => { elts.forEach(e => applyToggle(e, name, ...values)); return proxy; };
                 if (p === 'attr') return makeAttrProxy(elts);
                 if (p === 'data') return elts[0] ? makeDataProxy(elts[0], false) : undefined;
-                if (p === 'class') return elts[0] ? makeClassProxy(elts[0]) : undefined;
+                if (p === 'class') return makeClassProxy(elts);
                 if (p === 'closest') return elts[0] ? makeClosestScope(elts[0]) : undefined;
                 if (arrayMethods.has(p)) return elts[p].bind(elts);
                 if (p === 'aria') return elts[0] ? makeAriaProxy(elts[0], false) : undefined;
@@ -660,8 +674,7 @@
                 return v;
             },
             set: (_, p, v) => {
-                if (p === 'class') elts.forEach(e => setClasses(e, v));
-                else elts.forEach(e => e[p] = v);
+                elts.forEach(e => e[p] = v);
                 schedule();
                 return true;
             }

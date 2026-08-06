@@ -159,12 +159,12 @@ A string literal never directly follows a value in JavaScript, so `'s` after one
 
 ### Setting several classes
 
-`@class = { ... }` writes a group of classes. Each key states its own value, and classes you don't mention are left alone:
+`class.assign({ ... })` writes a group of classes. Each key states its own value, and classes you don't mention are left alone:
 
 <div data-syntax="standard">
 
 ```html
-<button hx-on:click="class = { active: true, loading: false }">Finish</button>
+<button hx-on:click="class.assign({ active: true, loading: false })">Finish</button>
 ```
 
 </div>
@@ -172,12 +172,12 @@ A string literal never directly follows a value in JavaScript, so `'s` after one
 <div data-syntax="at">
 
 ```html
-<button hx-on:click="@class = { active: true, loading: false }">Finish</button>
+<button hx-on:click="@class.assign({ active: true, loading: false })">Finish</button>
 ```
 
 </div>
 
-Only the object form is accepted. To replace the whole attribute, use `attr['class'] = 'foo bar'`.
+Non-object arguments warn and do nothing. To replace the whole attribute, use `attr['class'] = 'foo bar'`.
 
 ## Idiomatic hx-live
 
@@ -549,12 +549,12 @@ class['is-active'] = true
 delete class.pending
 ```
 
-Set several classes at once with `@class = { ... }` or `class = { ... }`. Only the object form is accepted. To replace the whole attribute, use `attr['class'] = 'foo bar'`:
+Set several classes at once with `class.assign({ ... })`. Truthy values add, falsy values remove, unmentioned classes survive:
 
 <div data-syntax="standard">
 
 ```html
-<button hx-on:click="class = { active: true, loading: false }">Finish</button>
+<button hx-on:click="class.assign({ active: true, loading: false })">Finish</button>
 ```
 
 </div>
@@ -562,10 +562,26 @@ Set several classes at once with `@class = { ... }` or `class = { ... }`. Only t
 <div data-syntax="at">
 
 ```html
-<button hx-on:click="@class = { active: true, loading: false }">Finish</button>
+<button hx-on:click="@class.assign({ active: true, loading: false })">Finish</button>
 ```
 
 </div>
+
+Non-object arguments warn and do nothing. To replace the whole attribute, use `attr['class'] = 'foo bar'`.
+
+The native `classList` methods work directly on `class`:
+
+```js
+class.add('a', 'b')        // add classes
+class.remove('a', 'b')     // remove classes
+class.toggle('x', force?)  // toggle, optional force
+class.replace('a', 'b')    // replace one class with another
+class.contains('x')        // membership
+class.assign({...})        // group add/remove by truthiness
+'x' in class               // membership
+```
+
+Method names win on read: `class.toggle` is the method even when a class named `toggle` exists; key writes still create classes.
 
 Use `q()` to access another element:
 

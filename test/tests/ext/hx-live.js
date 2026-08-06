@@ -1040,7 +1040,7 @@ describe('hx-live extension', function () {
         let button = createProcessedHTML(`
             <button class="pending remove-me" hx-on:click="
                 window.__classState = [class.pending, class.done];
-                class = { pending: false, done: true };
+                class.assign({ pending: false, done: true });
                 class['is-active'] = true;
                 delete class['remove-me']
             ">Go</button>
@@ -1092,6 +1092,130 @@ describe('hx-live extension', function () {
         let classes = htmx.live.q('#one').class;
         Object.keys(classes).should.deep.equal(['active', 'pending']);
         ({ ...classes }).should.deep.equal({ active: true, pending: true });
+    });
+
+    it('class methods delegate to classList: add, remove, toggle, replace, contains', function() {
+        let button = createProcessedHTML(`
+            <button class="base" hx-on:click="
+                window.__r = [];
+                window.__r.push(class.contains('base'));
+                window.__r.push(class.contains('missing'));
+                class.add('a', 'b');
+                window.__r.push(class.contains('a'));
+                class.remove('a', 'b');
+                window.__r.push(class.contains('a'));
+                class.toggle('t');
+                window.__r.push(class.contains('t'));
+                class.toggle('t', false);
+                window.__r.push(class.contains('t'));
+                class.toggle('t');
+                class.replace('t', 'u');
+                window.__r.push(class.contains('t'));
+                window.__r.push(class.contains('u'));
+            ">Go</button>
+        `);
+        button.click();
+        window.__r.should.deep.equal([true, false, true, false, true, false, false, true]);
+        delete window.__r;
+    });
+
+    it('class.assign adds truthy, removes falsy, leaves unmentioned', function() {
+        let button = createProcessedHTML(`
+            <button class="keep" hx-on:click="class.assign({ active: true, loading: false, keep: true })">Go</button>
+        `);
+        button.click();
+        button.classList.contains('active').should.equal(true);
+        button.classList.contains('loading').should.equal(false);
+        button.classList.contains('keep').should.equal(true);
+    });
+
+    it('class.assign warns and no-ops on non-object arguments', function() {
+        let warnings = [];
+        let realWarn = console.warn;
+        console.warn = (...args) => warnings.push(args[0]);
+        try {
+            let button = createProcessedHTML(`
+                <button class="keep" hx-on:click="class.assign('active'); class.assign(null)">Go</button>
+            `);
+            button.click();
+            button.classList.contains('active').should.equal(false);
+            button.classList.contains('keep').should.equal(true);
+        } finally {
+            console.warn = realWarn;
+        }
+        warnings.length.should.equal(2);
+        warnings[0].should.contain('class.assign expects an object');
+    });
+
+    it('removing the last class removes the class attribute', function() {
+        let button = createProcessedHTML(`
+            <button class="only" hx-on:click="class.assign({ only: false })">Go</button>
+        `);
+        button.click();
+        button.classList.length.should.equal(0);
+        button.hasAttribute('class').should.equal(false);
+    });
+
+    it('reserved method names: writes make classes, reads return methods, in sees classes', function() {
+        let button = createProcessedHTML(`
+            <button id="res" hx-on:click="
+                class.toggle = true;
+                window.__kind = typeof class.toggle;
+                delete class.toggle
+            ">Go</button>
+        `);
+        button.click();
+        button.classList.contains('toggle').should.equal(false); // delete removed it
+        window.__kind.should.equal('function');                  // read is the method
+        delete window.__kind;
+
+        let classes = htmx.live.q('#res').class;
+        ('toggle' in classes).should.equal(false);   // has-trap reads classes only
+        classes.toggle = true;                       // key write adds the class
+        button.classList.contains('toggle').should.equal(true);
+        ('toggle' in classes).should.equal(true);    // in sees it once it is a class
+        (typeof classes.toggle).should.equal('function'); // read still returns the method
+    });
+
+    it('q().class writes hit all matches, reads use the first', function() {
+        playground().innerHTML = '<div id="pl"><div class="x"></div><div class="x"></div></div>';
+        let classes = htmx.live.q('.x in #pl').class;
+        classes.add('a');
+        let divs = playground().querySelectorAll('#pl .x');
+        divs[0].classList.contains('a').should.equal(true);
+        divs[1].classList.contains('a').should.equal(true);
+
+        classes.assign({ a: false, b: true });
+        divs[0].classList.contains('a').should.equal(false);
+        divs[0].classList.contains('b').should.equal(true);
+        divs[1].classList.contains('a').should.equal(false);
+        divs[1].classList.contains('b').should.equal(true);
+
+        classes.contains('a').should.equal(false);   // reads first match
+        classes.contains('b').should.equal(true);
+    });
+
+    it('class proxy: symbols are undefined, spread skips method names', function() {
+        playground().innerHTML = '<button id="sp" class="active pending"></button>';
+        let classes = htmx.live.q('#sp').class;
+        assert.isUndefined(classes[Symbol.iterator]);
+        assert.isUndefined(classes[Symbol.toPrimitive]);
+        Object.keys(classes).should.deep.equal(['active', 'pending']);
+        ({ ...classes }).should.deep.equal({ active: true, pending: true });
+    });
+
+    it('hx-on:click class.add and class.assign work end-to-end', function() {
+        let button = createProcessedHTML(`
+            <button class="keep" hx-on:click="
+                class.add('spin');
+                class.assign({ active: true, loading: false })
+            ">Go</button>
+        `);
+        button.click();
+        button.classList.contains('keep').should.equal(true);
+        button.classList.contains('spin').should.equal(true);
+        button.classList.contains('active').should.equal(true);
+        button.classList.contains('loading').should.equal(false);
     });
 
     it('class bindings react to class state', async function() {
@@ -2840,18 +2964,18 @@ describe('hx-live extension', function () {
             button.classList.contains('is-active').should.equal(true);
         });
 
-        it('@class assigns several classes at once', function() {
+        it('@class.assign assigns several classes at once', function() {
             let button = createProcessedHTML(`
-                <button class="loading" hx-on:click="@class = { active: true, loading: false }"></button>
+                <button class="loading" hx-on:click="@class.assign({ active: true, loading: false })"></button>
             `);
             button.click();
             button.classList.contains('active').should.equal(true);
             button.classList.contains('loading').should.equal(false);
         });
 
-        it('@class leaves classes it does not mention', function() {
+        it('@class.assign leaves classes it does not mention', function() {
             let button = createProcessedHTML(`
-                <button class="htmx-request keep" hx-on:click="@class = { active: true }"></button>
+                <button class="htmx-request keep" hx-on:click="@class.assign({ active: true })"></button>
             `);
             button.click();
             button.classList.contains('active').should.equal(true);
@@ -2859,13 +2983,13 @@ describe('hx-live extension', function () {
             button.classList.contains('keep').should.equal(true);
         });
 
-        it('@class refuses a string and warns', function() {
+        it('@class.assign refuses a string and warns', function() {
             let warnings = [];
             let realWarn = console.warn;
             console.warn = (...args) => warnings.push(args[0]);
             try {
                 let button = createProcessedHTML(`
-                    <button class="keep" hx-on:click="@class = 'active'"></button>
+                    <button class="keep" hx-on:click="@class.assign('active')"></button>
                 `);
                 button.click();
                 button.classList.contains('active').should.equal(false);
@@ -2874,7 +2998,7 @@ describe('hx-live extension', function () {
                 console.warn = realWarn;
             }
             warnings.length.should.equal(1);
-            warnings[0].should.contain("class = expects an object");
+            warnings[0].should.contain("class.assign expects an object");
         });
 
         it('reaches attributes that have no matching DOM property', function() {
