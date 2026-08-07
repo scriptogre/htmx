@@ -13,17 +13,15 @@ describe('hx-live extension', function () {
         liveConfigBackup = htmx.config.live;
         htmx.config.live = { ...liveConfigBackup, inputDebounce: 0 };
         clearExtensions();
-        htmx.config.extensions = 'hx-live,hx-live-hyperscript';
-        htmx.__approvedExt = 'hx-live,hx-live-hyperscript';
+        htmx.config.extensions = 'hx-live';
+        htmx.__approvedExt = 'hx-live';
 
-        for (let src of ['../src/ext/hx-live.js', '../src/ext/hx-live-hyperscript.js']) {
-            let script = document.createElement('script');
-            script.src = src;
-            await new Promise(resolve => {
-                script.onload = resolve;
-                document.head.appendChild(script);
-            });
-        }
+        let script = document.createElement('script');
+        script.src = '../src/ext/hx-live.js';
+        await new Promise(resolve => {
+            script.onload = resolve;
+            document.head.appendChild(script);
+        });
     });
 
     after(() => {
@@ -1039,10 +1037,10 @@ describe('hx-live extension', function () {
     it('class reads, writes, and deletes class state', function() {
         let button = createProcessedHTML(`
             <button class="pending remove-me" hx-on:click="
-                window.__classState = [class.pending, class.done];
-                class.assign({ pending: false, done: true });
-                class['is-active'] = true;
-                delete class['remove-me']
+                window.__classState = [q(this).class.pending, q(this).class.done];
+                q(this).class.assign({ pending: false, done: true });
+                q(this).class['is-active'] = true;
+                delete q(this).class['remove-me']
             ">Go</button>
         `);
         button.click();
@@ -1054,9 +1052,9 @@ describe('hx-live extension', function () {
         delete window.__classState;
     });
 
-    it('toggle(@.name) toggles membership', function() {
+    it("toggle('.name') toggles membership", function() {
         let button = createProcessedHTML(`
-            <button hx-on:click="toggle(@.active)">Go</button>
+            <button hx-on:click="toggle('.active')">Go</button>
         `);
         button.click();
         button.classList.contains('active').should.equal(true);
@@ -1064,11 +1062,11 @@ describe('hx-live extension', function () {
         button.classList.contains('active').should.equal(false);
     });
 
-    it('take(@.name) moves membership between siblings', function() {
+    it("take('.name') moves membership between siblings", function() {
         playground().innerHTML = `
             <div>
                 <button class="active">One</button>
-                <button hx-on:click="take(@.active)">Two</button>
+                <button hx-on:click="take('.active')">Two</button>
             </div>
         `;
         htmx.process(playground());
@@ -1098,20 +1096,20 @@ describe('hx-live extension', function () {
         let button = createProcessedHTML(`
             <button class="base" hx-on:click="
                 window.__r = [];
-                window.__r.push(class.contains('base'));
-                window.__r.push(class.contains('missing'));
-                class.add('a', 'b');
-                window.__r.push(class.contains('a'));
-                class.remove('a', 'b');
-                window.__r.push(class.contains('a'));
-                class.toggle('t');
-                window.__r.push(class.contains('t'));
-                class.toggle('t', false);
-                window.__r.push(class.contains('t'));
-                class.toggle('t');
-                class.replace('t', 'u');
-                window.__r.push(class.contains('t'));
-                window.__r.push(class.contains('u'));
+                window.__r.push(q(this).class.contains('base'));
+                window.__r.push(q(this).class.contains('missing'));
+                q(this).class.add('a', 'b');
+                window.__r.push(q(this).class.contains('a'));
+                q(this).class.remove('a', 'b');
+                window.__r.push(q(this).class.contains('a'));
+                q(this).class.toggle('t');
+                window.__r.push(q(this).class.contains('t'));
+                q(this).class.toggle('t', false);
+                window.__r.push(q(this).class.contains('t'));
+                q(this).class.toggle('t');
+                q(this).class.replace('t', 'u');
+                window.__r.push(q(this).class.contains('t'));
+                window.__r.push(q(this).class.contains('u'));
             ">Go</button>
         `);
         button.click();
@@ -1121,7 +1119,7 @@ describe('hx-live extension', function () {
 
     it('class.assign adds truthy, removes falsy, leaves unmentioned', function() {
         let button = createProcessedHTML(`
-            <button class="keep" hx-on:click="class.assign({ active: true, loading: false, keep: true })">Go</button>
+            <button class="keep" hx-on:click="q(this).class.assign({ active: true, loading: false, keep: true })">Go</button>
         `);
         button.click();
         button.classList.contains('active').should.equal(true);
@@ -1135,7 +1133,7 @@ describe('hx-live extension', function () {
         console.warn = (...args) => warnings.push(args[0]);
         try {
             let button = createProcessedHTML(`
-                <button class="keep" hx-on:click="class.assign('active'); class.assign(null)">Go</button>
+                <button class="keep" hx-on:click="q(this).class.assign('active'); q(this).class.assign(null)">Go</button>
             `);
             button.click();
             button.classList.contains('active').should.equal(false);
@@ -1149,7 +1147,7 @@ describe('hx-live extension', function () {
 
     it('removing the last class removes the class attribute', function() {
         let button = createProcessedHTML(`
-            <button class="only" hx-on:click="class.assign({ only: false })">Go</button>
+            <button class="only" hx-on:click="q(this).class.assign({ only: false })">Go</button>
         `);
         button.click();
         button.classList.length.should.equal(0);
@@ -1159,9 +1157,9 @@ describe('hx-live extension', function () {
     it('reserved method names: writes make classes, reads return methods, in sees classes', function() {
         let button = createProcessedHTML(`
             <button id="res" hx-on:click="
-                class.toggle = true;
-                window.__kind = typeof class.toggle;
-                delete class.toggle
+                q(this).class.toggle = true;
+                window.__kind = typeof q(this).class.toggle;
+                delete q(this).class.toggle
             ">Go</button>
         `);
         button.click();
@@ -1207,8 +1205,8 @@ describe('hx-live extension', function () {
     it('hx-on:click class.add and class.assign work end-to-end', function() {
         let button = createProcessedHTML(`
             <button class="keep" hx-on:click="
-                class.add('spin');
-                class.assign({ active: true, loading: false })
+                q(this).class.add('spin');
+                q(this).class.assign({ active: true, loading: false })
             ">Go</button>
         `);
         button.click();
@@ -1220,7 +1218,7 @@ describe('hx-live extension', function () {
 
     it('class bindings react to class state', async function() {
         let elt = createProcessedHTML(`
-            <div class="selected" :class="{ visible: class.selected }"></div>
+            <div class="selected" :class="{ visible: q(this).class.selected }"></div>
         `);
         elt.classList.contains('visible').should.equal(true);
         elt.classList.remove('selected');
@@ -1486,6 +1484,202 @@ describe('hx-live extension', function () {
         playground().querySelector('.x').hasAttribute('role').should.equal(false);
     });
 
+    it('q().attr.data and q().data share the local data view', function() {
+        playground().innerHTML = `
+            <div class="x" data-count="1"></div>
+            <div class="x" data-count="2"></div>
+        `;
+        let proxy = htmx.live.q('.x');
+        assert.strictEqual(proxy.attr.data, proxy.data);
+        proxy.attr.data.count.should.equal(1);
+        proxy.data.count.should.equal(1);
+
+        proxy.attr.data.count = 3;
+        [...playground().querySelectorAll('.x')].map(e => e.dataset.count)
+            .should.deep.equal(['3', '3']);
+
+        proxy.data.count = 4;
+        [...playground().querySelectorAll('.x')].map(e => e.dataset.count)
+            .should.deep.equal(['4', '4']);
+    });
+
+    it('q().class and q().attr.class share the local class view', function() {
+        playground().innerHTML = '<div class="x"></div><div class="x"></div>';
+        let proxy = htmx.live.q('.x');
+        assert.strictEqual(proxy.attr.class, proxy.class);
+        proxy.attr.class.active = true;
+        [...playground().querySelectorAll('.x')].every(e => e.classList.contains('active'))
+            .should.equal(true);
+        proxy.class.active = false;
+        [...playground().querySelectorAll('.x')].some(e => e.classList.contains('active'))
+            .should.equal(false);
+    });
+
+    it('q().aria and q().attr.aria share the local ARIA view', function() {
+        playground().innerHTML = '<div class="x"></div><div class="x"></div>';
+        let proxy = htmx.live.q('.x');
+        assert.strictEqual(proxy.attr.aria, proxy.aria);
+        proxy.attr.aria.busy = true;
+        [...playground().querySelectorAll('.x')].map(e => e.getAttribute('aria-busy'))
+            .should.deep.equal(['true', 'true']);
+        proxy.aria.busy = false;
+        [...playground().querySelectorAll('.x')].map(e => e.getAttribute('aria-busy'))
+            .should.deep.equal(['false', 'false']);
+    });
+
+    it('q().data is local while bare data resolves the nearest owner', function() {
+        playground().innerHTML = `
+            <section data-state="owner">
+                <button id="button"
+                        hx-on:click="window.__dataScopes = [data.state, q(this).data.state]; data.state = 'changed'">
+                    Go
+                </button>
+            </section>
+        `;
+        htmx.process(playground());
+        let button = playground().querySelector('#button');
+        button.click();
+        window.__dataScopes.should.deep.equal(['owner', undefined]);
+        button.hasAttribute('data-state').should.equal(false);
+        playground().querySelector('section').dataset.state.should.equal('changed');
+        delete window.__dataScopes;
+    });
+
+    it('q().closest resolves one data owner per selected element and deduplicates writes', function() {
+        playground().innerHTML = `
+            <section id="a" data-state="a">
+                <button class="hx-live-owner-item"></button>
+                <button class="hx-live-owner-item"></button>
+            </section>
+            <section id="b" data-state="b">
+                <button class="hx-live-owner-item"></button>
+            </section>
+        `;
+        let a = playground().querySelector('#a');
+        let b = playground().querySelector('#b');
+        let writes = new Map([[a, 0], [b, 0]]);
+        let setAttribute = Element.prototype.setAttribute;
+        Element.prototype.setAttribute = function(name, value) {
+            if (name === 'data-state' && writes.has(this)) writes.set(this, writes.get(this) + 1);
+            return setAttribute.call(this, name, value);
+        };
+        try {
+            htmx.live.q(playground().querySelectorAll('.hx-live-owner-item')).closest.data.state = 'open';
+        } finally {
+            Element.prototype.setAttribute = setAttribute;
+        }
+        a.dataset.state.should.equal('open');
+        b.dataset.state.should.equal('open');
+        writes.get(a).should.equal(1);
+        writes.get(b).should.equal(1);
+    });
+
+    it('q().closest resolves each selected element for attributes, ARIA, and classes', function() {
+        playground().innerHTML = `
+            <section class="active" disabled aria-busy="false">
+                <button class="hx-live-owner-item"></button>
+                <button class="hx-live-owner-item"></button>
+            </section>
+            <section class="active" disabled aria-busy="false">
+                <button class="hx-live-owner-item"></button>
+            </section>
+        `;
+        let proxy = htmx.live.q(playground().querySelectorAll('.hx-live-owner-item'));
+        proxy.closest.attr.disabled = false;
+        proxy.closest.aria.busy = true;
+        proxy.closest.class.active = false;
+
+        [...playground().querySelectorAll('section')].every(e => !e.hasAttribute('disabled'))
+            .should.equal(true);
+        [...playground().querySelectorAll('section')].map(e => e.getAttribute('aria-busy'))
+            .should.deep.equal(['true', 'true']);
+        [...playground().querySelectorAll('section')].every(e => !e.classList.contains('active'))
+            .should.equal(true);
+    });
+
+    it('q().closest defers owner lookup until a state key is accessed', function() {
+        playground().innerHTML = '<section data-state="owner"><button class="hx-live-owner-item"></button></section>';
+        let proxy = htmx.live.q(playground().querySelectorAll('.hx-live-owner-item'));
+        let calls = 0;
+        let closest = Element.prototype.closest;
+        Element.prototype.closest = function(...args) {
+            calls++;
+            return closest.apply(this, args);
+        };
+        try {
+            let scope = proxy.closest;
+            let data = scope.data;
+            calls.should.equal(0);
+            data.state.should.equal('owner');
+            calls.should.equal(1);
+        } finally {
+            Element.prototype.closest = closest;
+        }
+    });
+
+    it('q().closest reads the first selected owner for each state namespace', function() {
+        playground().innerHTML = `
+            <section data-state="first" aria-busy="false" role="tab" class="active">
+                <button class="hx-live-owner-read-item"></button>
+            </section>
+            <section data-state="second" aria-busy="true" role="option">
+                <button class="hx-live-owner-read-item"></button>
+            </section>
+        `;
+        let proxy = htmx.live.q(playground().querySelectorAll('.hx-live-owner-read-item'));
+        let scope = proxy.closest;
+        assert.strictEqual(scope.attr.data, scope.data);
+        assert.strictEqual(scope.attr.aria, scope.aria);
+        assert.strictEqual(scope.attr.class, scope.class);
+        assert.strictEqual(scope.data.state, 'first');
+        assert.strictEqual(scope.aria.busy, false);
+        assert.strictEqual(scope.attr.role, 'tab');
+        assert.strictEqual(scope.class.active, true);
+    });
+
+    it('q().closest reads undefined when no data owner exists', function() {
+        playground().innerHTML = '<button class="hx-live-owner-item"></button>';
+        playground().removeAttribute('data-state');
+        assert.isUndefined(htmx.live.q(playground().querySelectorAll('.hx-live-owner-item')).closest.data.state);
+    });
+
+    it('q().closest writes data locally for every match when no owner exists', function() {
+        playground().innerHTML = '<button class="hx-live-owner-item"></button><button class="hx-live-owner-item"></button>';
+        playground().removeAttribute('data-state');
+        htmx.live.q(playground().querySelectorAll('.hx-live-owner-item')).closest.data.state = 'created';
+        [...playground().querySelectorAll('.hx-live-owner-item')].map(e => e.dataset.state)
+            .should.deep.equal(['created', 'created']);
+    });
+
+    it('q().closest writes attr and class locally for every match when no owner exists', function() {
+        playground().innerHTML = '<button class="hx-live-owner-item"></button><button class="hx-live-owner-item"></button>';
+        let proxy = htmx.live.q(playground().querySelectorAll('.hx-live-owner-item'));
+        proxy.closest.attr.role = 'button';
+        proxy.closest.class.active = true;
+
+        [...playground().querySelectorAll('.hx-live-owner-item')].every(e => e.getAttribute('role') === 'button')
+            .should.equal(true);
+        [...playground().querySelectorAll('.hx-live-owner-item')].every(e => e.classList.contains('active'))
+            .should.equal(true);
+    });
+
+    it('q().closest deletes nothing when no owner exists', function() {
+        playground().innerHTML = '<button class="hx-live-owner-item"></button><button class="hx-live-owner-item"></button>';
+        playground().removeAttribute('data-state');
+        let proxy = htmx.live.q(playground().querySelectorAll('.hx-live-owner-item'));
+        delete proxy.closest.data.state;
+        delete proxy.closest.aria.busy;
+        delete proxy.closest.attr.role;
+        delete proxy.closest.class.active;
+
+        [...playground().querySelectorAll('.hx-live-owner-item')].every(e =>
+            !e.hasAttribute('data-state') &&
+            !e.hasAttribute('aria-busy') &&
+            !e.hasAttribute('role') &&
+            !e.classList.contains('active'))
+            .should.equal(true);
+    });
+
     it('attr is available in hx-on scope bound to element', function() {
         playground().innerHTML = '<button hx-on:click="attr[\'data-clicked\'] = \'yes\'">x</button>';
         htmx.process(playground());
@@ -1553,10 +1747,10 @@ describe('hx-live extension', function () {
         playground().querySelector('section').getAttribute('aria-busy').should.equal('true');
     });
 
-    it('toggle(@aria-name, values) cycles explicit values', function() {
+    it("toggle('aria-name', values) cycles explicit values", function() {
         playground().innerHTML = `
             <div aria-sort="ascending">
-                <button hx-on:click="q('closest [aria-sort]').toggle(@aria-sort, 'ascending|descending|other')">Sort</button>
+                <button hx-on:click="q('closest [aria-sort]').toggle('aria-sort', 'ascending|descending|other')">Sort</button>
             </div>
         `;
         htmx.process(playground());
@@ -1568,12 +1762,12 @@ describe('hx-live extension', function () {
         owner.getAttribute('aria-sort').should.equal('other');
     });
 
-    it('take(@aria-name) claims sibling state', function() {
+    it("take('aria-name') claims sibling state", function() {
         playground().innerHTML = `
             <div role="tablist">
                 <button role="tab" aria-selected="true">One</button>
                 <button role="tab" aria-selected="false"
-                        hx-on:click="take(@aria-selected)">Two</button>
+                        hx-on:click="take('aria-selected')">Two</button>
             </div>
         `;
         htmx.process(playground());
@@ -1807,10 +2001,10 @@ describe('hx-live extension', function () {
     // cascading data proxy
     // -------------------------------------------------------------------------
 
-    it('toggle(@data-name, values) cycles explicit values', function() {
+    it("toggle('data-name', values) cycles explicit values", function() {
         playground().innerHTML = `
             <div data-view="grid">
-                <button hx-on:click="q('closest [data-view]').toggle(@data-view, 'grid|list')">View</button>
+                <button hx-on:click="q('closest [data-view]').toggle('data-view', 'grid|list')">View</button>
             </div>
         `;
         htmx.process(playground());
@@ -1822,10 +2016,10 @@ describe('hx-live extension', function () {
         owner.dataset.view.should.equal('grid');
     });
 
-    it('toggle(@data-name, "a", "b") cycles values passed as separate arguments', function() {
+    it("toggle('data-name', \"a\", \"b\") cycles values passed as separate arguments", function() {
         playground().innerHTML = `
             <div data-view="grid">
-                <button hx-on:click="q('closest [data-view]').toggle(@data-view, 'grid', 'list')">View</button>
+                <button hx-on:click="q('closest [data-view]').toggle('data-view', 'grid', 'list')">View</button>
             </div>
         `;
         htmx.process(playground());
@@ -1837,9 +2031,9 @@ describe('hx-live extension', function () {
         owner.dataset.view.should.equal('grid');
     });
 
-    it('toggle(@data-name) toggles attribute presence', function() {
+    it("toggle('data-name') toggles attribute presence", function() {
         let button = createProcessedHTML(`
-            <button data-active="" hx-on:click="toggle(@data-active)"></button>
+            <button data-active="" hx-on:click="toggle('data-active')"></button>
         `);
         button.click();
         button.hasAttribute('data-active').should.equal(false);
@@ -1847,9 +2041,9 @@ describe('hx-live extension', function () {
         button.dataset.active.should.equal('');
     });
 
-    it('@data-name = !@data-name flips a typed boolean', function() {
+    it('q(this).data.active = !q(this).data.active flips a typed boolean', function() {
         let button = createProcessedHTML(`
-            <button data-active="false" hx-on:click="@data-active = !@data-active"></button>
+            <button data-active="false" hx-on:click="q(this).data.active = !q(this).data.active"></button>
         `);
         button.click();
         button.dataset.active.should.equal('true');
@@ -1865,11 +2059,11 @@ describe('hx-live extension', function () {
         button.hasAttribute('data-active').should.equal(false);
     });
 
-    it('take(@data-name) moves sibling state', function() {
+    it("take('data-name') moves sibling state", function() {
         playground().innerHTML = `
             <div>
                 <button data-active="true">One</button>
-                <button data-active="false" hx-on:click="take(@data-active)">Two</button>
+                <button data-active="false" hx-on:click="take('data-active')">Two</button>
             </div>
         `;
         htmx.process(playground());
@@ -2894,579 +3088,6 @@ describe('hx-live extension', function () {
             let delta = window.__morphMultiCount - baseline;
             assert.isAtMost(delta, 2, 'should not accumulate duplicate fns across morph cycles');
             delete window.__morphMultiCount;
-        });
-
-    });
-
-    // -------------------------------------------------------------------------
-    // @ sigil scanner
-    // -------------------------------------------------------------------------
-
-    describe('@ sigil', function() {
-
-        it('reads and writes typed ARIA through @aria-name', function() {
-            let button = createProcessedHTML(`
-                <button aria-pressed="false" hx-on:click="@aria-pressed = !@aria-pressed">Mute</button>
-            `);
-            button.click();
-            button.getAttribute('aria-pressed').should.equal('true');
-            button.click();
-            button.getAttribute('aria-pressed').should.equal('false');
-        });
-
-        it('^aria-name finds the closest owner', function() {
-            playground().innerHTML = `
-                <div aria-busy="false">
-                    <button hx-on:click="^aria-busy = !^aria-busy">Go</button>
-                </div>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('div').getAttribute('aria-busy').should.equal('true');
-        });
-
-        it('reads and writes typed JSON through ^data-name', function() {
-            playground().innerHTML = `
-                <div data-count="0">
-                    <button hx-on:click="^data-count++">Vote</button>
-                </div>
-            `;
-            htmx.process(playground());
-            let button = playground().querySelector('button');
-            button.click();
-            button.click();
-            playground().querySelector('div').dataset.count.should.equal('2');
-        });
-
-        it('converts hyphenated data names to dataset keys', function() {
-            let button = createProcessedHTML(`
-                <button data-item-id="3" hx-on:click="@data-item-id = @data-item-id + 1"></button>
-            `);
-            button.click();
-            button.getAttribute('data-item-id').should.equal('4');
-        });
-
-        it('@.name toggles class membership', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="@.active = !@.active"></button>
-            `);
-            button.click();
-            button.classList.contains('active').should.equal(true);
-            button.click();
-            button.classList.contains('active').should.equal(false);
-        });
-
-        it('@.name accepts non-identifier class names', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="@.is-active = true"></button>
-            `);
-            button.click();
-            button.classList.contains('is-active').should.equal(true);
-        });
-
-        it('@class.assign assigns several classes at once', function() {
-            let button = createProcessedHTML(`
-                <button class="loading" hx-on:click="@class.assign({ active: true, loading: false })"></button>
-            `);
-            button.click();
-            button.classList.contains('active').should.equal(true);
-            button.classList.contains('loading').should.equal(false);
-        });
-
-        it('@class.assign leaves classes it does not mention', function() {
-            let button = createProcessedHTML(`
-                <button class="htmx-request keep" hx-on:click="@class.assign({ active: true })"></button>
-            `);
-            button.click();
-            button.classList.contains('active').should.equal(true);
-            button.classList.contains('htmx-request').should.equal(true);
-            button.classList.contains('keep').should.equal(true);
-        });
-
-        it('@class.assign refuses a string and warns', function() {
-            let warnings = [];
-            let realWarn = console.warn;
-            console.warn = (...args) => warnings.push(args[0]);
-            try {
-                let button = createProcessedHTML(`
-                    <button class="keep" hx-on:click="@class.assign('active')"></button>
-                `);
-                button.click();
-                button.classList.contains('active').should.equal(false);
-                button.classList.contains('keep').should.equal(true);
-            } finally {
-                console.warn = realWarn;
-            }
-            warnings.length.should.equal(1);
-            warnings[0].should.contain("class.assign expects an object");
-        });
-
-        it('reaches attributes that have no matching DOM property', function() {
-            let input = createProcessedHTML(`
-                <input hx-on:click="@readonly = true">
-            `);
-            input.click();
-            input.hasAttribute('readonly').should.equal(true);
-            input.readOnly.should.equal(true);
-        });
-
-        it('reads attributes that have no matching DOM property', function() {
-            let input = createProcessedHTML(`
-                <input readonly tabindex="3" hx-on:click="window.__attrRead = [@readonly, @tabindex]">
-            `);
-            input.click();
-            window.__attrRead.should.deep.equal([true, 3]);
-            delete window.__attrRead;
-        });
-
-        it('types numeric attributes as numbers', function() {
-            let div = createProcessedHTML(`
-                <div colspan="3" tabindex="2" hx-on:click="window.__nums = [@colspan, @tabindex, @colspan + 1]"></div>
-            `);
-            div.click();
-            window.__nums.should.deep.equal([3, 2, 4]);
-            delete window.__nums;
-        });
-
-        it('leaves non-numeric text in a numeric attribute alone', function() {
-            let div = createProcessedHTML(`
-                <div colspan="auto" hx-on:click="window.__num = @colspan"></div>
-            `);
-            div.click();
-            window.__num.should.equal('auto');
-            delete window.__num;
-        });
-
-        it('writes false rather than removing the attribute', function() {
-            let div = createProcessedHTML(`
-                <div my-flag="on" hx-on:click="@my-flag = false"></div>
-            `);
-            div.click();
-            div.getAttribute('my-flag').should.equal('false');
-        });
-
-        it('removes an attribute with delete', function() {
-            let div = createProcessedHTML(`
-                <div my-flag="on" hx-on:click="delete @my-flag"></div>
-            `);
-            div.click();
-            div.hasAttribute('my-flag').should.equal(false);
-        });
-
-        it('reads number and range inputs as numbers', function() {
-            playground().innerHTML = `
-                <input id="n" type="number" value="18">
-                <input id="r" type="range" min="0" max="100" value="50">
-                <button hx-on:click="window.__vals = [q('#n').@value, q('#r').@value, q('#n').@value + 1]"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__vals.should.deep.equal([18, 50, 19]);
-            delete window.__vals;
-        });
-
-        it('leaves other input types as strings', function() {
-            playground().innerHTML = `
-                <input id="t" type="text" value="007">
-                <button hx-on:click="window.__val = q('#t').@value"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__val.should.equal('007');
-            delete window.__val;
-        });
-
-        it('reads an empty number input as null', function() {
-            playground().innerHTML = `
-                <input id="n" type="number">
-                <button hx-on:click="window.__val = q('#n').@value"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            assert.isNull(window.__val);
-            delete window.__val;
-        });
-
-        it('renders an empty number input as empty text', async function() {
-            playground().innerHTML = `
-                <input id="n" type="number">
-                <output :text="q('#n').@value"></output>
-            `;
-            htmx.process(playground());
-            await htmx.timeout(5);
-            playground().querySelector('output').textContent.should.equal('');
-        });
-
-        it('reaches custom attributes', function() {
-            let div = createProcessedHTML(`
-                <div hx-on:click="@my-attr = 'on'; window.__custom = @my-attr"></div>
-            `);
-            div.click();
-            div.getAttribute('my-attr').should.equal('on');
-            window.__custom.should.equal('on');
-            delete window.__custom;
-        });
-
-        it('keeps property and attribute in sync for checked', function() {
-            let box = createProcessedHTML(`
-                <input type="checkbox" hx-on:click="@checked = true">
-            `);
-            box.checked = false;
-            box.removeAttribute('checked');
-            box.click();
-            box.checked.should.equal(true);
-            box.hasAttribute('checked').should.equal(true);
-        });
-
-        it('reads the live value, not the default attribute', function() {
-            playground().innerHTML = `
-                <input id="field" value="default">
-                <button hx-on:click="window.__liveValue = q('#field').@value"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('#field').value = 'typed';
-            playground().querySelector('button').click();
-            window.__liveValue.should.equal('typed');
-            delete window.__liveValue;
-        });
-
-        it('writes value to both property and attribute', function() {
-            let input = createProcessedHTML(`
-                <input value="default" hx-on:click="@value = 'set'">
-            `);
-            input.value = 'dirty';
-            input.click();
-            input.value.should.equal('set');
-            input.getAttribute('value').should.equal('set');
-        });
-
-        it('writes native reflected properties', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="@hidden = true"></button>
-            `);
-            button.click();
-            button.hasAttribute('hidden').should.equal(true);
-        });
-
-        it('emits string arguments inside toggle() and take()', function() {
-            let button = createProcessedHTML(`
-                <button aria-expanded="false" hx-on:click="toggle(@aria-expanded)"></button>
-            `);
-            button.click();
-            button.getAttribute('aria-expanded').should.equal('true');
-        });
-
-        it('works after q()', function() {
-            playground().innerHTML = `
-                <div id="cart" data-count="1"></div>
-                <span class="row"></span>
-                <button hx-on:click="q('#cart').@data-count++; q('.row').@hidden = true"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('#cart').dataset.count.should.equal('2');
-            playground().querySelector('.row').hasAttribute('hidden').should.equal(true);
-        });
-
-        it('@ reads this element only, ^ walks up', function() {
-            playground().innerHTML = `
-                <section data-count="7">
-                    <button hx-on:click="window.__both = [@data-count, ^data-count]"></button>
-                </section>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__both.should.deep.equal([undefined, 7]);
-            delete window.__both;
-        });
-
-        it('^ writes to the owner, @ writes to this element', function() {
-            playground().innerHTML = `
-                <section data-count="1">
-                    <button hx-on:click="^data-count++; @data-count = 'mine'"></button>
-                </section>
-            `;
-            htmx.process(playground());
-            let button = playground().querySelector('button');
-            button.click();
-            playground().querySelector('section').dataset.count.should.equal('2');
-            button.dataset.count.should.equal('mine');
-        });
-
-        it('^.name finds a class on an ancestor', function() {
-            playground().innerHTML = `
-                <section class="active">
-                    <button hx-on:click="window.__cls = [@.active, ^.active]"></button>
-                </section>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__cls.should.deep.equal([false, true]);
-            delete window.__cls;
-        });
-
-        it('^name finds a plain attribute on an ancestor', function() {
-            playground().innerHTML = `
-                <fieldset my-flag="on">
-                    <button hx-on:click="window.__flag = [@my-flag, ^my-flag]"></button>
-                </fieldset>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__flag.should.deep.equal([null, 'on']);
-            delete window.__flag;
-        });
-
-        it('^ works after q()', function() {
-            playground().innerHTML = `
-                <section data-count="4">
-                    <span id="inner"></span>
-                </section>
-                <button hx-on:click="q('#inner').^data-count++"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('section').dataset.count.should.equal('5');
-        });
-
-        it('^name and closest.* are the same thing', function() {
-            playground().innerHTML = `
-                <section data-count="9">
-                    <button hx-on:click="window.__same = [^data-count, closest.data.count]"></button>
-                </section>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__same.should.deep.equal([9, 9]);
-            delete window.__same;
-        });
-
-        it('spreads a whole namespace with @data-* and ^data-*', function() {
-            playground().innerHTML = `
-                <section data-x="1" data-y="2">
-                    <button data-y="3" hx-on:click="
-                        window.__spread = [JSON.stringify({...@data-*}), JSON.stringify({...^data-*})]
-                    "></button>
-                </section>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__spread[0].should.equal('{"y":3}');
-            let all = JSON.parse(window.__spread[1]);
-            all.y.should.equal(3);
-            all.x.should.equal(1);
-            delete window.__spread;
-        });
-
-        it('aria is local, data cascades', function() {
-            playground().innerHTML = `
-                <section aria-busy="true" data-count="7">
-                    <button hx-on:click="
-                        window.__defaults = [aria.busy, data.count, ^aria-busy, @data-count]
-                    "></button>
-                </section>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__defaults.should.deep.equal([undefined, 7, true, undefined]);
-            delete window.__defaults;
-        });
-
-        it('leaves bitwise XOR alone', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="window.__xor = [5 ^ 3, (2) ^ 1, 6 ^ ^data-x]" data-x="1"></button>
-            `);
-            button.click();
-            window.__xor.should.deep.equal([6, 3, 7]);
-            delete window.__xor;
-        });
-
-        it('leaves strings, comments, regex, and template text alone', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="
-                    let parts = ['@data-x', &quot;@data-y&quot;, \`raw @data-z\`];
-                    // @data-comment
-                    /* @data-block */
-                    if (/@data-re/.test('@data-re')) parts.push('re');
-                    window.__scanParts = parts.join('|');
-                "></button>
-            `);
-            button.click();
-            window.__scanParts.should.equal('@data-x|@data-y|raw @data-z|re');
-            delete window.__scanParts;
-        });
-
-        it('scans template literal interpolations', function() {
-            let elt = createProcessedHTML(`
-                <div data-name="ada" :text="\`hi \${@data-name} @data-name\`"></div>
-            `);
-            elt.textContent.should.equal('hi ada @data-name');
-        });
-
-        it('does not rewrite class used as an object key', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="window.__scanKey = ({ class: 'x' }).class"></button>
-            `);
-            button.click();
-            window.__scanKey.should.equal('x');
-            delete window.__scanKey;
-        });
-
-        it('does not rewrite a member named class', function() {
-            playground().innerHTML = `
-                <div id="menu"></div>
-                <button hx-on:click="q('#menu').class.open = true"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('#menu').classList.contains('open').should.equal(true);
-        });
-
-        it('works in :attr bindings', async function() {
-            let elt = createProcessedHTML(`
-                <div data-count="3" :text="@data-count * 2"></div>
-            `);
-            elt.textContent.should.equal('6');
-        });
-
-    });
-
-    describe('selector literals', function() {
-
-        it('#id selects by id', function() {
-            playground().innerHTML = `
-                <div id="cart" data-count="1"></div>
-                <button hx-on:click="#cart.@data-count++"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('#cart').dataset.count.should.equal('2');
-        });
-
-        it('#id accepts hyphens', function() {
-            playground().innerHTML = `
-                <div id="tab-one"></div>
-                <button hx-on:click="#tab-one.@.active = true"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('#tab-one').classList.contains('active').should.equal(true);
-        });
-
-        it('<.class/> selects every match', function() {
-            playground().innerHTML = `
-                <span class="row"></span>
-                <span class="row"></span>
-                <button hx-on:click="<.row/>.@hidden = true"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            [...playground().querySelectorAll('.row')].every(e => e.hidden).should.equal(true);
-        });
-
-        it('<previous input/> resolves htmx relative selectors', function() {
-            playground().innerHTML = `
-                <input value="typed">
-                <button hx-on:click="window.__near = <previous input/>.@value"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__near.should.equal('typed');
-            delete window.__near;
-        });
-
-        it('<...> accepts combinators and attribute selectors', function() {
-            playground().innerHTML = `
-                <div class="a"><b class="c" data-x="1"></b></div>
-                <button hx-on:click="window.__hits = [
-                    <.a > .c/>.count,
-                    <[data-x='1']/>.count
-                ]"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__hits.should.deep.equal([1, 1]);
-            delete window.__hits;
-        });
-
-        it('leaves less-than comparisons alone', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="window.__cmp = [1 < 2, 5 < 3, (8) < 9/3]"></button>
-            `);
-            button.click();
-            window.__cmp.should.deep.equal([true, false, false]);
-            delete window.__cmp;
-        });
-
-        it('leaves # and < inside strings, comments and templates alone', function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="window.__raw = [
-                    '#cart', '<.row/>', \`#a <.b/>\`, /* #c <.d/> */ 1 // #e
-                ]"></button>
-            `);
-            button.click();
-            window.__raw.should.deep.equal(['#cart', '<.row/>', '#a <.b/>', 1]);
-            delete window.__raw;
-        });
-
-        it("'s reads a property from a selector literal", function() {
-            playground().innerHTML = `
-                <div id="cart" data-count="1"></div>
-                <button hx-on:click="#cart's @data-count++"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('#cart').dataset.count.should.equal('2');
-        });
-
-        it("'s works after <.../> and chains", function() {
-            playground().innerHTML = `
-                <input class="f" value="typed">
-                <button hx-on:click="window.__poss = <.f/>'s @value"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__poss.should.equal('typed');
-            delete window.__poss;
-        });
-
-        it("'s reaches native properties too", function() {
-            playground().innerHTML = `
-                <div id="box" class="a b"></div>
-                <button hx-on:click="window.__n = #box's className"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            window.__n.should.equal('a b');
-            delete window.__n;
-        });
-
-        it("leaves ordinary strings starting with s alone", function() {
-            let button = createProcessedHTML(`
-                <button hx-on:click="window.__s = ['s x', 'submit', 'so', ['s a'].join('')]"></button>
-            `);
-            button.click();
-            window.__s.should.deep.equal(['s x', 'submit', 'so', 's a']);
-            delete window.__s;
-        });
-
-        it('works alongside q()', function() {
-            playground().innerHTML = `
-                <div id="cart" data-count="1"></div>
-                <button hx-on:click="#cart.@data-count = q('#cart').@data-count + 4"></button>
-            `;
-            htmx.process(playground());
-            playground().querySelector('button').click();
-            playground().querySelector('#cart').dataset.count.should.equal('5');
-        });
-
-        it('works in :attr bindings', function() {
-            playground().innerHTML = `
-                <div id="src" data-count="3"></div>
-                <output :text="#src.@data-count * 2"></output>
-            `;
-            htmx.process(playground());
-            playground().querySelector('output').textContent.should.equal('6');
         });
 
     });
