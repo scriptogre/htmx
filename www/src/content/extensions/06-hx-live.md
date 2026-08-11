@@ -8,12 +8,18 @@ keywords: ["live", "reactive", "bind", "DOM", "q", "selector"]
 
 The `hx-live` extension keeps HTML attributes, text, classes, and styles in sync with the DOM.
 
-```html
-<input type="number" value="2">
-<output :text="q('previous input').value * 12"></output>
+## Mental Model
+
+```text
+Can HTML provide the behavior?
+├─ yes → use HTML
+└─ no
+   Can CSS derive the presentation?
+   ├─ yes → use HTML + CSS
+   └─ no  → use hx-live
 ```
 
-The output updates when the input changes.
+See [HTML and CSS First](#html-and-css-first) for native examples.
 
 ## Installing
 
@@ -24,98 +30,63 @@ The output updates when the input changes.
 
 ## Usage
 
-### Choose the Smallest Tool
+### Update Text
 
-Keep behavior in the platform when the platform already provides it:
-
-```text
-HTML  →  CSS  →  binding  →  event handler  →  hx-live
-```
-
-Use the first tool that can express the behavior.
-
-For example, HTML already has a disclosure widget:
-
-```html
-<details>
-  <summary>Shipping address</summary>
-  <address>...</address>
-</details>
-```
-
-CSS can style its native state:
-
-```css
-details[open] {
-  border-color: var(--accent);
-}
-```
-
-This needs no `hx-live`. The browser owns the open state, keyboard behavior, and accessibility.
-
-Add `hx-live` when one piece of DOM state must derive from another:
-
-```html
-<details>
-  <summary>Shipping address</summary>
-  <address>...</address>
-</details>
-
-<p :text="q('previous details').open ? 'Address shown' : 'Address hidden'"></p>
-```
-
-The `<details>` element remains the source of truth.
-
-### Bind Derived State
-
-Prefix an attribute with `:` to bind it to an expression:
+Bind [`textContent`](#text) with `:text`:
 
 ```html
 <label>
-  Quantity
-  <input id="quantity" type="number" min="1" value="1">
+  Name
+  <input id="name" value="Ada">
 </label>
 
-<button :disabled="q('#quantity').value < 1">
-  Add to cart
-</button>
-
-<output :text="q('#quantity').value * 12"></output>
+<output :text="'Hello, ' + q('#name').value"></output>
 ```
-
-The DOM holds the state:
 
 ```text
-input.value  ──→  button.disabled
-             └─→  output.textContent
+input: Ada    → output: Hello, Ada
+input: Grace  → output: Hello, Grace
 ```
 
-Use one source of truth. Derive other attributes and text from it.
+### Bind an Attribute
 
-### Handle an Action
+Prefix an attribute with `:`:
+
+```html
+<input id="terms" type="checkbox">
+
+<button :disabled="!q('#terms').checked">
+  Continue
+</button>
+```
+
+```text
+unchecked → button.disabled = true
+checked   → button.disabled = false
+```
+
+### Change State
 
 Use [`hx-on`](/reference/attributes/hx-on) for actions caused by an event:
 
 ```html
 <button aria-pressed="false"
-        hx-on:click="toggle('aria-pressed')">
+        hx-on:click="aria.pressed = !aria.pressed">
   Mute
 </button>
-```
 
-Style the semantic state with CSS:
-
-```css
+<style>
 [aria-pressed="true"] {
   background: var(--selected);
 }
+</style>
 ```
 
-The `aria-pressed` attribute describes the button, stores its state, and gives CSS a selector. No parallel `.active` class is needed.
+```text
+false → click → true → click → false
+```
 
 ### Share State
-
-Put shared state on the nearest common ancestor:
 
 ```html
 <section data-quantity="1">
@@ -132,8 +103,6 @@ Put shared state on the nearest common ancestor:
 </section>
 ```
 
-Bare `data.quantity` finds the nearest `data-quantity` owner:
-
 ```text
 section[data-quantity]
 ├── button  reads and writes quantity
@@ -141,38 +110,28 @@ section[data-quantity]
 └── button  reads and writes quantity
 ```
 
-Use [`data-*`](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*) for local UI state that has no native HTML or ARIA home.
+Bare `data.quantity` uses the nearest [`data-quantity`](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*) owner.
 
-### Reach Related Elements
+### Read Nearby State
 
-Use `q()` when the state lives on another element.
-
-Directional selectors avoid IDs for nearby elements:
+Use [`q()` directionals](#find-elements) for local relationships:
 
 ```html
-<label>
-  Name
+<div class="field">
   <input value="Ada">
-</label>
 
-<p :text="'Hello, ' + q('previous input').value"></p>
+  <output :text="q('previous input').value.length + ' characters'"></output>
+</div>
 ```
 
-Use a CSS selector when the relationship is not local:
-
-```html
-<input id="discount" type="range" min="0" max="50" value="10">
-
-<output :text="q('#discount').value + '% off'"></output>
+```text
+Ada    → 3 characters
+Grace  → 5 characters
 ```
 
-Prefer direct state such as `.value`, `.checked`, `aria.*`, or `data.*`. Use raw attributes only when their exact text matters.
+### Wait for an Animation
 
-### Coordinate Async Work
-
-Use top-level `await` in [`hx-on`](/reference/attributes/hx-on) for event-driven work.
-
-This notice waits for its CSS transition before leaving the DOM:
+Use top-level `await` in [`hx-on`](/reference/attributes/hx-on):
 
 ```html
 <aside class="notice"
@@ -198,7 +157,7 @@ This notice waits for its CSS transition before leaving the DOM:
 }
 ```
 
-The timeout prevents a disabled or interrupted transition from blocking removal.
+`transitionend` removes the notice. `500ms` is the fallback.
 
 ## Attributes
 
@@ -518,26 +477,7 @@ q('.item').map(...)    map over matches
 for (let item of q('.item')) { ... }
 ```
 
-### Change State
-
-`toggle()` changes state on the current element:
-
-```html
-<button aria-expanded="false"
-        hx-on:click="toggle('aria-expanded')">
-  Toggle
-</button>
-```
-
-It supports classes, attributes, and value cycles:
-
-```text
-toggle('.active')                         toggle a class
-toggle('hidden')                          toggle an attribute
-toggle('aria-expanded')                   toggle "true" and "false"
-toggle('data-view', 'grid', 'list')       cycle values
-toggle('data-size', 'sm|md|lg')           cycle pipe-separated values
-```
+### Select One Element
 
 `take()` moves one state among siblings:
 
@@ -684,6 +624,65 @@ htmx swap ────┘
 - A run longer than `16ms` logs one warning.
 
 Every change recomputes every live expression. hx-live does not track dependencies between individual values.
+
+## HTML and CSS First
+
+### Show and Hide Details
+
+```html
+<details>
+  <summary>Shipping address</summary>
+  <address>...</address>
+</details>
+```
+
+```css
+details[open] {
+  border-color: var(--accent);
+}
+```
+
+### Open a Popover
+
+```html
+<button popovertarget="menu">Menu</button>
+
+<nav id="menu" popover>
+  <a href="/profile">Profile</a>
+  <a href="/settings">Settings</a>
+</nav>
+```
+
+### Show Content from a Checkbox
+
+```html
+<input id="show-filters" type="checkbox" checked>
+<label for="show-filters">Show filters</label>
+
+<section class="filters">
+  ...
+</section>
+```
+
+```css
+#show-filters:not(:checked) ~ .filters {
+  display: none;
+}
+```
+
+### Style Invalid Fields
+
+```html
+<label for="email">Email</label>
+<input id="email" name="email" type="email" required>
+<p class="error">Enter a valid email address.</p>
+```
+
+```css
+input:not(:user-invalid) + .error {
+  display: none;
+}
+```
 
 ## Notes
 
