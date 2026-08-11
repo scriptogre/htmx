@@ -35,12 +35,8 @@ See [HTML and CSS First](#html-and-css-first) for native examples.
 Bind [`textContent`](#text) with `:text`:
 
 ```html
-<label>
-  Name
-  <input id="name" value="Ada">
-</label>
-
-<output :text="'Hello, ' + q('#name').value"></output>
+<input value="Ada">
+<output :text="'Hello, ' + q('previous input').value"></output>
 ```
 
 ```text
@@ -69,48 +65,31 @@ checked   → button.disabled = false
 
 Use [`hx-on`](/reference/attributes/hx-on) for actions caused by an event:
 
-```html
+```html tab="HTML"
 <button aria-pressed="false"
         hx-on:click="aria.pressed = !aria.pressed">
   Mute
 </button>
+```
 
-<style>
+```css tab="CSS"
 [aria-pressed="true"] {
   background: var(--selected);
 }
-</style>
-```
-
-```text
-false → click → true → click → false
 ```
 
 ### Share State
 
+Store shared state on the nearest common ancestor:
+
 ```html
-<section data-quantity="1">
-  <button hx-on:click="data.quantity--"
-          :disabled="data.quantity <= 1">
-    Remove one
-  </button>
-
-  <output :text="data.quantity"></output>
-
-  <button hx-on:click="data.quantity++">
-    Add one
-  </button>
+<section data-count="0">
+  <button hx-on:click="data.count++">Add</button>
+  <output :text="data.count"></output>
 </section>
 ```
 
-```text
-section[data-quantity]
-├── button  reads and writes quantity
-├── output  reads quantity
-└── button  reads and writes quantity
-```
-
-Bare `data.quantity` uses the nearest [`data-quantity`](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*) owner.
+Both expressions use the nearest [`data-count`](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*) owner.
 
 ### Read Nearby State
 
@@ -120,7 +99,9 @@ Use [`q()` directionals](#find-elements) for local relationships:
 <div class="field">
   <input value="Ada">
 
-  <output :text="q('previous input').value.length + ' characters'"></output>
+  <output :text="
+    q('closest .field').q('first input').value.length + ' characters'
+  "></output>
 </div>
 ```
 
