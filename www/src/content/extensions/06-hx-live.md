@@ -1,21 +1,19 @@
 ---
 title: "hx-live"
-description: "Add reactive bindings to HTML"
+description: "Bind DOM state with inline expressions"
 category: "UX"
 icon: "icon-[mdi--lightning-bolt]"
-keywords: ["live", "reactive", "bind", "q", "selector"]
+keywords: ["live", "reactive", "bind", "DOM", "q", "selector"]
 ---
 
-Expressions live in HTML attributes. They read from the page, write to it, and re-run as it changes.
+The `hx-live` extension keeps HTML attributes, text, classes, and styles in sync with the DOM.
 
 ```html
-<input type="text">
-<p :text="'Hello, ' + q('previous input').value"></p>
+<input type="number" value="2">
+<output :text="q('previous input').value * 12"></output>
 ```
 
-The paragraph updates as you type.
-
-<hr class="mb-6 border-neutral-200 dark:border-neutral-800">
+The output updates when the input changes.
 
 ## Installing
 
@@ -24,1056 +22,681 @@ The paragraph updates as you type.
 <script src="https://cdn.jsdelivr.net/npm/htmx.org@__VERSION__/dist/ext/hx-live.min.js"></script>
 ```
 
-## Core state access
+## Usage
 
-The core API uses `q()` and its state namespaces.
+### Choose the Smallest Tool
 
-```js
-q('.item').data.open = true
-q('.item').class.selected = true
-q('.item').aria.busy = false
-q('.item').attr.disabled = true
+Keep behavior in the platform when the platform already provides it:
+
+```text
+HTML  →  CSS  →  binding  →  event handler  →  hx-live
 ```
 
-`q()` reads from the first match and writes to every match. Its `data`, `class`,
-`aria`, and `attr` aliases are local and share the same typed state views:
+Use the first tool that can express the behavior.
 
-```js
-q('.item').data === q('.item').attr.data
-q('.item').class === q('.item').attr.class
-q('.item').aria === q('.item').attr.aria
-```
-
-Use `.closest` for explicit owner lookup:
-
-```js
-q('.item').closest.data.open = true
-q('.item').closest.aria.busy = true
-q('.item').closest.attr.role = 'tab'
-q('.item').closest.class.selected = true
-```
-
-Closest reads use the first selected element. Closest writes resolve one owner
-per selected element, deduplicate shared owners, and fall back to the selected
-element when no owner exists. Deletes remove an owner and otherwise do nothing.
-
-Bare `data` in an expression uses the nearest data owner. Reads return
-`undefined` when no owner exists. Writes create local state in that case.
-
-## Idiomatic hx-live
-
-Keep local UI state in the DOM, close to the elements that use it:
+For example, HTML already has a disclosure widget:
 
 ```html
-<button aria-pressed="false"
-        hx-on:click="aria.pressed = !aria.pressed">
-    Mute
+<details>
+  <summary>Shipping address</summary>
+  <address>...</address>
+</details>
+```
+
+CSS can style its native state:
+
+```css
+details[open] {
+  border-color: var(--accent);
+}
+```
+
+This needs no `hx-live`. The browser owns the open state, keyboard behavior, and accessibility.
+
+Add `hx-live` when one piece of DOM state must derive from another:
+
+```html
+<details>
+  <summary>Shipping address</summary>
+  <address>...</address>
+</details>
+
+<p :text="q('previous details').open ? 'Address shown' : 'Address hidden'"></p>
+```
+
+The `<details>` element remains the source of truth.
+
+### Bind Derived State
+
+Prefix an attribute with `:` to bind it to an expression:
+
+```html
+<label>
+  Quantity
+  <input id="quantity" type="number" min="1" value="1">
+</label>
+
+<button :disabled="q('#quantity').value < 1">
+  Add to cart
 </button>
 
-<style>
-[aria-pressed="true"] { background: lightblue }
-</style>
+<output :text="q('#quantity').value * 12"></output>
 ```
 
-Use these principles:
+The DOM holds the state:
 
-1. **Start with the browser.** Prefer native HTML behavior, native DOM properties, and CSS before adding hx-live.
-2. **Choose one state owner.** Store each value in one native property, ARIA attribute, `data-*` attribute, or form control. Derive everything else from it.
-3. **Use the narrowest shared scope.** Put shared `data-*` state on the nearest common ancestor, then reach it with `data.*` or `.closest.data.*`.
-4. **Read state directly.** Prefer native properties, `aria.*`, and `data.*` over selectors and raw attribute access. Use `q()` when the source is outside the current scope.
-5. **Bind derived state.** Use `:<attr>` for values that follow other DOM state. Use [`hx-on`](/reference/attributes/hx-on) for user actions.
-6. **Let CSS handle presentation.** Style native states and semantic attributes instead of maintaining parallel presentation classes.
-7. **Use `hx-live` last.** Reserve the imperative form for multi-step work, asynchronous work, and side effects that a binding cannot express.
-
-Keep every expression safe to run again. DOM changes, input events, and htmx swaps can all recompute live expressions.
-
-## Attributes
-
-### `:<attr>`
-
-Prefix any HTML attribute with `:` and put an expression in it. The result is written to the attribute.
-
-```html
-<input id="name">
-<button :disabled="!q('#name').value">Submit</button>
+```text
+input.value  ──→  button.disabled
+             └─→  output.textContent
 ```
 
-The same shape works for any attribute:
+Use one source of truth. Derive other attributes and text from it.
 
-```html
-<a :href="'/users/' + q('#user-id').value">profile</a>
-<button :hidden="q('.row').count === 0">Clear all</button>
-<input :required="q('#mode').value === 'final'">
-```
+### Handle an Action
 
-> ⚠️ **Alpine.js conflict:** The `:` short form uses the same syntax as Alpine.js (`x-bind:`). If Alpine is detected on the page at initialization time, hx-live automatically disables the `:` short form and logs a console warning. You can override this behavior by explicitly setting [`config.live.bindPrefix`](#configlivebindprefix).
-
-How each attribute is written (booleans, ARIA, property-backed, generic) is described in [Attribute writing rules](#attribute-writing-rules).
-
-### `hx-live:<attr>`
-
-The full form. Behaves identically to `:<attr>`.
-
-```html
-<button hx-live:disabled="!q('#name').value">Submit</button>
-```
-
-Use it if your build pipeline strips `:`-prefixed attributes.
-
-### `:.<class>`
-
-Bind a single class to an expression. Truthy adds it, falsy removes it.
-
-```html
-<input type="number" value="0">
-<p :.warn="q('previous input').value < 0">Negative balance</p>
-```
-
-### `:class`
-
-String form: set the listed classes.
-
-```html
-<input type="number" value="0">
-<div :class="q('previous input').value < 18 ? 'warn big' : 'ok'"></div>
-```
-
-Object form: each key is added or removed by the truthiness of its value.
-
-```html
-<input type="number" value="0">
-<div :class="{
-    warn: q('previous input').value < 18,
-    ok:   q('previous input').value >= 18
-}"></div>
-```
-
-A key may list several classes that share one condition. Quote the key when it contains spaces.
-
-```html
-<input id="strict" type="checkbox">
-<div :class="{ 'warn big': q('#strict').checked }">Notice</div>
-```
-
-`:class` only manages classes it writes. Other classes set in HTML are untouched. If a class appears both statically and in the binding, the binding wins.
-
-### `:text`
-
-Bind the element's [`textContent`](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent) to an expression.
-
-```html
-<input type="number" value="2">
-<input type="number" value="3">
-<p :text="q('first input').value * q('last input').value"></p>
-```
-
-Numbers and other non-strings are stringified.
-
-### `:html`
-
-Bind the element's [`innerHTML`](https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML) to an expression.
-
-```html
-<input value="world">
-<div :html="`<b>${q('previous input').value}</b>`"></div>
-```
-
-Make sure to sanitize anything untrusted.
-
-### `:style`
-
-String form: a CSS declaration string.
-
-```html
-<input id="pct" type="range" value="50">
-<div :style="`width: ${q('#pct').value}%; height: 8px; background: tomato`"></div>
-```
-
-Object form: each key sets a CSS property. Camel-case keys convert to kebab-case.
-
-```html
-<input id="pct" type="range" value="50">
-<input id="color" type="color" value="#ff0000">
-<div :style="{
-    width: q('#pct').value + '%',
-    backgroundColor: q('#color').value,
-    height: '8px'
-}"></div>
-```
-
-`:style` only manages properties it writes. Other inline style properties are untouched. If a property appears both statically and in the binding, the binding wins.
-
-### `hx-live`
-
-An escape hatch. Use it when no single `:<attr>` fits, or for multi-step logic and side effects.
-
-```html
-<input placeholder="search">
-<div hx-live="
-    let term = q('previous input').value;
-    if (!term) { this.textContent = ''; return; }
-    await debounce(250);
-    this.textContent = await fetch('/search?q=' + encodeURIComponent(term))
-                              .then(r => r.text());
-"></div>
-```
-
-## Helpers
-
-The helpers work inside `hx-live` expressions, inside [`hx-on`](/reference/attributes/hx-on) event handlers, and from regular JavaScript via `htmx.live.*`.
-
-```js
-htmx.live.q('.row').attr.hidden = true;
-```
-
-Inside expressions, `this` is the element, the full htmx API is available unprefixed, and `await` works at the top level (expressions are `async` functions).
-
-```html
-<button hx-on:click="
-    attr.disabled = true;
-    await ajax('POST', '/save');
-    delete attr.disabled;
-">Save</button>
-```
-
-### `q()`
-
-`q()` returns a proxy over a set of elements. Read from the first match, write to all.
-
-```js
-q('.row')                       // every .row in the document
-q('#bar')                       // single element by id
-q(element)                      // wrap an existing element
-q(nodeList)                     // wrap a collection
-
-q('.row').count                 // number of matches
-q('.row').arr()                 // Array<Element>
-for (let e of q('.row')) {...}  // iterate
-
-q('input').value                // value of the first match
-q('input').value = ''           // assign to every match
-
-q('.row').classList.add('done') // method calls chain through
-q('.row').dataset.state = 'on'
-q('button').click()
-```
-
-**Selector grammar**
-
-```js
-q('first .foo')                 // first match in document order
-q('last .foo')                  // last match
-q('next .foo')                  // first match after this element
-q('previous .foo')              // closest match before this element
-q('closest .foo')               // nearest ancestor matching .foo
-q('.foo in #scope')             // restrict to a specific root
-q('.foo in this')               // restrict to the current element
-```
-
-`next`, `previous`, and `closest` resolve against `this` (the element that owns the expression). They only work inside `hx-live` / `hx-on` scopes.
-
-**Chaining** 
-
-`.q(...)` on a proxy re-runs the grammar with each element as the anchor:
-
-```js
-q('.error').q('closest .field')   // surrounding .field of each .error
-q('section').q('first .item')     // first .item per section
-q('.row').q('next .row')          // each row's successor
-```
-
-For plain descendant queries, CSS is shorter: `q('.card .title')` and `q('.card').q('.title')` are equivalent. Use chaining when you need a directional per matched element.
-
-**Built-in methods**
-
-The helpers below also work as methods on the proxy, applying across all matched elements:
-
-```js
-q('input').attr.disabled = true          // set attribute on all
-q('.row').toggle('.selected')            // toggle class on each
-q('.tab.active').take('.active', '.tab') // move a class from peers to self
-q('.tab').trigger('select', { id: 1 })   // CustomEvent on each
-q('.list').insert('end', '<li>new</li>') // before / after / start / end
-```
-
-### `attr`
-
-Read and write HTML attributes on this element.
-
-```js
-attr.hidden                     // boolean attribute presence
-attr.hidden = true              // add hidden
-delete attr.hidden              // remove hidden
-attr['aria-expanded'] = false   // write aria-expanded="false"
-attr.contenteditable = false    // write contenteditable="false"
-attr.class.active = true        // typed class state
-attr.value = 'hello'            // set the value
-delete attr['data-x']           // remove data-x
-```
-
-Use bracket notation for names that are not JavaScript identifiers, and for computed names.
-
-`checked`, `selected`, and `value` read the live control state and write both the property and the attribute, so the two never drift apart.
-
-On `<input type="number">` and `<input type="range">`, `value` reads as a number, and as `null` when the field is empty. Every other control reads as a string, so `<input type="text" value="007">` stays `"007"`.
-
-Numeric attributes (`tabindex`, `colspan`, `rowspan`, `maxlength`, `minlength`, `size`, `span`, `start`, `rows`, `cols`, `width`, `height`) read as numbers.
-
-Use `delete` to remove an attribute. Assigning `false` writes `"false"`.
-
-```js
-delete attr['data-x']
-attr['data-x'] = null
-```
-
-Use [`class.*`](#class) and [`aria.*`](#aria) for the typed aliases. Use native
-DOM methods or `htmx.live.attr()` when you need exact raw attribute text.
-
-### `toggle(name, values?)`
-
-Toggle or cycle a class, ARIA attribute, or attribute on this element.
-
-```js
-toggle('.active')                      // toggle class
-toggle('aria-expanded')                // flip "true" ↔ "false"
-toggle('hidden')                       // toggle attribute presence
-toggle('data-view', 'grid', 'list')    // cycle attribute through values
-toggle('.size', 'sm', 'md', 'lg')      // cycle classes (one at a time)
-toggle('data-open', 'on', '')          // cycle: 'on' ↔ absent
-```
-
-Values can also arrive as one `|`-separated string or one array:
-
-```js
-toggle('data-view', 'grid|list|table')
-toggle('data-view', ['grid', 'list', 'table'])
-```
-
-```js
-toggle('aria-expanded')
-toggle('data-view', 'grid', 'list')
-```
-
-### `take(name, scope?)`
-
-Move a class or attribute from siblings to this element. Pass a `scope` selector to widen or restrict the source set.
-
-```js
-take('.selected', '.tab')              // become the selected tab among .tab
-take('aria-current', 'nav a')          // become the current nav item
-take('.active')                        // implicit scope: parent element's subtree
-```
-
-```js
-take('aria-selected')
-take('.active')
-```
-
-### `class`
-
-Read and write class membership on this element:
-
-```html
-<button class="pending"
-        hx-on:click="
-            class.pending = false;
-            class.done = true
-        ">
-    Finish
-</button>
-```
-
-Use bracket notation for class names that are not JavaScript identifiers:
-
-```js
-class['is-active'] = true
-delete class.pending
-```
-
-Set several classes at once with `class.assign({ ... })`. Truthy values add, falsy values remove, unmentioned classes survive:
-
-```html
-<button hx-on:click="class.assign({ active: true, loading: false })">Finish</button>
-```
-
-Non-object arguments warn and do nothing.
-
-The native `classList` methods work directly on `class`:
-
-```js
-class.add('a', 'b')        // add classes
-class.remove('a', 'b')     // remove classes
-class.toggle('x', force?)  // toggle, optional force
-class.replace('a', 'b')    // replace one class with another
-class.contains('x')        // membership
-class.assign({...})        // group add/remove by truthiness
-'x' in class               // membership
-```
-
-Method names win on read: `class.toggle` is the method even when a class named `toggle` exists; key writes still create classes.
-
-Use `q()` to access another element:
-
-```js
-q('#menu').class.open = true
-```
-
-`toggle()` and `take()` work on classes by name:
-
-```js
-toggle('.active')
-take('.selected')
-```
-
-### `aria`
-
-Read and write typed ARIA state on this element:
-
-```html
-<div aria-busy="false">
-    <button hx-on:click="q(this).closest.aria.busy = !q(this).closest.aria.busy">Toggle</button>
-    <output :hidden="!q(this).closest.aria.busy">Busy</output>
-</div>
-```
-
-Use `closest.aria.*` when you explicitly want the nearest owner. A write with
-no owner adds the state to the current element:
-
-```js
-aria.busy                   // aria-busy on this element
-closest.aria.busy           // nearest aria-busy, starting at this
-q('#form').aria.busy        // aria-busy on the selected form
-q('#form').closest.aria.busy // nearest aria-busy from #form up
-```
-
-Use `toggle()` and `take()` for transitions:
+Use [`hx-on`](/reference/attributes/hx-on) for actions caused by an event:
 
 ```html
 <button aria-pressed="false"
         hx-on:click="toggle('aria-pressed')">
-    Mute
+  Mute
 </button>
-
-<button aria-sort="ascending"
-        hx-on:click="toggle('aria-sort', 'ascending', 'descending')">
-    Name
-</button>
-
-<div role="tablist">
-    <button role="tab" aria-selected="true">One</button>
-    <button role="tab" aria-selected="false"
-            hx-on:click="take('aria-selected')">Two</button>
-</div>
 ```
 
-`toggle()` flips boolean ARIA between `"true"` and `"false"`. `take()` writes `"false"` on sibling owners, then `"true"` on this owner.
+Style the semantic state with CSS:
 
-Each form uses the same value rules. You can use these values as booleans, numbers, and arrays:
+```css
+[aria-pressed="true"] {
+  background: var(--selected);
+}
+```
+
+The `aria-pressed` attribute describes the button, stores its state, and gives CSS a selector. No parallel `.active` class is needed.
+
+### Share State
+
+Put shared state on the nearest common ancestor:
 
 ```html
-<button aria-busy="false"
-        aria-controls="panel status"
-        hx-on:click="
-            aria.busy = !aria.busy;
-            aria.controls = [...aria.controls, 'help'];
-            q('#progress').aria.valueNow++
-        ">
-    Update
-</button>
+<section data-quantity="1">
+  <button hx-on:click="data.quantity--"
+          :disabled="data.quantity <= 1">
+    Remove one
+  </button>
 
-<section id="panel">...</section>
-<p id="help">...</p>
-<output id="status"></output>
-<div id="progress" role="progressbar"
-     aria-valuemin="0" aria-valuemax="100" aria-valuenow="51"></div>
-```
+  <output :text="data.quantity"></output>
 
-After one click:
-
-```html
-<button aria-busy="true" aria-controls="panel status help">Update</button>
-<div id="progress" role="progressbar"
-     aria-valuemin="0" aria-valuemax="100" aria-valuenow="52"></div>
-```
-
-Use either form to remove an attribute:
-
-```js
-aria.current = null
-delete aria.current
-```
-
-#### Value types
-
-hx-live uses the value types from [WAI-ARIA 1.2](https://www.w3.org/TR/wai-aria-1.2/).
-
-**Boolean**
-
-- `aria-atomic`
-- `aria-busy`
-- `aria-checked`
-- `aria-current`
-- `aria-disabled`
-- `aria-expanded`
-- `aria-grabbed`
-- `aria-haspopup`
-- `aria-hidden`
-- `aria-invalid`
-- `aria-modal`
-- `aria-multiline`
-- `aria-multiselectable`
-- `aria-pressed`
-- `aria-readonly`
-- `aria-required`
-- `aria-selected`
-
-**Number**
-
-- `aria-colcount`
-- `aria-colindex`
-- `aria-colspan`
-- `aria-level`
-- `aria-posinset`
-- `aria-rowcount`
-- `aria-rowindex`
-- `aria-rowspan`
-- `aria-setsize`
-- `aria-valuemax`
-- `aria-valuemin`
-- `aria-valuenow`
-
-**Token list (`string[]`)**
-
-- `aria-dropeffect`
-- `aria-relevant`
-
-**ID reference list (`string[]`)**
-
-- `aria-controls`
-- `aria-describedby`
-- `aria-flowto`
-- `aria-labelledby`
-- `aria-owns`
-
-All other `aria-*` attributes remain strings.
-
-You can use `aria.*` in `hx-live`, bindings, `hx-on`, `js:` attribute values, and `hx-trigger` filters.
-
-### `data`
-
-Read and write `data-*` attributes as JSON or plain text.
-
-```html
-<div data-size="medium">
-    <button hx-on:click="data.size = 'small'">S</button>
-    <button hx-on:click="data.size = 'medium'">M</button>
-    <button hx-on:click="data.size = 'large'">L</button>
-    <p :text="`Size: ${data.size}`"></p>
-</div>
-```
-
-`data-*` holds state shared by a subtree, so `data.*` walks up to the nearest element that has the attribute. Every other namespace reads this element:
-
-```js
-data.count                    // nearest data-count, starting at this
-q(this).data.count            // data-count on this element only
-q('#cart').data.count         // data-count on the selected cart
-q('#cart').closest.data.count // nearest data-count from #cart up
-```
-
-On write, hx-live converts booleans, numbers, arrays, and objects to JSON. On read, it converts the JSON back to JavaScript values:
-
-```html
-<div data-count="1" data-active="false" data-cart="[]">
-    <input id="sku" placeholder="Product code">
-    <button hx-on:click="data.cart = [...data.cart, {sku: q('#sku').value, qty: data.count}]">Add to cart</button>
-    <button hx-on:click="data.count++">+</button>
-    <button hx-on:click="data.count--">−</button>
-    <button hx-on:click="data.active = !data.active">Toggle details</button>
-    <p :text="`Qty: ${data.count} | ${data.cart.length} items in cart`"></p>
-</div>
-```
-
-Plain strings that aren't valid JSON are returned as-is.
-
-Use `toggle()` and `take()` for transitions:
-
-```html
-<button data-active
-        hx-on:click="toggle('data-active')">Toggle details</button>
-
-<button data-view="grid"
-        hx-on:click="toggle('data-view', 'grid', 'list')">Change view</button>
-```
-
-Without values, `toggle()` adds or removes the attribute. Pass values to cycle through them.
-
-Use `take()` to move state between siblings:
-
-```html
-<div>
-    <button data-active="">One</button>
-    <button hx-on:click="take('data-active')" data-active="">Two</button>
-</div>
-```
-
-Clicking Two removes `data-active` from One and leaves an empty `data-active=""` on Two.
-
-The `data` proxy is enumerable, so object spread, rest destructuring, and `Object.keys()`/`Object.entries()` work:
-
-```html
-<section data-x="1" data-y="2">
-    <button data-y="3"
-            hx-post="/cursor"
-            hx-vals="js:{ ...data }">
-        Send cursor
-    </button>
+  <button hx-on:click="data.quantity++">
+    Add one
+  </button>
 </section>
 ```
 
-Here, `hx-vals` receives `{ x: 1, y: 3 }`.
+Bare `data.quantity` finds the nearest `data-quantity` owner:
 
-Delete a value or assign `undefined` to remove its attribute:
-
-```js
-data.count = undefined         // remove data-count from this element
-delete data.count              // remove data-count from this element
-delete closest.data.count      // remove the nearest data-count
-delete q('#cart').data.count   // remove data-count from the selected cart
+```text
+section[data-quantity]
+├── button  reads and writes quantity
+├── output  reads quantity
+└── button  reads and writes quantity
 ```
 
-`data.count = null` writes `data-count="null"`. `data.count = ''` writes an empty `data-count=""` attribute.
+Use [`data-*`](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*) for local UI state that has no native HTML or ARIA home.
 
-Use `dataset` when you need raw strings:
+### Reach Related Elements
 
-```js
-this.dataset.count
-q('#cart').dataset.count
-```
+Use `q()` when the state lives on another element.
 
-Because `:<attr>` works on `data-*`, you can also store derived values in the DOM:
+Directional selectors avoid IDs for nearby elements:
 
 ```html
-<div data-first="Ada" data-last="Lovelace"
-     :data-full="data.first + ' ' + data.last">
-    <span :text="data.full"></span>
+<label>
+  Name
+  <input value="Ada">
+</label>
+
+<p :text="'Hello, ' + q('previous input').value"></p>
+```
+
+Use a CSS selector when the relationship is not local:
+
+```html
+<input id="discount" type="range" min="0" max="50" value="10">
+
+<output :text="q('#discount').value + '% off'"></output>
+```
+
+Prefer direct state such as `.value`, `.checked`, `aria.*`, or `data.*`. Use raw attributes only when their exact text matters.
+
+### Coordinate Async Work
+
+Use top-level `await` in [`hx-on`](/reference/attributes/hx-on) for event-driven work.
+
+This notice waits for its CSS transition before leaving the DOM:
+
+```html
+<aside class="notice"
+       hx-on:dismiss="
+         q(this).class.leaving = true
+         await forEvent('transitionend', '500ms')
+         this.remove()
+       ">
+  Saved
+  <button hx-on:click="q('closest .notice').trigger('dismiss')">
+    Dismiss
+  </button>
+</aside>
+```
+
+```css
+.notice {
+  transition: opacity 200ms;
+}
+
+.notice.leaving {
+  opacity: 0;
+}
+```
+
+The timeout prevents a disabled or interrupted transition from blocking removal.
+
+## Attributes
+
+### `:<attribute>`
+
+Binds an HTML attribute to an expression:
+
+```html
+<input id="email" type="email">
+<button :disabled="!q('#email').value">Subscribe</button>
+```
+
+The binding re-runs when the DOM changes, a form control emits `input` or `change`, or an htmx swap finishes.
+
+Attribute values follow HTML rules:
+
+| Kind | Example | Falsy or empty result |
+|---|---|---|
+| Boolean | `:disabled`, `:hidden`, `:open` | Removes the attribute |
+| ARIA | `:aria-expanded` | Writes `"false"` |
+| Property-backed | `:checked`, `:selected`, `:value` | Updates the property and attribute |
+| Other | `:href`, `:data-state` | `null` or `undefined` removes the attribute |
+
+```html
+<button :hidden="q('.result').count === 0">Clear</button>
+<a :href="'/users/' + q('#user').value">Profile</a>
+<input type="checkbox" :checked="data.selected">
+```
+
+The `:` prefix conflicts with Alpine.js binding syntax. When Alpine exists as `window.Alpine` during initialization, hx-live disables `:` and logs a warning. See [`live.bindPrefix`](#livebindprefix).
+
+### `hx-live:<attribute>`
+
+The long form of `:<attribute>`:
+
+```html
+<button hx-live:disabled="!q('#email').value">
+  Subscribe
+</button>
+```
+
+It always works, including when:
+
+- A build tool removes `:` attributes.
+- Alpine.js uses the `:` prefix.
+- [`live.bindPrefix`](#livebindprefix) disables or changes the short prefix.
+
+### `:text`
+
+Binds [`textContent`](https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent):
+
+```html
+<input type="number" value="2">
+<input type="number" value="3">
+<output :text="q('first input').value * q('last input').value"></output>
+```
+
+`null` and `undefined` become an empty string. Other values become text.
+
+### `:html`
+
+Binds [`innerHTML`](https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML):
+
+```html
+<select id="status">
+  <option>Ready</option>
+  <option>Waiting</option>
+</select>
+
+<p :html="'Status: <strong>' + q('#status').value + '</strong>'"></p>
+```
+
+Prefer `:text` for text. Sanitize untrusted HTML before using `:html`.
+
+### `:class` and `:.<class>`
+
+Bind one class with `:.<class>`:
+
+```html
+<input type="number" value="0">
+<p :.warning="q('previous input').value < 0">
+  Balance
+</p>
+```
+
+Bind several classes with an object:
+
+```html
+<input id="score" type="number" value="50">
+
+<output :class="{
+  low: q('#score').value < 40,
+  high: q('#score').value > 80
+}"></output>
+```
+
+Or return a space-separated string:
+
+```html
+<output :class="q('#score').value > 80 ? 'high bold' : 'low'"></output>
+```
+
+The binding manages only the classes it writes. Static classes remain unless they use the same names.
+
+Prefer CSS selectors for state already represented by HTML:
+
+```css
+button[aria-pressed="true"] { font-weight: bold; }
+details[open] { border-color: var(--accent); }
+input:invalid { border-color: var(--error); }
+```
+
+### `:style`
+
+Binds inline styles from a string:
+
+```html
+<input id="progress" type="range" value="50">
+<div :style="'width:' + q('#progress').value + '%'"></div>
+```
+
+Or from an object:
+
+```html
+<div :style="{
+  width: q('#progress').value + '%',
+  backgroundColor: 'tomato'
+}"></div>
+```
+
+Camel-case keys become CSS property names. The binding manages only the properties it writes.
+
+Prefer a class, semantic attribute, or CSS custom property when CSS can own the presentation.
+
+### `hx-live`
+
+Runs a statement body whenever hx-live recomputes:
+
+```html
+<div data-last-value=""
+     hx-live="
+       let value = q('#source').value
+       if (value === data.lastValue) return
+
+       data.lastValue = value
+       trigger('value-changed', { value })
+     ">
 </div>
 ```
 
-### `style`
+Use `hx-live` only when one binding cannot express the work. Guard side effects because the body can run after any observed DOM change.
 
-Shorthand for `this.style`.
-
-```html
-<input type="color" value="#ff0000">
-<button hx-on:click="style.setProperty('--accent', q('previous input').value)">Apply</button>
-```
-
-### `classList`
-
-Shorthand for `this.classList`.
+Top-level `await` works directly. Record the source value before waiting so unrelated DOM changes do not repeat the work:
 
 ```html
-<button hx-on:click="classList.add('shake')">Wiggle</button>
-```
+<div data-last-value=""
+     hx-live="
+  let value = q('#source').value
+  if (value === data.lastValue) return
 
-### `matches(selector)`
-
-Shorthand for `this.matches(selector)`.
-
-```html
-<button :aria-busy="matches('.htmx-request')" hx-post="/save">Save</button>
-```
-
-### `trigger(type, detail?, bubbles?)`
-
-Dispatch a `CustomEvent` from this element.
-
-```html
-<li hx-on:click="trigger('select', { id: this.dataset.id })" data-id="42">Item</li>
-```
-
-### `insert(position, html)`
-
-Insert an HTML string. Wraps [`insertAdjacentHTML`](https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentHTML) with friendlier position names: `before` and `after` for siblings, `start` and `end` for children.
-
-```js
-insert('start',  '<li>first</li>')   // first child
-insert('end',    '<li>last</li>')    // last child
-insert('before', '<hr>')             // sibling before
-insert('after',  '<hr>')             // sibling after
-```
-
-```html
-<ul hx-on:click="insert('end', '<li>+</li>')">Click to add a row</ul>
-```
-
-Sanitize anything untrusted.
-
-### `debounce(ms)`
-
-Wait `ms` milliseconds. If called again on the same element before resolving, the previous call is cancelled.
-
-```html
-<input placeholder="search">
-<div hx-live="
-    await debounce(200);
-    this.textContent = await fetch('/q?term=' + q('previous input').value).then(r => r.text());
+  data.lastValue = value
+  await debounce(200)
+  updatePreview(value)
 "></div>
 ```
 
-Each element has its own channel.
+Do not wrap it in an async function. Errors from a nested async function cannot be handled by htmx.
 
-### `forEvent(...args)`
+## Expression Reference
 
-Resolve on the next matching event. Mix event names, milliseconds, intervals, and target elements. First to fire wins.
+Expressions in `:<attribute>`, `hx-live`, and [`hx-on`](/reference/attributes/hx-on) share the same DOM helpers.
 
-```js
-await forEvent('click')                 // next click on this element
-await forEvent('click', 1000)           // click OR 1s timeout
-await forEvent('a', 'b', '5s')          // any number of events / intervals
+### Current Element
+
+`this` is the element that owns the expression:
+
+```html
+<button hx-on:click="this.remove()">Remove</button>
 ```
 
-Typical use: wait for a CSS transition to finish, with a safety timeout.
+These helpers also target the current element:
+
+| Expression | Reads or changes |
+|---|---|
+| `attr.hidden` | HTML attributes and live form properties |
+| `aria.expanded` | Local `aria-expanded` state |
+| `data.count` | The nearest `data-count` state |
+| `closest.aria.busy` | The nearest `aria-busy` owner |
+| `closest.attr.inert` | The nearest `inert` owner |
+| `style` | The element's inline style |
+| `matches(':invalid')` | Whether the element matches a CSS selector |
+
+```html
+<button aria-expanded="false"
+        hx-on:click="aria.expanded = !aria.expanded">
+  Toggle
+</button>
+```
+
+Use `delete` or `null` to remove most attributes:
 
 ```html
 <button hx-on:click="
-    classList.add('fade-out');
-    await forEvent('transitionend', 500);
-    this.remove();
-">Dismiss</button>
+  delete attr.title
+  aria.description = null
+">
+  Clear description
+</button>
 ```
 
-### `nextFrame()`
+`data.*` accepts strings and JSON values:
 
-Resolve on the next animation frame.
+```html
+<section data-count="1" data-items="[]">
+  <button hx-on:click="
+    data.count++
+    data.items = [...data.items, 'new']
+  ">
+    Add
+  </button>
+</section>
+```
+
+Booleans, numbers, arrays, objects, and `null` round-trip through `data-*`. Other text remains a string. Assign `undefined` or use `delete` to remove the attribute.
+
+### DOM State
+
+Choose one state owner:
+
+| State | Use |
+|---|---|
+| Native property | Form values, checked state, open state |
+| ARIA | Accessible component state |
+| `data-*` | Local application state with no semantic HTML home |
+| Class | Presentation with no useful semantic selector |
+
+Read state on another element through `q()`:
+
+```html
+<input id="accept" type="checkbox">
+
+<button :disabled="!q('#accept').checked">
+  Continue
+</button>
+```
+
+The state namespaces are typed:
+
+```text
+q('#amount').value          → live input value
+q('#toggle').checked        → boolean
+q('#panel').aria.hidden     → boolean when "true" or "false"
+q('#meter').aria.valueNow   → number
+q('#tabs').aria.controls    → array of IDs
+q('#cart').data.items       → parsed JSON
+```
+
+Use `.closest` to address the nearest owner explicitly:
+
+```html
+<section aria-busy="false">
+  <button hx-on:click="q(this).closest.aria.busy = true">
+    Load
+  </button>
+</section>
+```
+
+### Find Elements
+
+`q()` selects elements and exposes their DOM state:
+
+```html
+<button :disabled="q('.required:invalid').count > 0">
+  Submit
+</button>
+```
+
+It reads from the first match and writes DOM properties to every match:
+
+```html
+<button hx-on:click="q('.filter').hidden = true">
+  Hide filters
+</button>
+```
+
+Use CSS selectors or directional selectors:
+
+```text
+q('.item')             every matching element
+q('first .item')       first match
+q('last .item')        last match
+q('next .item')        first match after this element
+q('previous input')    closest matching input before this element
+q('closest .card')     nearest matching ancestor
+q('.item in #cart')    matches inside #cart
+q('.item in this')     matches inside this element
+```
+
+Directional selectors use the element that owns the expression as their anchor.
+
+Chain `q()` when each match needs its own query:
 
 ```html
 <button hx-on:click="
-    classList.remove('shake');
-    await nextFrame();
-    classList.add('shake');
-">Replay shake</button>
+  q('.error').q('closest .field').class.invalid = true
+">
+  Mark invalid fields
+</button>
 ```
 
-## ARIA as state
+Useful collection operations:
 
-ARIA attributes serve two purposes: they describe the component to assistive tech, and they hold UI state.
+```text
+q('.item').count       number of matches
+q('.item').arr()       Array<Element>
+q('.item').map(...)    map over matches
+for (let item of q('.item')) { ... }
+```
 
-Bind them with `:aria-*` and drive CSS off the same attribute. You avoid `.is-open`, `.active`, and `.loading` classes.
+### Change State
 
-| Attribute       | Meaning             | Typical UI use                        |
-|-----------------|---------------------|---------------------------------------|
-| `aria-expanded` | "is open"           | Disclosure, menu, accordion           |
-| `aria-selected` | "is the active one" | Tabs, listbox option                  |
-| `aria-pressed`  | "toggle is on"      | Toggle button (bold, mute)            |
-| `aria-checked`  | "checkbox state"    | Custom checkboxes, radios             |
-| `aria-busy`     | "is loading"        | Form during submit, list during fetch |
-| `aria-disabled` | "can't interact"    | Greyed-out non-button control         |
-| `aria-current`  | "the current one"   | Nav item, breadcrumb, step            |
-| `aria-hidden`   | "hidden from a11y"  | Decorative content                    |
-
-**Disclosure.**
-
-For a single inline section, native [`<details>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details) is the right tool. Use `aria-expanded` when the trigger and target are separated in the DOM.
+`toggle()` changes state on the current element:
 
 ```html
-<header>
-    <button hx-on:click="toggle('aria-expanded')" aria-expanded="false">Menu</button>
-</header>
-<aside :hidden="!q('header button').aria.expanded">...</aside>
+<button aria-expanded="false"
+        hx-on:click="toggle('aria-expanded')">
+  Toggle
+</button>
 ```
 
-**Toggle button.**
+It supports classes, attributes, and value cycles:
 
-```html
-<button hx-on:click="toggle('aria-pressed')" aria-pressed="false">Bold</button>
+```text
+toggle('.active')                         toggle a class
+toggle('hidden')                          toggle an attribute
+toggle('aria-expanded')                   toggle "true" and "false"
+toggle('data-view', 'grid', 'list')       cycle values
+toggle('data-size', 'sm|md|lg')           cycle pipe-separated values
 ```
 
-```css
-[aria-pressed="true"] { background: lightblue }
-```
-
-**Tabs.**
+`take()` moves one state among siblings:
 
 ```html
 <div role="tablist">
-    <button role="tab" hx-on:click="take('aria-selected')" aria-selected="true">A</button>
-    <button role="tab" hx-on:click="take('aria-selected')" aria-selected="false">B</button>
-    <button role="tab" hx-on:click="take('aria-selected')" aria-selected="false">C</button>
+  <button role="tab"
+          aria-selected="true"
+          hx-on:click="take('aria-selected')">
+    Overview
+  </button>
+
+  <button role="tab"
+          aria-selected="false"
+          hx-on:click="take('aria-selected')">
+    Activity
+  </button>
 </div>
 ```
 
-`take('aria-selected')` writes `"false"` on every other tab, then `"true"` on this one.
+For ARIA, `take()` writes `"false"` to the other owners and `"true"` to the current element.
 
-**Loading state.**
-
-```html
-<form :aria-busy="matches('.htmx-request')" hx-post="/save">
-    <input name="email">
-    <button type="submit">Save</button>
-</form>
-```
-
-```css
-[aria-busy="true"] { opacity: 0.5; pointer-events: none }
-```
-
-**Non-boolean ARIA.** Strings pass through, so `aria-current="page"`, `aria-pressed="mixed"`, and numeric ARIA (`aria-valuenow="50"`) work in the simple form:
+Pass a selector to change the scope:
 
 ```html
-<a :aria-current="location.pathname === '/home' ? 'page' : false" href="/home">Home</a>
-<button :aria-pressed="state.bold ? 'mixed' : !!state.bold">Bold</button>
-<div role="slider" :aria-valuenow="q('#slider').value"></div>
+<div class="toolbar">
+  <button aria-pressed="true"
+          hx-on:click="take('aria-pressed', '.toolbar button')">
+    Bold
+  </button>
+
+  <button aria-pressed="false"
+          hx-on:click="take('aria-pressed', '.toolbar button')">
+    Italic
+  </button>
+</div>
 ```
 
-## Advanced Examples
+### Timing
 
-### Auto-clearing flash messages
-
-Server response:
-
-```http
-HX-Trigger: {"flash":{"target":"#flash", "level":"success", "message":"Saved"}}
-```
-
-Client state:
+Delay work on one element with `debounce()`:
 
 ```html
-<style>
-#flash:empty { display: none; }
-</style>
-
-<div id="flash"
-     data-message=""
-     data-level=""
-     hx-on="flash -> data.message = message; data.level = level;
-                     await timeout(3000);
-                     data.message = ''"
-     :text="data.message"
-     :.success="data.level === 'success'"
-     :.error="data.level === 'error'"></div>
+<input hx-on:input="
+  await debounce(200)
+  trigger('search', { value: this.value })
+">
 ```
 
-## How it works
+Each element has its own debounce channel.
 
-### Re-run triggers
-
-A single document-wide `MutationObserver` and `input` / `change` listeners trigger a recompute of every live expression. Any of these schedule one:
-
-- DOM additions, removals, attribute changes, text changes
-- `input` or `change` events from any control
-- completion of an htmx swap (recomputes pause mid-swap, run once at the end)
-
-Each expression is pre-compiled once when registered. All pre-compiled expressions then run in a single microtask, so multiple synchronous mutations coalesce into one recompute.
-
-### Self-mutation is safe
-
-When an expression writes to the DOM, the observer drains its own pending records inside the same microtask. Writes made by `hx-live` cannot trigger a feedback loop.
-
-### Slow expressions
-
-After a change, hx-live runs every live expression once. If this takes more than `16ms`, hx-live logs one warning:
-
-```text
-htmx: hx-live expressions took 18.4ms.
-```
-
-The warning does not stop the expressions.
-
-### Coordinating with htmx swaps
-
-Recomputes are deferred between [`htmx:before:swap`](/reference/events/htmx-before-swap) and [`htmx:finally:swap`](/reference/events/htmx-finally-swap). One consolidated recompute runs when the swap finishes, regardless of how much markup changed.
-
-### Cleanup
-
-When an `hx-live` element is removed, its expression drops out on the next scheduled run. When all expressions are gone, the observer and listeners detach.
-
-[`hx-ignore`](/reference/attributes/hx-ignore) descendants are not registered.
-
-### Boolean, ARIA, and other attribute kinds
-
-[`:<attr>`](#attr) writes the value differently depending on the attribute, following HTML conventions.
-
-**Boolean attributes** (`disabled`, `hidden`, `required`, `open`, `readonly`, `inert`, ...). Truthy adds the attribute; falsy removes it.
+Wait for an event or timeout, whichever happens first:
 
 ```html
-<button  :disabled="truthyExpr">   <!-- <button disabled="">  -->
-<button  :disabled="falsyExpr">    <!-- <button>              -->
-<div     :hidden="truthyExpr">     <!-- <div hidden="">       -->
-<div     :hidden="falsyExpr">      <!-- <div>                 -->
-<input   :required="truthyExpr">   <!-- <input required="">   -->
-<input   :required="falsyExpr">    <!-- <input>               -->
-<details :open="truthyExpr">       <!-- <details open="">     -->
-<details :open="falsyExpr">        <!-- <details>             -->
-<input   :readonly="truthyExpr">   <!-- <input readonly="">   -->
-<input   :readonly="falsyExpr">    <!-- <input>               -->
-<div     :inert="truthyExpr">      <!-- <div inert="">        -->
-<div     :inert="falsyExpr">       <!-- <div>                 -->
+<div hx-on:close="
+  q(this).class.closing = true
+  await forEvent('transitionend', '500ms')
+  this.remove()
+"></div>
 ```
 
-**ARIA attributes** (`aria-*`). Strings and numbers pass through (`"mixed"`, `"page"`, `50`). Other values coerce to `"true"` or `"false"` per the [WAI-ARIA spec](https://www.w3.org/TR/wai-aria-1.2/). Never removed.
+Wait for the next animation frame:
 
 ```html
-<button :aria-expanded="truthyExpr">    <!-- <button aria-expanded="true">  -->
-<button :aria-expanded="falsyExpr">     <!-- <button aria-expanded="false"> -->
-<button :aria-pressed="'mixed'">        <!-- <button aria-pressed="mixed">  -->
+<button hx-on:click="
+  q(this).class.shake = false
+  await nextFrame()
+  q(this).class.shake = true
+">
+  Shake
+</button>
 ```
 
-**Stringy enumerated attributes** (`contenteditable`, `draggable`, `spellcheck`). Stringify the value. Accepts strings beyond `true`/`false` for attributes that support them.
+Other action helpers:
 
-```html
-<div :contenteditable="true">                <!-- <div contenteditable="true">           -->
-<div :contenteditable="false">               <!-- <div contenteditable="false">          -->
-<div :contenteditable="'plaintext-only'">    <!-- <div contenteditable="plaintext-only"> -->
-```
+| Helper | Effect |
+|---|---|
+| `trigger(type, detail?, bubbles?)` | Dispatch a `CustomEvent` from this element |
+| `insert(position, html)` | Insert HTML at `before`, `after`, `start`, or `end` |
+| `q(...).trigger(...)` | Dispatch from every match |
+| `q(...).insert(...)` | Insert relative to every match |
 
-**Property-backed attributes** (`checked`, `value`, `selected`). Sync both the DOM property and the HTML attribute.
+Sanitize untrusted strings before passing them to `insert()`.
 
-```html
-<input type="checkbox" :checked="true">     <!-- .checked = true,  checked=""        -->
-<input type="checkbox" :checked="false">    <!-- .checked = false, attribute removed -->
-<input :value="'hello'">                    <!-- .value = "hello", value="hello"     -->
-```
+## Config
 
-**Anything else.** Stringify the value. `null` or `undefined` remove the attribute.
+Configure hx-live with [`<meta name="htmx-config">`](/reference/config/htmx-config#configure-via-meta-tag) or [`hx-config`](/reference/attributes/hx-config).
 
-```html
-<a :href="'/profile'">    <!-- <a href="/profile"> -->
-<a :href="null">          <!-- <a>                 -->
-<a :href="false">         <!-- <a href="false">    -->
-<a :href="''">            <!-- <a href="">         -->
-```
+### `live.inputDebounce`
 
-## Public API
-
-All [helpers](#helpers) are exposed under `htmx.live.*` for use from regular JavaScript (outside `hx-live` / `hx-on` expressions):
-
-```js
-htmx.live.q('.row')
-htmx.live.$('.row')
-htmx.live.attr('.row', 'hidden', true)
-htmx.live.take('.tab.active', '.active', '.tab')
-htmx.live.toggle('.tab', 'data-view', 'grid', 'list')
-```
-
-`htmx.live.refresh()` forces a recompute. Use it when an expression reads from a source the observer cannot see (a JS variable, a getter, an external store) and you've just mutated it.
-
-```js
-window.appState = 'loading';
-htmx.live.refresh();
-```
-
-Selector directionals (`next`, `previous`, `closest`) need an anchor and only work inside `hx-live` / `hx-on`, not from `htmx.live.q`.
-
-## Configuration
-
-### `config.live.inputDebounce`
-
-Set how long hx-live waits after an `input` event. Use a number of milliseconds or an interval string. The default is `100ms`.
+Set how long hx-live waits after an `input` event:
 
 ```html
 <meta name="htmx-config" content="live.inputDebounce:20ms">
 ```
 
-### `config.live.bindPrefix`
+Defaults to `100ms`. A `change` event recomputes without this delay.
 
-Controls the short-form prefix for binding attributes. Defaults to `':'` (or disabled automatically if Alpine.js is detected).
+### `live.bindPrefix`
 
-| Value | Effect | Example attribute |
-|-------|--------|-------------------|
-| undefined (default) | `:attr` enabled, unless Alpine detected | `:hidden`, `:text`, `:.active` |
-| `':'` | `:attr` short form forced on | `:hidden`, `:text`, `:.active` |
-| `''` or falsy | Short form disabled, only `hx-live:attr` works | `hx-live:hidden` |
-| `'hx:'` | Custom prefix | `hx:hidden`, `hx:text`, `hx:.active` |
-
-The long form `hx-live:<attr>` always works regardless of this setting.
-
-**Alpine.js auto-detection**
-
-If `window.Alpine` exists when hx-live initializes and no `bindPrefix` is configured, the `:` short form is automatically disabled and a console warning is logged. To resolve:
-
-- Use the long form `hx-live:<attr>` (always works)
-- Or explicitly set a non-conflicting prefix:
+Change or disable the `:` binding prefix:
 
 ```html
-<!-- Use hx: as short form instead -->
-<meta name="htmx-config" content='{"live":{"bindPrefix":"hx:"}}'>
+<meta name="htmx-config"
+      content='{"live":{"bindPrefix":"hx:"}}'>
 ```
 
-- Or force `:` if you know what you're doing:
+| Value | Binding syntax |
+|---|---|
+| Not set | `:hidden`, unless Alpine.js is detected |
+| `:` | `:hidden` |
+| `hx:` | `hx:hidden` |
+| Empty | Short form disabled |
+
+The canonical `hx-live:hidden` form always works.
+
+### `live.useDollar`
+
+Enable `$()` as an alias for `q()`:
 
 ```html
-<meta name="htmx-config" content='{"live":{"bindPrefix":":"}}'>
-```
-
-**Manually disabling the short form**
-
-If Alpine loads after hx-live (or you want to be explicit), disable it yourself:
-
-```html
-<meta name="htmx-config" content='{"live":{"bindPrefix":""}}'>
-```
-
-With `bindPrefix: ''`, use the canonical long form:
-
-```html
-<!-- Alpine handles :class, hx-live handles hx-live:text -->
-<p :class="alpineVar" hx-live:text="q('#name').value"></p>
-```
-
-With `bindPrefix: 'hx:'`:
-
-```html
-<!-- Alpine handles :class, hx-live handles hx:text -->
-<p :class="alpineVar" hx:text="q('#name').value"></p>
-```
-
-### `config.live.useDollar`
-
-Enable `$()` as an alias for [`q()`](#q):
-
-```html
-<!-- Because jQuery rocks -->
 <meta name="htmx-config" content="live.useDollar:true">
 
 <input id="name">
-<p :text="$('#name').value"></p>
+<output :text="$('#name').value"></output>
 ```
 
-The alias works in:
+Defaults to `false`, so hx-live does not replace a page's existing `$`.
 
-- [`hx-live`](#hx-live)
-- [`:attr` bindings](#attributes)
-- [`hx-on`](/reference/attributes/hx-on)
-- `js:` attributes
-- [`hx-trigger` filters](/reference/attributes/hx-trigger)
+## How It Works
 
-Defaults to `false`.
+hx-live registers each binding once, then recomputes all registered expressions together:
+
+```text
+DOM mutation ─┐
+input/change ─┼─→ schedule one microtask ─→ run expressions ─→ update DOM
+htmx swap ────┘
+```
+
+- One document-wide [`MutationObserver`](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver) watches attributes, text, and added or removed nodes.
+- Synchronous changes coalesce into one recompute.
+- Recomputes pause during an htmx swap and run once after it finishes.
+- Writes made by a binding do not schedule a feedback loop.
+- Removed bindings are cleaned up. The observer detaches when none remain.
+- A run longer than `16ms` logs one warning.
+
+Every change recomputes every live expression. hx-live does not track dependencies between individual values.
 
 ## Notes
 
-- Bare `data.*` uses the nearest owner. `q(...).data`, `q(...).aria`, `q(...).class`, and `q(...).attr` are local; use `.closest` for explicit owner lookup.
-- Expressions run on any DOM mutation. There is no per-variable tracking. The microtask coalescing keeps this cheap, but expensive expressions should `debounce` or guard themselves.
-- The DOM is the source of truth. To share state between expressions, use ARIA attributes, `data-*` attributes (the `data` proxy makes this ergonomic), or hidden inputs.
-- When using morph swap styles (`innerMorph` / `outerMorph`), server responses will overwrite `data-*` attributes by default. To preserve client-side state during morphs, add a prefix to `morphIgnore` — e.g. `morphIgnore:["data-"]` will protect all `data-*` attributes from being overwritten. Non-morph swaps (`innerHTML`, `outerHTML`) replace the DOM entirely, so state should live on an ancestor element that isn't swapped.
-- Expressions must be safe to run repeatedly. Avoid unconditional `fetch()` calls. Use `debounce` or guard on a value change.
-- If your build pipeline strips `:`-prefixed attributes, use the canonical `hx-live:<attr>` form instead. Behavior is identical.
-- If using Alpine.js on the same page, hx-live auto-detects it and disables the `:` short form. See [Configuration](#configuration) for details.
+- Keep the DOM as the source of truth. Prefer native properties, ARIA, and `data-*` over external JavaScript state.
+- Keep expressions safe to run again. Guard network calls, timers, and other side effects.
+- Use [`hx-ignore`](/reference/attributes/hx-ignore) to skip live bindings in a subtree.
+- An `innerHTML` or `outerHTML` swap replaces state inside its target. Keep durable local state above that target or return it from the server.
+- Morph swaps update `data-*` attributes by default. Add `"data-"` to [`morphIgnore`](/reference/config/htmx-config-morphIgnore) when client-owned data must survive a morph.
+- Use `hx-live:<attribute>` when a build tool strips `:` attributes.
+- Alpine.js and hx-live both use `:`. See [`live.bindPrefix`](#livebindprefix) when both run on one page.
 
-### Async Code
+## See Also
 
-Use top-level `await` in `hx-live`. Do not add an async wrapper.
-
-```html
-<!-- Good: htmx handles errors -->
-<div hx-live="await update()"></div>
-
-<!-- Bad: errors go unhandled -->
-<div hx-live="(async () => { await update() })()"></div>
-```
-
-## See also
-
-- [`hx-on`](/reference/attributes/hx-on) (attribute)
-- [Locality of Behaviour](/essays/locality-of-behaviour) (essay)
+- [`hx-on`](/reference/attributes/hx-on)
+- [`hx-live-hyperscript`](/extensions/hx-live-hyperscript)
+- [Locality of Behaviour](/essays/locality-of-behaviour)
